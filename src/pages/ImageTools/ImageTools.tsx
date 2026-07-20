@@ -9,9 +9,7 @@ import {
   PiCheckCircleLight as CheckCircle,
   PiSlidersHorizontalLight as Sliders, PiEyeLight as Eye, PiPlusLight as PlusIcon,
   PiCropLight as CropIcon, PiCornersOutLight as ResizeIcon, PiArrowsLeftRightLight as MirrorIcon,
-  PiPaletteLight as FilterIcon, PiFolderOpenLight as FormatIcon, PiArrowLeftLight as ArrowLeft,
-  PiArrowUpLight as ArrowUp, PiSparkleLight as SparkleIcon, PiStampLight as WatermarkIcon,
-  PiGhostLight as BlurIcon, PiFileTextLight as FileText
+  PiPaletteLight as FilterIcon, PiFolderOpenLight as FormatIcon, PiArrowLeftLight as ArrowLeft
 } from 'react-icons/pi';
 import { Slider } from '../../components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
@@ -33,21 +31,11 @@ interface FileSettings {
   flipV: boolean;
   cropAspect: string;
   grayscale: boolean;
-  pixelate: number;
   cropLeftPct: number;
   cropTopPct: number;
   cropWidthPct: number;
   cropHeightPct: number;
   cropApplied: boolean;
-  upscaleFactor: number;
-  removeBgColor: string;
-  removeBgTolerance: number;
-  memeTopText: string;
-  memeBottomText: string;
-  watermarkText: string;
-  watermarkOpacity: number;
-  blurRadius: number;
-  documentFilter: 'none' | 'magic-color' | 'binarization' | 'grayscale-scan';
 }
 
 interface ImageToolsProps {
@@ -59,16 +47,10 @@ const TABS = [
   { id: 'compress',   label: 'Compress',  Icon: Sliders },
   { id: 'resize',     label: 'Resize',    Icon: ResizeIcon },
   { id: 'crop',       label: 'Crop',      Icon: CropIcon },
-  { id: 'upscale',    label: 'Upscale',   Icon: ArrowUp },
-  { id: 'bg-remover', label: 'Remove BG', Icon: SparkleIcon },
-  { id: 'meme',       label: 'Meme',      Icon: FilterIcon },
-  { id: 'watermark',  label: 'Watermark', Icon: WatermarkIcon },
-  { id: 'blur-face',  label: 'Blur Face', Icon: BlurIcon },
   { id: 'mirror',     label: 'Mirror',    Icon: MirrorIcon },
   { id: 'rotate',     label: 'Rotate',    Icon: RefreshCw },
   { id: 'format',     label: 'Convert',   Icon: FormatIcon },
   { id: 'filter',     label: 'Filters',   Icon: FilterIcon },
-  { id: 'ocr',        label: 'OCR Text',  Icon: FileText },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -231,24 +213,11 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   const [flipV, setFlipV] = useState<boolean>(false);
   const [cropAspect, setCropAspect] = useState<string>('none');
   const [grayscale, setGrayscale] = useState<boolean>(false);
-  const [pixelate, setPixelate] = useState<number>(0);
   const [cropLeftPct, setCropLeftPct] = useState<number>(0);
   const [cropTopPct, setCropTopPct] = useState<number>(0);
   const [cropWidthPct, setCropWidthPct] = useState<number>(100);
   const [cropHeightPct, setCropHeightPct] = useState<number>(100);
   const [cropApplied, setCropApplied] = useState<boolean>(false);
-
-  const [upscaleFactor, setUpscaleFactor] = useState<number>(1);
-  const [removeBgColor, setRemoveBgColor] = useState<string>('#ffffff');
-  const [removeBgTolerance, setRemoveBgTolerance] = useState<number>(35);
-  const [memeTopText, setMemeTopText] = useState<string>('');
-  const [memeBottomText, setMemeBottomText] = useState<string>('');
-  const [watermarkText, setWatermarkText] = useState<string>('');
-  const [watermarkOpacity, setWatermarkOpacity] = useState<number>(40);
-  const [blurRadius, setBlurRadius] = useState<number>(0);
-  const [documentFilter, setDocumentFilter] = useState<'none' | 'magic-color' | 'binarization' | 'grayscale-scan'>('none');
-  const [ocrText, setOcrText] = useState<string | null>(null);
-  const [ocrProcessing, setOcrProcessing] = useState<boolean>(false);
 
   const [displayGrid, setDisplayGrid] = useState(true);
 
@@ -461,21 +430,11 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     else if (key === 'flipV') setFlipV(value as boolean);
     else if (key === 'cropAspect') setCropAspect(value as string);
     else if (key === 'grayscale') setGrayscale(value as boolean);
-    else if (key === 'pixelate') setPixelate(value as number);
     else if (key === 'cropLeftPct') setCropLeftPct(value as number);
     else if (key === 'cropTopPct') setCropTopPct(value as number);
     else if (key === 'cropWidthPct') setCropWidthPct(value as number);
     else if (key === 'cropHeightPct') setCropHeightPct(value as number);
     else if (key === 'cropApplied') setCropApplied(value as boolean);
-    else if (key === 'upscaleFactor') setUpscaleFactor(value as number);
-    else if (key === 'removeBgColor') setRemoveBgColor(value as string);
-    else if (key === 'removeBgTolerance') setRemoveBgTolerance(value as number);
-    else if (key === 'memeTopText') setMemeTopText(value as string);
-    else if (key === 'memeBottomText') setMemeBottomText(value as string);
-    else if (key === 'watermarkText') setWatermarkText(value as string);
-    else if (key === 'watermarkOpacity') setWatermarkOpacity(value as number);
-    else if (key === 'blurRadius') setBlurRadius(value as number);
-    else if (key === 'documentFilter') setDocumentFilter(value as 'none' | 'magic-color' | 'binarization' | 'grayscale-scan');
 
     setFileSettingsList((prev) => {
       const copy = prev.map(item => ({ ...item }));
@@ -509,19 +468,10 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     setCompressMethod(s.compressMethod); setTargetSize(s.targetSize); setTargetUnit(s.targetUnit);
     setAspectRatioLocked(s.aspectRatioLocked); setOrigWidth(s.origWidth); setOrigHeight(s.origHeight);
     setRotation(s.rotation); setFlipH(s.flipH); setFlipV(s.flipV); setCropAspect(s.cropAspect);
-    setGrayscale(s.grayscale); setPixelate(s.pixelate);
+    setGrayscale(s.grayscale);
     setCropLeftPct(s.cropLeftPct ?? 0); setCropTopPct(s.cropTopPct ?? 0);
     setCropWidthPct(s.cropWidthPct ?? 100); setCropHeightPct(s.cropHeightPct ?? 100);
     setCropApplied(s.cropApplied ?? false);
-    setUpscaleFactor(s.upscaleFactor ?? 1);
-    setRemoveBgColor(s.removeBgColor ?? '#ffffff');
-    setRemoveBgTolerance(s.removeBgTolerance ?? 35);
-    setMemeTopText(s.memeTopText ?? '');
-    setMemeBottomText(s.memeBottomText ?? '');
-    setWatermarkText(s.watermarkText ?? '');
-    setWatermarkOpacity(s.watermarkOpacity ?? 40);
-    setBlurRadius(s.blurRadius ?? 0);
-    setDocumentFilter(s.documentFilter ?? 'none');
   };
 
   const handleWidthChange = (val: string) => {
@@ -550,6 +500,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     if (v === 'preserve') return 'Original';
     if (v === 'image/webp') return 'WebP';
     if (v === 'image/jpeg') return 'JPEG';
+    if (v === 'image/jpg') return 'JPG';
     if (v === 'image/png') return 'PNG';
     if (v === 'image/gif') return 'GIF';
     return v;
@@ -565,9 +516,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
         quality, format, maxWidth: ow ? ow.toString() : maxWidth,
         maxHeight: oh ? oh.toString() : maxHeight, compressMethod, targetSize, targetUnit,
         aspectRatioLocked, origWidth: ow, origHeight: oh, rotation, flipH, flipV, cropAspect: 'full',
-        grayscale, pixelate, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false,
-        upscaleFactor: 1, removeBgColor: '#ffffff', removeBgTolerance: 35, memeTopText: '', memeBottomText: '',
-        watermarkText: '', watermarkOpacity: 40, blurRadius: 0, documentFilter: 'none'
+        grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false
       });
     }
     setFiles(prev => [...prev, ...selectedFiles]);
@@ -603,9 +552,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
       const s = fileSettingsList[i] || { 
         quality, format, maxWidth, maxHeight, compressMethod, targetSize, targetUnit, 
         aspectRatioLocked, origWidth, origHeight, rotation, flipH, flipV, cropAspect, 
-        grayscale, pixelate, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false,
-        upscaleFactor: 1, removeBgColor: '#ffffff', removeBgTolerance: 35, memeTopText: '', memeBottomText: '',
-        watermarkText: '', watermarkOpacity: 40, blurRadius: 0
+        grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false
       };
       
       try {
@@ -625,20 +572,11 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
           targetSizeKB: s.compressMethod === 'target' ? targetSizeKB : undefined,
           rotation: s.rotation, flipH: s.flipH, flipV: s.flipV,
           cropAspect: s.cropApplied ? s.cropAspect : undefined,
-          grayscale: s.grayscale, pixelate: s.pixelate,
+          grayscale: s.grayscale,
           cropLeftPct: s.cropApplied ? s.cropLeftPct : undefined,
           cropTopPct: s.cropApplied ? s.cropTopPct : undefined,
           cropWidthPct: s.cropApplied ? s.cropWidthPct : undefined,
           cropHeightPct: s.cropApplied ? s.cropHeightPct : undefined,
-          upscaleFactor: s.upscaleFactor,
-          removeBgColor: s.removeBgColor !== '#ffffff' || activeTab === 'bg-remover' ? s.removeBgColor : undefined,
-          removeBgTolerance: s.removeBgTolerance,
-          memeTopText: s.memeTopText || undefined,
-          memeBottomText: s.memeBottomText || undefined,
-          watermarkText: s.watermarkText || undefined,
-          watermarkOpacity: s.watermarkOpacity / 100,
-          blurRadius: s.blurRadius,
-          documentFilter: s.documentFilter !== 'none' ? s.documentFilter : undefined
         });
         processedResults.push(result); onUploadSuccess();
         setProgress(((i + 1) / files.length) * 100);
@@ -663,7 +601,6 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   // Preview CSS filter (live preview for filters tab)
   const previewFilter = [
     grayscale ? 'grayscale(100%)' : '',
-    pixelate > 0 ? `blur(${pixelate * 0.15}px)` : '',
     rotation !== 0 ? '' : '',
   ].filter(Boolean).join(' ');
 
@@ -696,7 +633,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                 <div className="flex items-center gap-1">
                   <Input type="number" min={10} max={100} value={quality}
                     onChange={e => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 10 && v <= 100) updateSetting('quality', v); }}
-                    className="w-14 h-7 text-center text-sm p-1 font-bold bg-zinc-900 border-zinc-800 focus-visible:ring-1 focus-visible:ring-[#00FF88]"
+                    className="w-14 h-7 text-center text-sm p-1 font-bold bg-zinc-900 border-zinc-800 focus-visible:ring-1 focus-visible:ring-zinc-400"
                   />
                   <span className="text-xs text-zinc-500">%</span>
                 </div>
@@ -730,7 +667,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-zinc-400">Fixed Ratio</label>
             <input type="checkbox" checked={aspectRatioLocked} onChange={e => updateSetting('aspectRatioLocked', e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-[#00FF88] cursor-pointer" />
+              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
@@ -930,7 +867,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
               type="checkbox" 
               checked={displayGrid} 
               onChange={(e) => setDisplayGrid(e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-[#00FF88] cursor-pointer" 
+              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer" 
             />
           </div>
 
@@ -945,7 +882,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             ) : (
               <button 
                 onClick={applyImmediateCrop}
-                className="flex-1 bg-[#00FF88] hover:bg-[#00e57a] text-[#040608] font-bold h-9 rounded-lg text-sm transition-all"
+                className="flex-1 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold h-9 rounded-lg text-sm transition-all"
               >
                 Crop
               </button>
@@ -971,7 +908,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                 }
               }
             }}
-            className="w-full bg-[#00FF88]/10 hover:bg-[#00FF88]/20 border border-[#00FF88]/20 text-[#00FF88] font-bold h-9 rounded-lg text-[10px] uppercase tracking-wide transition-all"
+            className="w-full bg-zinc-900/40 hover:bg-zinc-900 border border-zinc-800 text-zinc-200 font-bold h-9 rounded-lg text-[10px] uppercase tracking-wide transition-all"
           >
             Auto Detect Document Borders
           </button>
@@ -984,7 +921,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             <label key={item.key} className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-zinc-900 hover:border-zinc-800 cursor-pointer transition-colors">
               <span className="text-sm text-zinc-300">{item.label}</span>
               <input type="checkbox" checked={item.val} onChange={e => updateSetting(item.key, e.target.checked)}
-                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-[#00FF88]" />
+                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
             </label>
           ))}
         </div>
@@ -1016,6 +953,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
               <SelectItem value="preserve">Original</SelectItem>
               <SelectItem value="image/webp">WebP</SelectItem>
               <SelectItem value="image/jpeg">JPEG</SelectItem>
+              <SelectItem value="image/jpg">JPG</SelectItem>
               <SelectItem value="image/png">PNG</SelectItem>
               <SelectItem value="image/gif">GIF</SelectItem>
             </SelectContent>
@@ -1028,222 +966,8 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
           <label className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-zinc-900 hover:border-zinc-800 cursor-pointer transition-colors">
             <span className="text-sm text-zinc-300">Grayscale</span>
             <input type="checkbox" checked={grayscale} onChange={e => updateSetting('grayscale', e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-[#00FF88]" />
+              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer" />
           </label>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-zinc-400">Pixelate</label>
-              <span className="text-xs font-bold text-[#00FF88]">{pixelate === 0 ? 'Off' : `${pixelate}px`}</span>
-            </div>
-            <Slider min={0} max={30} step={1} value={[pixelate]} onValueChange={v => updateSetting('pixelate', Array.isArray(v) ? v[0] : v)} className="py-1" />
-          </div>
-          
-          <div className="space-y-2 border-t border-zinc-900 pt-3">
-            <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Document Scan Filter</label>
-            <Select value={documentFilter} onValueChange={v => updateSetting('documentFilter', v as any)}>
-              <SelectTrigger className="w-full h-9">
-                <span>{documentFilter === 'none' ? 'None (Standard)' : documentFilter === 'magic-color' ? 'Magic Color' : documentFilter === 'binarization' ? 'B&W Scan' : 'Grayscale Scan'}</span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None (Standard)</SelectItem>
-                <SelectItem value="magic-color">Magic Color (Contrast Boost)</SelectItem>
-                <SelectItem value="binarization">B&W Scan (High Contrast)</SelectItem>
-                <SelectItem value="grayscale-scan">Grayscale Scan (Monochrome)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'upscale' && (
-        <div className="space-y-4">
-          <label className="text-xs font-semibold text-zinc-400 block mb-1">Scale Factor</label>
-          <div className="grid grid-cols-3 gap-2">
-            {[1, 2, 4].map(factor => (
-              <button
-                key={factor}
-                onClick={() => updateSetting('upscaleFactor', factor)}
-                className={`py-2 rounded-lg border text-xs font-bold transition-all ${
-                  upscaleFactor === factor
-                    ? 'border-[#00FF88] bg-[#00FF88]/10 text-[#00FF88]'
-                    : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:bg-zinc-900'
-                }`}
-              >
-                {factor === 1 ? '1x' : `${factor}x`}
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-zinc-500 leading-normal">
-            Bicubic scaling enlarges and fills pixels smoothly on the output canvas.
-          </p>
-        </div>
-      )}
-
-      {activeTab === 'bg-remover' && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-zinc-400">Bg Color to Remove</label>
-            <div className="flex gap-2">
-              <input 
-                type="color" 
-                value={removeBgColor} 
-                onChange={e => updateSetting('removeBgColor', e.target.value)}
-                className="w-10 h-9 rounded bg-zinc-950 border border-zinc-800 cursor-pointer"
-              />
-              <Input 
-                type="text" 
-                value={removeBgColor} 
-                onChange={e => updateSetting('removeBgColor', e.target.value)} 
-                className="h-9 font-mono text-xs uppercase"
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-zinc-400">Color Sensitivity</span>
-              <span className="font-bold text-[#00FF88]">{removeBgTolerance}</span>
-            </div>
-            <Slider 
-              min={10} 
-              max={120} 
-              step={5} 
-              value={[removeBgTolerance]} 
-              onValueChange={v => updateSetting('removeBgTolerance', Array.isArray(v) ? v[0] : v)} 
-              className="py-1" 
-            />
-          </div>
-          <p className="text-[10px] text-zinc-500 leading-normal">
-            Converts matching target pixel thresholds to transparent alpha coordinates.
-          </p>
-        </div>
-      )}
-
-      {activeTab === 'meme' && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-zinc-400">Top Headline Text</label>
-            <Input 
-              type="text" 
-              value={memeTopText} 
-              onChange={e => updateSetting('memeTopText', e.target.value)} 
-              placeholder="TOP MEME TEXT" 
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-zinc-400">Bottom Footer Text</label>
-            <Input 
-              type="text" 
-              value={memeBottomText} 
-              onChange={e => updateSetting('memeBottomText', e.target.value)} 
-              placeholder="BOTTOM MEME TEXT" 
-              className="h-9"
-            />
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'watermark' && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-[#a1a1aa]">Watermark Text</label>
-            <Input 
-              type="text" 
-              value={watermarkText} 
-              onChange={e => updateSetting('watermarkText', e.target.value)} 
-              placeholder="COMPACTOR DIGITAL" 
-              className="h-9"
-            />
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-[#a1a1aa]">Opacity (%)</span>
-              <span className="font-bold text-[#00FF88]">{watermarkOpacity}%</span>
-            </div>
-            <Slider 
-              min={10} 
-              max={90} 
-              step={5} 
-              value={[watermarkOpacity]} 
-              onValueChange={v => updateSetting('watermarkOpacity', Array.isArray(v) ? v[0] : v)} 
-              className="py-1" 
-            />
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'blur-face' && (
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-xs">
-              <span className="font-semibold text-[#a1a1aa]">Blur Radius</span>
-              <span className="font-bold text-[#00FF88]">{blurRadius === 0 ? 'Off' : `${blurRadius}px`}</span>
-            </div>
-            <Slider 
-              min={0} 
-              max={30} 
-              step={2} 
-              value={[blurRadius]} 
-              onValueChange={v => updateSetting('blurRadius', Array.isArray(v) ? v[0] : v)} 
-              className="py-1" 
-            />
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'ocr' && (
-        <div className="space-y-4">
-          <p className="text-xs text-zinc-400 leading-normal">
-            Extract and copy text content from this document scan using browser client-side OCR.
-          </p>
-          {ocrText ? (
-            <div className="space-y-2">
-              <textarea 
-                value={ocrText} 
-                readOnly 
-                className="w-full h-40 bg-zinc-950 border border-zinc-850 p-2.5 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none"
-              />
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(ocrText);
-                  alert("Text copied to clipboard!");
-                }}
-                className="w-full bg-[#00FF88] hover:bg-[#00e57a] text-zinc-950 font-bold h-9 rounded-lg text-xs transition-all"
-              >
-                Copy Text
-              </button>
-              <button 
-                onClick={() => setOcrText(null)}
-                className="w-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-bold h-9 rounded-lg text-xs transition-all"
-              >
-                Rescan Document
-              </button>
-            </div>
-          ) : (
-            <button 
-              onClick={async () => {
-                if (!activeFile) return;
-                setOcrProcessing(true);
-                setTimeout(() => {
-                  const extracted = `--- OCR DOCUMENT TEXT SCAN ---\n\n` +
-                    `Filename: ${activeFile.name}\n` +
-                    `Detected Lines: 5\n\n` +
-                    `1. INVOICE / RECEIPT SUMMARY\n` +
-                    `2. Date: ${new Date().toLocaleDateString()}\n` +
-                    `3. Items detailed securely via local browser OCR scan.\n` +
-                    `4. Total Amount: $1,280.00\n` +
-                    `5. Verified signature match. Approved.\n\n` +
-                    `Scan completed successfully without server uploads.`;
-                  setOcrText(extracted);
-                  setOcrProcessing(false);
-                }, 1200);
-              }}
-              disabled={ocrProcessing}
-              className="w-full bg-[#00FF88] hover:bg-[#00e57a] disabled:opacity-50 text-zinc-950 font-bold h-9 rounded-lg text-xs transition-all flex items-center justify-center"
-            >
-              {ocrProcessing ? 'Scanning Document...' : 'Run OCR Text Extract'}
-            </button>
-          )}
         </div>
       )}
     </div>
@@ -1259,7 +983,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
         {/* Sidebar header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-900">
           <button onClick={results.length > 0 ? clearQueue : onGoHome}
-            className="text-zinc-500 hover:text-[#00FF88] transition-colors p-1 rounded-md hover:bg-zinc-900">
+            className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-zinc-900">
             <ArrowLeft className="w-4 h-4" />
           </button>
           <span className="text-sm font-bold text-zinc-200">Image Optimizer</span>
@@ -1274,7 +998,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
               </p>
               <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer shrink-0">
                 <input type="checkbox" checked={sameForAll} onChange={e => toggleSameForAll(e.target.checked)}
-                  className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-[#00FF88]" />
+                  className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
                 All
               </label>
             </div>
@@ -1285,7 +1009,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                 <button key={id} onClick={() => setActiveTab(id)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all ${
                     activeTab === id
-                      ? 'text-[#00FF88] bg-[#00FF88]/8 border-l-2 border-[#00FF88] font-semibold'
+                      ? 'text-zinc-50 bg-zinc-900/60 border-l-2 border-zinc-200 font-semibold'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/3 border-l-2 border-transparent font-medium'
                   }`}
                 >
@@ -1303,7 +1027,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             {/* Optimize CTA */}
             <div className="p-3 border-t border-zinc-900">
               <button onClick={startBatchCompression} disabled={files.length === 0}
-                className="w-full bg-[#00FF88] hover:bg-[#00e57a] disabled:opacity-50 text-[#040608] font-black py-3 rounded-xl text-sm transition-colors shadow-[0_0_16px_rgba(0,255,136,0.2)]">
+                className="w-full bg-zinc-50 hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-black py-3 rounded-xl text-sm transition-colors shadow-sm cursor-pointer">
                 Optimize {files.length} {files.length === 1 ? 'Image' : 'Images'} →
               </button>
             </div>
@@ -1314,14 +1038,14 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
         {results.length > 0 && !processing && (
           <div className="flex-1 p-4 space-y-4">
             <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-[#00FF88]/10 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="w-5 h-5 text-[#00FF88]" />
+              <div className="w-10 h-10 bg-zinc-900/40 border border-zinc-800 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle className="w-5 h-5 text-zinc-200" />
               </div>
               <p className="text-sm font-bold text-white mt-2">Done!</p>
               <p className="text-xs text-zinc-500">{results.length} images · saved {totalSavings()}%</p>
             </div>
             <button onClick={clearQueue}
-              className="w-full bg-[#00FF88] hover:bg-[#00e57a] text-[#040608] font-bold py-2.5 rounded-lg text-sm transition-colors">
+              className="w-full bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors cursor-pointer">
               Process More
             </button>
           </div>
@@ -1405,18 +1129,18 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                       <div className="absolute top-4 left-4 bg-zinc-950/80 text-zinc-300 border border-zinc-800 px-3 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm z-10 select-none pointer-events-none">
                         Original
                       </div>
-                      <div className="absolute top-4 right-4 bg-[#00FF88]/15 text-[#00FF88] border border-[#00FF88]/20 px-3 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm z-10 select-none pointer-events-none">
+                      <div className="absolute top-4 right-4 bg-zinc-950/80 text-zinc-300 border border-zinc-800 px-3 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm z-10 select-none pointer-events-none">
                         Optimized ({formatBytes(selectedForCompare.newSize)})
                       </div>
 
                       {/* Split Control vertical divider */}
                       <div 
-                        className="absolute top-0 bottom-0 w-1 bg-[#00FF88] cursor-col-resize z-20"
+                        className="absolute top-0 bottom-0 w-1 bg-white cursor-col-resize z-20"
                         style={{ left: `${compareSplitPct}%` }}
                         onMouseDown={startSplitDrag}
                       >
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950 border border-[#00FF88] flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00FF88" strokeWidth="3">
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950 border border-zinc-500 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="3">
                             <path d="M8 5l-7 7 7 7M16 5l7 7-7 7" />
                           </svg>
                         </div>
@@ -1451,7 +1175,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                   {imageRect && !cropApplied && (
                     <div 
                       ref={cropOverlayRef}
-                      className={`absolute ${activeTab === 'crop' ? 'border-2 border-[#00FF88] opacity-100 pointer-events-auto' : 'border border-dashed border-zinc-500/30 opacity-40 pointer-events-none'}`}
+                      className={`absolute ${activeTab === 'crop' ? 'border-2 border-white opacity-100 pointer-events-auto' : 'border border-dashed border-zinc-500/30 opacity-40 pointer-events-none'}`}
                       style={{
                         left: `${imageRect.left + (cropLeftPct / 100) * imageRect.width}px`,
                         top: `${imageRect.top + (cropTopPct / 100) * imageRect.height}px`,
@@ -1466,7 +1190,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                       {displayGrid && (
                         <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-25 pointer-events-none">
                           {[...Array(6)].map((_, i) => (
-                            <div key={i} className={i < 2 ? 'border-r border-dashed border-[#00FF88]' : i === 2 ? '' : 'border-b border-dashed border-[#00FF88] col-span-3'} />
+                            <div key={i} className={i < 2 ? 'border-r border-dashed border-zinc-200/50' : i === 2 ? '' : 'border-b border-dashed border-zinc-200/50 col-span-3'} />
                           ))}
                         </div>
                       )}
@@ -1475,13 +1199,13 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                       {activeTab === 'crop' && (
                         <>
                           {/* Corner NW */}
-                          <div className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-[#00FF88] rounded-full cursor-nwse-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
+                          <div className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nwse-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
                           {/* Corner NE */}
-                          <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-[#00FF88] rounded-full cursor-nesw-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
+                          <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nesw-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
                           {/* Corner SW */}
-                          <div className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-[#00FF88] rounded-full cursor-nesw-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
+                          <div className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nesw-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
                           {/* Corner SE */}
-                          <div className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-[#00FF88] rounded-full cursor-nwse-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
+                          <div className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nwse-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
                         </>
                       )}
                     </div>
@@ -1503,7 +1227,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                   <button onClick={() => selectActiveFile(idx)}
                     className={`h-[60px] w-[60px] rounded-lg overflow-hidden border-2 transition-all block ${
                       activeIndex === idx
-                        ? 'border-[#00FF88] shadow-[0_0_10px_rgba(0,255,136,0.35)]'
+                        ? 'border-zinc-300 shadow-sm'
                         : 'border-zinc-800 hover:border-zinc-600'
                     }`}>
                     {previewUrls[idx] && (
@@ -1520,7 +1244,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
               {/* Add more */}
               <button onClick={() => addMoreRef.current?.click()}
-                className="flex-shrink-0 h-[60px] w-[60px] rounded-lg border-2 border-dashed border-zinc-800 hover:border-[#00FF88]/50 hover:bg-[#00FF88]/5 flex items-center justify-center text-zinc-600 hover:text-[#00FF88] transition-all">
+                className="flex-shrink-0 h-[60px] w-[60px] rounded-lg border-2 border-dashed border-zinc-800 hover:border-zinc-500 hover:bg-zinc-900/30 flex items-center justify-center text-zinc-600 hover:text-zinc-200 transition-all">
                 <PlusIcon className="w-5 h-5" />
               </button>
               <input ref={addMoreRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" multiple
@@ -1566,14 +1290,14 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                     <div className="col-span-5 truncate text-sm font-medium text-zinc-200" title={res.name}>{res.name}</div>
                     <div className="col-span-2 text-right text-xs text-zinc-500">{formatBytes(res.originalSize)}</div>
                     <div className="col-span-2 text-right text-sm font-bold text-zinc-100">{formatBytes(res.newSize)}</div>
-                    <div className="col-span-1 text-right text-sm font-bold text-[#00FF88]">-{getSavings(res.originalSize, res.newSize)}%</div>
+                    <div className="col-span-1 text-right text-sm font-bold text-white">-{getSavings(res.originalSize, res.newSize)}%</div>
                     <div className="col-span-2 flex items-center justify-center gap-2">
                       <button onClick={() => setSelectedForCompare(res)}
-                        className="w-8 h-8 rounded-lg border border-[#00E5FF]/20 text-[#00E5FF] hover:bg-[#00E5FF]/10 flex items-center justify-center transition-colors" title="Compare">
+                        className="w-8 h-8 rounded-lg border border-zinc-800 text-zinc-300 hover:bg-zinc-900 flex items-center justify-center transition-colors" title="Compare">
                         <Eye className="w-3.5 h-3.5" />
                       </button>
                       <a href={res.url} download={res.name}
-                        className="w-8 h-8 rounded-lg border border-[#00FF88]/20 text-[#00FF88] hover:bg-[#00FF88]/10 flex items-center justify-center transition-colors" title="Download">
+                        className="w-8 h-8 rounded-lg border border-zinc-800 text-zinc-300 hover:bg-zinc-900 flex items-center justify-center transition-colors" title="Download">
                         <Download className="w-3.5 h-3.5" />
                       </a>
                     </div>
@@ -1586,8 +1310,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             <div className="flex items-center justify-center gap-3">
               {results.map((res, idx) => idx === 0 && (
                 <a key={idx} href={res.url} download={res.name}
-                  className="inline-flex items-center gap-2 bg-[#00FF88] hover:bg-[#00e57a] text-[#040608] hover:text-[#040608] font-bold px-6 py-2.5 rounded-lg text-sm transition-colors"
-                  style={{ color: '#040608' }}>
+                  className="inline-flex items-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 hover:text-zinc-950 font-bold px-6 py-2.5 rounded-lg text-sm transition-colors cursor-pointer">
                   <Download className="w-4 h-4" /> Download All
                 </a>
               ))}

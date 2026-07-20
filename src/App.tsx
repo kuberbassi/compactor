@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { Footer } from './components/Common/Footer';
 import { Dashboard } from './pages/Dashboard';
@@ -8,7 +8,9 @@ import { PdfTools } from './pages/PdfTools/PdfTools';
 import { AudioTools } from './pages/AudioTools/AudioTools';
 import { UniversalConverter } from './pages/UniversalConverter/UniversalConverter';
 import { Rasterbator } from './pages/Rasterbator/Rasterbator';
+import { MetadataEditor } from './pages/MetadataEditor/MetadataEditor';
 import { NotFound } from './pages/NotFound';
+import { Diagnostics } from './pages/Diagnostics';
 import SimpleNav from './components/ui/SimpleNav';
 
 function MainApp() {
@@ -17,6 +19,14 @@ function MainApp() {
     const saved = localStorage.getItem('compactor_upload_count');
     return saved ? parseInt(saved, 10) : 0;
   });
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveToolId(window.location.hash.slice(1) || null);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   const incrementUploadCount = () => {
     setUploadCount((prev) => {
@@ -52,6 +62,10 @@ function MainApp() {
         return <UniversalConverter onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'rasterbator':
         return <Rasterbator onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
+      case 'metadata-editor':
+        return <MetadataEditor onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
+      case 'diagnostics':
+        return <Diagnostics onGoHome={goHome} />;
       default:
         if (activeToolId && activeToolId.startsWith('pdf-')) {
           return <PdfTools toolId={activeToolId} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;

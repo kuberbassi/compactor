@@ -3,7 +3,7 @@ import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { traceImageToSvg } from '../../utils/svgTracer';
 import { imagesToPdf, textToPdf } from '../../utils/pdf';
-import { getFFmpeg, compressVideo } from '../../utils/ffmpeg';
+import { getFFmpeg, transcodeFormatLossless } from '../../utils/ffmpeg';
 import { formatBytes } from '../../utils/image';
 import { 
   PiFileLight as FileIcon, PiArrowsClockwiseLight as RefreshCw, 
@@ -126,17 +126,11 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         setStatusText('Initializing FFmpeg wasm media transcoder...');
         await getFFmpeg(() => {}, setProgress);
         
-        setStatusText(`Remuxing container format from ${inputExt.toUpperCase()} to ${targetFormat.toUpperCase()}...`);
-        const result = await compressVideo(file, {
-          crf: 23,
-          scale: 'no-scale',
-          preset: 'fast',
-          removeAudio: false,
-          format: targetFormat
-        }, () => {}, setProgress);
+        setStatusText(`Converting format from ${inputExt.toUpperCase()} to ${targetFormat.toUpperCase()}...`);
+        const result = await transcodeFormatLossless(file, targetFormat, () => {}, setProgress);
         
         setResultUrl(result.url);
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + `.${targetFormat}`);
+        setResultName(result.name);
         onUploadSuccess();
       }
       else {
@@ -176,7 +170,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       <div className="tool-layout__header">
         <div>
           <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-            <MagicIcon className="w-6 h-6 text-[#00FF88]" /> Universal Format Converter
+            <MagicIcon className="w-6 h-6 text-zinc-400" /> Universal Format Converter
           </h2>
           <p className="text-xs text-zinc-500 mt-1">
             Pick a file, choose a format, and download the converted version.
@@ -225,7 +219,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-zinc-900/30 p-4 border border-zinc-900 rounded-xl justify-between">
                   <div className="space-y-1">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">Convert To Format</span>
-                    <span className="text-sm font-black text-[#00FF88] uppercase">{targetFormat}</span>
+                    <span className="text-sm font-black text-white uppercase">{targetFormat}</span>
                   </div>
 
                   <div className="flex gap-2">
@@ -250,7 +244,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                       }}
                       className={`py-1 text-[10px] font-semibold rounded uppercase tracking-wide transition-all ${
                         targetCategory === cat
-                          ? 'bg-[#00FF88]/10 text-[#00FF88] font-bold'
+                          ? 'bg-zinc-800 text-zinc-100 font-bold'
                           : 'text-zinc-500 hover:text-zinc-300'
                       }`}
                     >
@@ -267,7 +261,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                       onClick={() => setTargetFormat(fmt)}
                       className={`py-1.5 px-2 rounded text-[10px] font-bold transition-all uppercase border ${
                         targetFormat === fmt
-                          ? 'border-[#00FF88] bg-[#00FF88]/5 text-[#00FF88]'
+                          ? 'border-zinc-500 bg-zinc-900/50 text-zinc-100'
                           : 'border-zinc-900 bg-zinc-950/40 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/30'
                       }`}
                     >
@@ -278,7 +272,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
 
                 <Button 
                   onClick={startConversion}
-                  className="w-full bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a]"
+                  className="w-full bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold"
                 >
                   Convert File
                 </Button>
@@ -322,7 +316,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
               <a 
                 href={resultUrl} 
                 download={resultName}
-                className="inline-flex items-center justify-center gap-2 bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a] px-6 py-2.5 rounded-full text-xs"
+                className="inline-flex items-center justify-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-2.5 rounded-full text-xs shadow-sm cursor-pointer"
               >
                 <Download className="w-4 h-4" /> Download Result
               </a>

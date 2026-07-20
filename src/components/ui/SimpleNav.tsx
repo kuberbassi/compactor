@@ -33,6 +33,7 @@ const TOOL_LINKS = [
   { label: 'audio', href: 'audio-optimizer' },
   { label: 'convert', href: 'universal-converter' },
   { label: 'poster', href: 'rasterbator' },
+  { label: 'metadata', href: 'metadata-editor' },
 ];
 
 const SimpleNav: React.FC<SimpleNavProps> = ({
@@ -56,7 +57,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
   return (
     <div
       id="simple-nav"
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[99] w-[92%] max-w-2xl h-12 rounded-full border border-zinc-800/80 bg-zinc-950/75 backdrop-blur-lg flex items-center justify-between px-5 transition-all duration-300 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[99] w-[92%] max-w-3xl h-12 rounded-full border border-zinc-800/80 bg-zinc-950/75 backdrop-blur-lg flex items-center justify-between px-5 transition-all duration-300 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
     >
       <Logo onClick={onBrandClick} />
 

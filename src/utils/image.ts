@@ -13,20 +13,10 @@ export interface ImageProcessOptions {
   flipV?: boolean;
   cropAspect?: string; // 'none', '1:1', '16:9', '4:3', '9:16'
   grayscale?: boolean;
-  pixelate?: number; // 0 (none) or pixel size (e.g. 2 to 30)
   cropLeftPct?: number;
   cropTopPct?: number;
   cropWidthPct?: number;
   cropHeightPct?: number;
-  upscaleFactor?: number;
-  removeBgColor?: string;
-  removeBgTolerance?: number;
-  memeTopText?: string;
-  memeBottomText?: string;
-  watermarkText?: string;
-  watermarkOpacity?: number;
-  blurRadius?: number;
-  documentFilter?: 'magic-color' | 'binarization' | 'grayscale-scan';
 }
 
 export interface ImageProcessResult {
@@ -156,11 +146,6 @@ export const processImage = async (
   let width = rotatedWidth;
   let height = rotatedHeight;
 
-  if (options.upscaleFactor && options.upscaleFactor > 1) {
-    width = width * options.upscaleFactor;
-    height = height * options.upscaleFactor;
-  }
-
   if (options.maxWidth && width > options.maxWidth) {
     height = Math.round((height * options.maxWidth) / width);
     width = options.maxWidth;
@@ -174,7 +159,8 @@ export const processImage = async (
   // Define helper to convert canvas to blob for a given format and quality
   const getBlob = (format: string, quality: number): Promise<Blob | null> => {
     return new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), format, quality);
+      const mime = format === 'image/jpg' ? 'image/jpeg' : format;
+      canvas.toBlob((b) => resolve(b), mime, quality);
     });
   };
 
@@ -189,16 +175,9 @@ export const processImage = async (
     ctx.clearRect(0, 0, w, h);
     ctx.save();
     
-    // Filters: Grayscale & Blur
-    let filterString = '';
+    // Filters: Grayscale
     if (options.grayscale) {
-      filterString += 'grayscale(100%) ';
-    }
-    if (options.blurRadius && options.blurRadius > 0) {
-      filterString += `blur(${options.blurRadius}px) `;
-    }
-    if (filterString) {
-      ctx.filter = filterString.trim();
+      ctx.filter = 'grayscale(100%)';
     }
     
     // Move to center for rotate & flip scale
@@ -215,143 +194,16 @@ export const processImage = async (
     }
     
     // Bounding dimensions scaled
-    const dstW = rotatedWidth * s * (options.upscaleFactor || 1);
-    const dstH = rotatedHeight * s * (options.upscaleFactor || 1);
+    const dstW = rotatedWidth * s;
+    const dstH = rotatedHeight * s;
     ctx.drawImage(img, cropX, cropY, cropW, cropH, -dstW / 2, -dstH / 2, dstW, dstH);
     
     ctx.restore();
-
-    // Retro Pixelation filter
-    if (options.pixelate && options.pixelate > 1) {
-      const pxSize = options.pixelate;
-      const tempCanvas = document.createElement('canvas');
-      const tempCtx = tempCanvas.getContext('2d');
-      if (tempCtx) {
-        const smallW = Math.max(2, Math.round(w / pxSize));
-        const smallH = Math.max(2, Math.round(h / pxSize));
-        tempCanvas.width = smallW;
-        tempCanvas.height = smallH;
-        tempCtx.drawImage(canvas, 0, 0, smallW, smallH);
-        
-        ctx.clearRect(0, 0, w, h);
-        ctx.imageSmoothingEnabled = false;
-        (ctx as any).mozImageSmoothingEnabled = false;
-        (ctx as any).webkitImageSmoothingEnabled = false;
-        (ctx as any).msImageSmoothingEnabled = false;
-        ctx.drawImage(tempCanvas, 0, 0, smallW, smallH, 0, 0, w, h);
-        ctx.imageSmoothingEnabled = true;
-      }
-    }
-
-    // Remove Background Color (Tolerance check)
-    if (options.removeBgColor) {
-      const targetHex = options.removeBgColor;
-      const rTarget = parseInt(targetHex.substring(1, 3), 16);
-      const gTarget = parseInt(targetHex.substring(3, 5), 16);
-      const bTarget = parseInt(targetHex.substring(5, 7), 16);
-      const tol = options.removeBgTolerance !== undefined ? options.removeBgTolerance : 35;
-      
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i+1];
-        const b = data[i+2];
-        const diff = Math.sqrt((r - rTarget)**2 + (g - gTarget)**2 + (b - bTarget)**2);
-        if (diff <= tol) {
-          data[i+3] = 0; // Alpha transparency
-        }
-      }
-      ctx.putImageData(imgData, 0, 0);
-    }
-
-    // Meme overlay text generator
-    if (options.memeTopText || options.memeBottomText) {
-      ctx.save();
-      ctx.font = `bold ${Math.round(w * 0.08)}px Impact, sans-serif`;
-      ctx.fillStyle = 'white';
-      ctx.strokeStyle = 'black';
-      ctx.lineWidth = Math.round(w * 0.01) || 2;
-      ctx.textAlign = 'center';
-      
-      if (options.memeTopText) {
-        ctx.fillText(options.memeTopText.toUpperCase(), w / 2, Math.round(h * 0.12));
-        ctx.strokeText(options.memeTopText.toUpperCase(), w / 2, Math.round(h * 0.12));
-      }
-      if (options.memeBottomText) {
-        ctx.fillText(options.memeBottomText.toUpperCase(), w / 2, h - Math.round(h * 0.05));
-        ctx.strokeText(options.memeBottomText.toUpperCase(), w / 2, h - Math.round(h * 0.05));
-      }
-      ctx.restore();
-    }
-
-    // Document scanner filters (Magic color, Binarization, Grayscale scan)
-    if (options.documentFilter) {
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const data = imgData.data;
-      
-      if (options.documentFilter === 'magic-color') {
-        const contrast = 1.6;
-        const brightness = 15;
-        for (let i = 0; i < data.length; i += 4) {
-          let r = data[i];
-          r = (r - 128) * contrast + 128 + brightness;
-          data[i] = Math.max(0, Math.min(255, r));
-          
-          let g = data[i+1];
-          g = (g - 128) * contrast + 128 + brightness;
-          data[i+1] = Math.max(0, Math.min(255, g));
-          
-          let b = data[i+2];
-          b = (b - 128) * contrast + 128 + brightness;
-          data[i+2] = Math.max(0, Math.min(255, b));
-          
-          const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
-          data[i] = Math.max(0, Math.min(255, gray + (data[i] - gray) * 1.3));
-          data[i+1] = Math.max(0, Math.min(255, gray + (data[i+1] - gray) * 1.3));
-          data[i+2] = Math.max(0, Math.min(255, gray + (data[i+2] - gray) * 1.3));
-        }
-      } else if (options.documentFilter === 'binarization') {
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i+1], b = data[i+2];
-          const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-          const thresh = gray > 128 ? 255 : 0;
-          data[i] = thresh;
-          data[i+1] = thresh;
-          data[i+2] = thresh;
-        }
-      } else if (options.documentFilter === 'grayscale-scan') {
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i+1], b = data[i+2];
-          let gray = 0.299 * r + 0.587 * g + 0.114 * b;
-          gray = (gray - 128) * 1.7 + 128 + 20;
-          const finalG = Math.max(0, Math.min(255, gray));
-          data[i] = finalG;
-          data[i+1] = finalG;
-          data[i+2] = finalG;
-        }
-      }
-      ctx.putImageData(imgData, 0, 0);
-    }
-
-    // Watermark text overlay
-    if (options.watermarkText) {
-      ctx.save();
-      ctx.font = `bold ${Math.round(w * 0.04)}px sans-serif`;
-      const op = options.watermarkOpacity !== undefined ? options.watermarkOpacity : 0.4;
-      ctx.fillStyle = `rgba(255, 255, 255, ${op})`;
-      ctx.strokeStyle = `rgba(0, 0, 0, ${op})`;
-      ctx.lineWidth = 1;
-      ctx.textAlign = 'right';
-      ctx.fillText(options.watermarkText, w - 20, h - 20);
-      ctx.strokeText(options.watermarkText, w - 20, h - 20);
-      ctx.restore();
-    }
   };
 
   // Set output format, defaulting to the original type if not specified
   let outputFormat = options.format || file.type;
-  if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(outputFormat)) {
+  if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(outputFormat)) {
     outputFormat = 'image/jpeg';
   }
 
@@ -375,9 +227,21 @@ export const processImage = async (
       finalWidth = canvas.width;
       finalHeight = canvas.height;
 
+      // Pre-check lowest quality (0.02) to see if size constraint can be satisfied at this scale.
+      const minBlob = await getBlob(finalFormat, 0.02);
+      if (minBlob && minBlob.size > targetBytes) {
+        // Even at minimum quality it's too large; skip binary search and scale down immediately
+        bestBlob = minBlob;
+        scale -= 0.18;
+        if (scale < 0.15) {
+          break;
+        }
+        continue;
+      }
+
       let low = 0.02;
       let high = 0.98;
-      let localBest: Blob | null = null;
+      let localBest: Blob | null = minBlob;
 
       for (let iter = 0; iter < 7; iter++) {
         const q = (low + high) / 2;
@@ -431,15 +295,7 @@ export const processImage = async (
     (options.cropWidthPct !== undefined && options.cropWidthPct < 100) ||
     (options.cropHeightPct !== undefined && options.cropHeightPct < 100) ||
     (options.cropAspect && options.cropAspect !== 'none') ||
-    (options.grayscale) ||
-    (options.pixelate && options.pixelate > 1) ||
-    (options.upscaleFactor && options.upscaleFactor > 1) ||
-    (options.removeBgColor) ||
-    (options.memeTopText) ||
-    (options.memeBottomText) ||
-    (options.watermarkText) ||
-    (options.documentFilter) ||
-    (options.blurRadius && options.blurRadius > 0);
+    (options.grayscale);
 
   if (!hasVisualMods && finalBlob.size >= file.size) {
     if (!isTargetSizeSet) {

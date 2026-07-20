@@ -8,6 +8,7 @@ export interface NativeCompressOptions {
   compileMode?: 'keep-selected' | 'cut-selected';
   onProgress: (progress: number) => void;
   onLog: (msg: string) => void;
+  signal?: AbortSignal;
 }
 
 export interface NativeCompressResult {
@@ -26,7 +27,7 @@ export const compressVideoNative = async (
   file: File,
   options: NativeCompressOptions
 ): Promise<NativeCompressResult> => {
-  const { bitrateKbps, playbackRate, removeAudio, segments, compileMode, onProgress, onLog } = options;
+  const { bitrateKbps, playbackRate, removeAudio, segments, compileMode, onProgress, onLog, signal } = options;
 
   onLog(`Initializing Native Browser Compressor for "${file.name}"...`);
   
@@ -90,6 +91,18 @@ export const compressVideoNative = async (
       }
       URL.revokeObjectURL(video.src);
     };
+
+    if (signal) {
+      if (signal.aborted) {
+        cleanup();
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      signal.addEventListener('abort', () => {
+        cleanup();
+        reject(new DOMException("Aborted", "AbortError"));
+      });
+    }
 
     video.onloadedmetadata = () => {
       try {

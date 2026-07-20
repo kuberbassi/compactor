@@ -3,18 +3,16 @@ import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { TrimTimeline } from '../../components/Common/TrimTimeline';
 import type { TrimSegment } from '../../components/Common/TrimTimeline';
-import { compressAudio, getFFmpeg } from '../../utils/ffmpeg';
+import { compressAudio, getFFmpeg, terminateFFmpeg } from '../../utils/ffmpeg';
 import { formatBytes } from '../../utils/image';
 import { 
   PiMusicNotesLight as Music, PiDownloadLight as Download, PiArrowsClockwiseLight as RefreshCw, 
-  PiCheckCircleLight as CheckCircle, PiGearLight as Settings
+  PiCheckCircleLight as CheckCircle
 } from 'react-icons/pi';
 import { Switch } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/card';
+import { Card } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { useTheme } from '../../context/ThemeContext';
-import SpecularButton from '../../components/ui/SpecularButton';
 
 interface AudioToolsProps {
   onGoHome: () => void;
@@ -22,15 +20,42 @@ interface AudioToolsProps {
 }
 
 export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSuccess }) => {
-  const { theme } = useTheme();
   
   // Human Comment: File and execution state tracking
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>('');
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl('');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [file]);
+
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      terminateFFmpeg();
+    };
+  }, []);
+
+  const cancelProcessing = () => {
+    terminateFFmpeg();
+    setProcessing(false);
+    setProgress(0);
+    setStatusText('Processing cancelled by user.');
+    setLogs((prev) => [...prev, 'Process aborted by user.']);
+  };
 
   // Human Comment: Playback syncing properties
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -115,7 +140,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
         bitrate,
         format,
         segments: enableTrim ? trimSegments : undefined,
-        compileMode: enableTrim ? trimCompileMode : undefined
+        compileMode: enableTrim ? trimCompileMode : undefined,
+        duration: audioDuration
       };
 
       const compressResult = await compressAudio(file, config, handleLog, setProgress);
@@ -175,119 +201,135 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
       )}
 
       {file && !result && !processing && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-8 space-y-6">
-            <Card className="border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm overflow-hidden">
-              <CardHeader className="p-4 bg-zinc-50/50 dark:bg-zinc-900/20 border-b border-zinc-100 dark:border-zinc-900 flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200">
-                    <Music className="w-4 h-4 text-sky-500" /> Source Player
-                  </CardTitle>
-                </div>
-                <Button variant="ghost" onClick={reset} className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-xs h-7 px-2">
-                  Remove File
-                </Button>
-              </CardHeader>
-              
-              <CardContent className="p-5 flex flex-col gap-4">
-                <audio 
-                  ref={audioRef}
-                  src={URL.createObjectURL(file)} 
-                  controls 
-                  onLoadedMetadata={handleLoadedMetadata}
-                  onTimeUpdate={handleTimeUpdate}
-                  className="w-full mt-2"
-                />
-                
-                <div className="p-3 rounded-lg border border-zinc-100 dark:border-zinc-900 bg-zinc-50/50 dark:bg-zinc-900/10 mt-2">
-                  <span className="block text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">{file.name}</span>
-                  <span className="text-[10px] text-zinc-500 mt-0.5 block">
-                    Size: {formatBytes(file.size)} | Format: {file.name.split('.').pop()?.toUpperCase()}
-                  </span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Enable Trim Switch */}
-            <Card className="border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm p-4 flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-sm text-zinc-800 dark:text-zinc-200">Enable Timeline Split & Trim</h3>
-                <p className="text-xs text-zinc-500 mt-0.5">Toggle to divide, cut, and splice audio waveforms visually.</p>
+        <div className="max-w-2xl mx-auto py-6">
+          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm overflow-hidden p-6 space-y-6">
+            
+            {/* Header / File Title */}
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2 truncate">
+                <Music className="w-4 h-4 text-[var(--text-secondary)]" />
+                <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-sm">{file.name}</span>
               </div>
-              <Switch
-                checked={enableTrim}
-                onCheckedChange={setEnableTrim}
-                aria-label="Toggle trim timeline editor"
-              />
-            </Card>
+              <Button variant="ghost" onClick={reset} className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-xs h-7 px-2">
+                Remove File
+              </Button>
+            </div>
 
-            {enableTrim && audioDuration > 0 && (
-              <TrimTimeline 
-                duration={audioDuration}
-                currentTime={currentTime}
-                onSeek={handleSeek}
-                onChange={(segs, mode) => {
-                  setTrimSegments(segs);
-                  setTrimCompileMode(mode);
-                }}
-              />
-            )}
-          </div>
+            {/* Original vs Estimated Sizes */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-3 bg-[var(--bg-color)]/20 border border-[var(--border-color)] rounded-lg text-center">
+                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Original Size</span>
+                <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-1">{formatBytes(file.size)}</span>
+              </div>
+              <div className="p-3 bg-[var(--bg-color)]/20 border border-[var(--border-color)] rounded-lg text-center">
+                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Estimated Target</span>
+                <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-1">
+                  {format === 'wav' 
+                    ? formatBytes(file.size * 1.5) 
+                    : formatBytes(file.size * (bitrate === '256k' ? 0.85 : bitrate === '192k' ? 0.65 : 0.45))
+                  }
+                </span>
+              </div>
+            </div>
 
-          <div className="lg:col-span-4 space-y-6">
-            <Card className="border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm">
-              <CardHeader className="p-4 bg-zinc-50/50 dark:bg-zinc-900/20 border-b border-zinc-100 dark:border-zinc-900">
-                <CardTitle className="text-sm font-bold flex items-center gap-1.5 text-zinc-800 dark:text-zinc-200">
-                  <Settings className="w-4 h-4 text-sky-500" /> Compression Settings
-                </CardTitle>
-              </CardHeader>
-              
-              <CardContent className="p-4 space-y-5">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 block">Convert to Format</label>
+            {/* Silent Animated Waveform Preview Block */}
+            <div className="flex flex-col items-center justify-center py-8 bg-zinc-950/20 rounded-lg border border-[var(--border-color)] gap-3">
+              <div className="flex items-center gap-1.5 justify-center">
+                <span className="w-[3px] h-6 bg-[var(--text-secondary)] rounded-full animate-pulse" />
+                <span className="w-[3px] h-8 bg-[var(--text-primary)] rounded-full animate-pulse" />
+                <span className="w-[3px] h-10 bg-[var(--text-primary)] rounded-full animate-pulse" />
+                <span className="w-[3px] h-8 bg-[var(--text-primary)] rounded-full animate-pulse" />
+                <span className="w-[3px] h-6 bg-[var(--text-secondary)] rounded-full animate-pulse" />
+              </div>
+              <span className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] font-bold">Audio Preview Active</span>
+            </div>
+
+            {/* Hidden audio tag to parse metadata and manage duration */}
+            <audio 
+              ref={audioRef}
+              src={previewUrl || undefined} 
+              onLoadedMetadata={handleLoadedMetadata}
+              onTimeUpdate={handleTimeUpdate}
+              className="hidden"
+            />
+
+            {/* Optional Timeline Trim Switch */}
+            <div className="border-t border-[var(--border-color)]/40 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-xs text-[var(--text-primary)]">Trim audio timeline</h3>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Toggle to divide, cut, and splice audio waveforms visually.</p>
+                </div>
+                <Switch
+                  checked={enableTrim}
+                  onCheckedChange={setEnableTrim}
+                  aria-label="Toggle trim timeline editor"
+                />
+              </div>
+              {enableTrim && audioDuration > 0 && (
+                <div className="mt-4">
+                  <TrimTimeline 
+                    duration={audioDuration}
+                    currentTime={currentTime}
+                    onSeek={handleSeek}
+                    onChange={(segs, mode) => {
+                      setTrimSegments(segs);
+                      setTrimCompileMode(mode);
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Settings & Configurations */}
+            <div className="border-t border-[var(--border-color)]/40 pt-4 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Format</label>
                   <Select value={format} onValueChange={(val) => setFormat(val || '')}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Format" />
+                    <SelectTrigger className="w-full h-8 text-xs bg-transparent border-[var(--border-color)]">
+                      <SelectValue placeholder="Format">
+                        {format === 'mp3' ? "MP3 (Standard)" : format === 'm4a' ? "M4A (AAC)" : format === 'ogg' ? "OGG (Vorbis)" : "WAV (PCM)"}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="mp3">MP3 (Compressed standard)</SelectItem>
-                      <SelectItem value="m4a">M4A (AAC Audio)</SelectItem>
-                      <SelectItem value="ogg">OGG (Vorbis Codec)</SelectItem>
-                      <SelectItem value="wav">WAV (Uncompressed PCM)</SelectItem>
+                      <SelectItem value="mp3">MP3 (Standard)</SelectItem>
+                      <SelectItem value="m4a">M4A (AAC)</SelectItem>
+                      <SelectItem value="ogg">OGG (Vorbis)</SelectItem>
+                      <SelectItem value="wav">WAV (PCM)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 {format !== 'wav' && (
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 block">Audio Bitrate</label>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Bitrate</label>
                     <Select value={bitrate} onValueChange={(val) => setBitrate(val || '')}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Bitrate" />
+                      <SelectTrigger className="w-full h-8 text-xs bg-transparent border-[var(--border-color)]">
+                        <SelectValue placeholder="Bitrate">
+                          {bitrate === '64k' ? "64 kbps (Eco)" : bitrate === '128k' ? "128 kbps (Normal)" : bitrate === '192k' ? "192 kbps (High)" : "256 kbps (Premium)"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="64k">64 kbps (Low quality, ultra small)</SelectItem>
-                        <SelectItem value="128k">128 kbps (Standard quality, recommended)</SelectItem>
-                        <SelectItem value="192k">192 kbps (High quality)</SelectItem>
-                        <SelectItem value="256k">256 kbps (Premium CD quality)</SelectItem>
+                        <SelectItem value="64k">64 kbps (Eco)</SelectItem>
+                        <SelectItem value="128k">128 kbps (Normal)</SelectItem>
+                        <SelectItem value="192k">192 kbps (High)</SelectItem>
+                        <SelectItem value="256k">256 kbps (Premium)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 )}
+              </div>
+            </div>
 
-                <SpecularButton
-                  onClick={startAudioProcessing}
-                  className="w-full mt-4 font-bold rounded-full py-4 text-sm"
-                  tint="#84cc16"
-                  lineColor="#84cc16"
-                  baseColor={theme === 'dark' ? '#0f172a' : '#f7fee7'}
-                  textColor={theme === 'dark' ? '#f8fafc' : '#3f6212'}
-                >
-                  Process Audio
-                </SpecularButton>
-              </CardContent>
-            </Card>
-          </div>
+            {/* Start Button */}
+            <Button
+              onClick={startAudioProcessing}
+              className="w-full mt-4 font-bold rounded-full py-6 text-sm bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 transition-colors cursor-pointer"
+            >
+              Process Audio
+            </Button>
+          </Card>
         </div>
       )}
 
@@ -295,17 +337,26 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
         <div className="max-w-2xl mx-auto py-12">
           <ProgressBar progress={progress} statusText={statusText} />
           
-          <div className="mt-8 flex flex-col items-center">
-            <Button 
-              variant="ghost" 
-              onClick={() => setShowLogs(!showLogs)}
-              className="text-xs text-zinc-500 hover:text-zinc-700 font-bold"
-            >
-              {showLogs ? 'Hide Console Logs' : 'View Console Logs'}
-            </Button>
+          <div className="mt-8 flex flex-col items-center gap-4">
+            <div className="flex gap-4">
+              <Button 
+                variant="ghost" 
+                onClick={() => setShowLogs(!showLogs)}
+                className="text-xs text-zinc-500 hover:text-zinc-700 font-bold cursor-pointer"
+              >
+                {showLogs ? 'Hide Console Logs' : 'View Console Logs'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={cancelProcessing}
+                className="text-xs font-bold text-rose-500 hover:text-rose-600 border border-rose-500/20 hover:bg-rose-500/5 rounded-full px-4 h-8 cursor-pointer"
+              >
+                Cancel Processing
+              </Button>
+            </div>
             
             {showLogs && (
-              <pre className="w-full bg-zinc-950 text-emerald-400 p-4 rounded-lg font-mono text-[11px] h-48 overflow-y-auto mt-3 shadow-inner border border-zinc-800 leading-relaxed">
+              <pre className="w-full bg-zinc-950 text-zinc-350 p-4 rounded-lg font-mono text-[11px] h-48 overflow-y-auto mt-3 shadow-inner border border-zinc-800 leading-relaxed">
                 {logs.map((log, idx) => (
                   <div key={idx} className="border-b border-zinc-900/50 pb-1 break-all">
                     {log}
@@ -320,35 +371,35 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
 
       {result && (
         <div className="max-w-xl mx-auto space-y-6">
-          <Card className="border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm text-center p-6 space-y-5">
-            <div className="w-14 h-14 bg-green-50 dark:bg-green-950/40 text-green-500 dark:text-green-400 rounded-full flex items-center justify-center mx-auto shadow-inner">
+          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm text-center p-6 space-y-5">
+            <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800/60 text-zinc-900 dark:text-zinc-100 rounded-full flex items-center justify-center mx-auto shadow-inner border border-[var(--border-color)]">
               <CheckCircle className="w-7 h-7" />
             </div>
             
             <div className="space-y-1">
-              <CardTitle className="text-xl font-black text-zinc-900 dark:text-zinc-50">Processing Complete!</CardTitle>
-              <CardDescription className="text-xs">
+              <h3 className="text-xl font-black text-[var(--text-primary)]">Processing Complete!</h3>
+              <p className="text-xs text-[var(--text-secondary)]">
                 Your audio file is ready to download.
-              </CardDescription>
+              </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto bg-zinc-50 dark:bg-zinc-900/20 border border-zinc-100 dark:border-zinc-900 p-3 rounded-xl">
+            <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto bg-[var(--bg-color)]/20 border border-[var(--border-color)] p-3 rounded-xl">
               <div className="text-center">
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Original</span>
-                <span className="block text-sm font-bold text-zinc-800 dark:text-zinc-200 mt-1">{formatBytes(result.originalSize)}</span>
+                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Original</span>
+                <span className="block text-sm font-bold text-[var(--text-primary)] mt-1">{formatBytes(result.originalSize)}</span>
               </div>
-              <div className="text-center border-x border-zinc-200 dark:border-zinc-800">
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Optimized</span>
-                <span className="block text-sm font-bold text-zinc-900 dark:text-zinc-100 mt-1">{formatBytes(result.newSize)}</span>
+              <div className="text-center border-x border-[var(--border-color)] px-4">
+                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Optimized</span>
+                <span className="block text-sm font-bold text-[var(--text-primary)] mt-1">{formatBytes(result.newSize)}</span>
               </div>
               <div className="text-center flex flex-col justify-center">
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Saved</span>
-                <span className="block text-sm font-extrabold text-green-600 dark:text-green-400 mt-1">-{getSavings()}%</span>
+                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Saved</span>
+                <span className="block text-sm font-extrabold text-[var(--text-primary)] mt-1">-{getSavings()}%</span>
               </div>
             </div>
 
-            <div className="border border-zinc-100 dark:border-zinc-900 p-4 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/10">
-              <span className="text-[11px] font-bold text-zinc-400 block mb-3">Preview Output Audio ({result.name.split('.').pop()?.toUpperCase()})</span>
+            <div className="border border-[var(--border-color)] p-4 rounded-xl bg-[var(--bg-color)]/20">
+              <span className="text-[11px] font-bold text-[var(--text-secondary)] block mb-3">Preview Output Audio ({result.name.split('.').pop()?.toUpperCase()})</span>
               <audio src={result.url} controls className="w-full" />
             </div>
 
@@ -356,14 +407,14 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
               <a 
                 href={result.url} 
                 download={result.name}
-                className="inline-flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700 text-white font-bold px-6 py-3 rounded-full text-xs shadow-sm hover:shadow transition-all"
+                className="inline-flex items-center justify-center gap-2 bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold px-6 py-3 rounded-full text-xs shadow-sm hover:shadow transition-all"
               >
                 <Download className="w-4 h-4" /> Download Optimized Audio
               </a>
               <Button 
                 variant="outline" 
                 onClick={reset}
-                className="h-10 text-xs rounded-full border-zinc-200 dark:border-zinc-800"
+                className="h-10 text-xs rounded-full border-[var(--border-color)]"
               >
                 <RefreshCw className="w-3.5 h-3.5 mr-1" /> Process Another Audio
               </Button>

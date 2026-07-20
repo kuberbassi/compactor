@@ -405,7 +405,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                 onClick={() => { setActiveTool(item.id); reset(); }}
                 className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all ${
                   activeTool === item.id 
-                    ? 'bg-[#00FF88]/10 text-[#00FF88] border-l-2 border-[#00FF88]' 
+                    ? 'bg-zinc-800 text-zinc-100 border-l-2 border-zinc-200' 
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/30'
                 }`}
               >
@@ -465,7 +465,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                           Ready to merge and compile sequential pages.
                         </p>
                       </div>
-                      <Button onClick={activeTool === 'pdf-merge' ? runMerge : runImagesToPdf} className="w-full bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a]">
+                      <Button onClick={activeTool === 'pdf-merge' ? runMerge : runImagesToPdf} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold">
                         Compile PDF
                       </Button>
                     </Card>
@@ -578,7 +578,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                           else if (activeTool === 'pdf-crop-tool') runCrop();
                           else if (activeTool === 'pdf-forms') runForms();
                         }}
-                        className="w-full bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a]"
+                        className="w-full bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold"
                       >
                         Apply Settings
                       </Button>
@@ -598,7 +598,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                   className="w-full h-40 bg-zinc-950 border border-zinc-850 p-3 rounded-lg text-xs font-mono text-zinc-200 focus:outline-none"
                   placeholder="Paste text contents here..."
                 />
-                <Button onClick={runTextToPdf} className="w-full bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a]">
+                <Button onClick={runTextToPdf} className="w-full bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold">
                   Generate PDF Layout
                 </Button>
               </Card>
@@ -614,7 +614,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
             <span className="text-sm font-bold flex items-center gap-1"><BrainIcon className="w-5 h-5 text-emerald-400" /> Document overview</span>
             <Button variant="ghost" onClick={reset} className="text-xs h-7 px-2">Close</Button>
           </div>
-          <pre className="p-4 rounded-lg bg-zinc-950 border border-zinc-850 text-[#00FF88] font-mono text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed">
+          <pre className="p-4 rounded-lg bg-zinc-950 border border-zinc-850 text-zinc-200 font-mono text-xs overflow-x-auto whitespace-pre-wrap leading-relaxed">
             {aiTextResult}
           </pre>
         </Card>
@@ -647,7 +647,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
               <a 
                 href={resultUrl} 
                 download={resultName}
-                className="inline-flex items-center justify-center gap-2 bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a] px-6 py-3 rounded-full text-xs shadow-sm hover:shadow transition-all"
+                className="inline-flex items-center justify-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-3 rounded-full text-xs shadow-sm hover:shadow transition-all cursor-pointer"
               >
                 <Download className="w-4 h-4" /> Download Processed File
               </a>

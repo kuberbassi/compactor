@@ -156,7 +156,7 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
       <div className="tool-layout__header">
         <div>
           <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-50 flex items-center gap-2">
-            <PrinterIcon className="w-6 h-6 text-[#00FF88]" /> Tiled Poster Printer
+            <PrinterIcon className="w-6 h-6 text-zinc-400" /> Tiled Poster Printer
           </h2>
           <p className="text-xs text-zinc-500 mt-1">
             Turn one image into printable pages for a larger poster.
@@ -207,8 +207,8 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
                     }}
                   >
                     {[...Array(columns * rows)].map((_, i) => (
-                      <div key={i} className="border border-dashed border-[#00FF88]/40 bg-[#00FF88]/5 flex items-center justify-center">
-                        <span className="text-[10px] font-mono text-[#00FF88] font-bold opacity-60">{i + 1}</span>
+                      <div key={i} className="border border-dashed border-zinc-500/40 bg-zinc-950/20 flex items-center justify-center">
+                        <span className="text-[10px] font-mono text-zinc-300 font-bold opacity-60">{i + 1}</span>
                       </div>
                     ))}
                   </div>
@@ -288,7 +288,7 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
                 <div className="border-t border-zinc-900 pt-4">
                   <Button 
                     onClick={generatePoster}
-                    className="w-full bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a]"
+                    className="w-full bg-zinc-900 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold"
                   >
                     Generate Poster ({columns * rows} Pages)
                   </Button>
@@ -331,7 +331,7 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
               <a 
                 href={resultUrl} 
                 download={resultName}
-                className="inline-flex items-center justify-center gap-2 bg-[#00FF88] text-zinc-950 font-bold hover:bg-[#00e57a] px-6 py-2.5 rounded-full text-xs"
+                className="inline-flex items-center justify-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-2.5 rounded-full text-xs shadow-sm cursor-pointer"
               >
                 <Download className="w-4 h-4" /> Download PDF
               </a>

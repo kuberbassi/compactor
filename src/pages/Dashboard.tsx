@@ -14,6 +14,7 @@ const tools: Tool[] = [
   { id: 'rasterbator', title: 'Make a poster', description: 'Turn one image into a big print.', icon: 'poster', tone: 'amber', category: 'Image' },
   { id: 'audio-optimizer', title: 'Compress audio', description: 'Trim the size, keep the feeling.', icon: 'audio', tone: 'rose', category: 'Audio' },
   { id: 'universal-converter', title: 'Convert a file', description: 'Give a file a new format.', icon: 'convert', tone: 'cyan', category: 'Audio' },
+  { id: 'metadata-editor', title: 'Edit metadata', description: 'Modify file tags, details and covers.', icon: 'text', tone: 'amber', category: 'Audio' },
 ];
 const categories: Tool['category'][] = ['Video', 'PDF', 'Image', 'Audio'];
 

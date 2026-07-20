@@ -62,6 +62,7 @@ export interface VideoCompressOptions {
   videoBitrate?: string;
   audioBitrate?: string;
   frameRate?: number;
+  duration?: number;  // Optional preloaded duration to skip metadata dry-run
 }
 
 export interface VideoCompressResult {
@@ -71,6 +72,25 @@ export interface VideoCompressResult {
   originalSize: number;
   newSize: number;
 }
+
+const mergeIntervals = (intervals: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
+  if (intervals.length <= 1) return intervals;
+  
+  const merged: Array<{ start: number; end: number }> = [];
+  let current = { ...intervals[0] };
+  
+  for (let i = 1; i < intervals.length; i++) {
+    const next = intervals[i];
+    if (next.start <= current.end) {
+      current.end = Math.max(current.end, next.end);
+    } else {
+      merged.push(current);
+      current = { ...next };
+    }
+  }
+  merged.push(current);
+  return merged;
+};
 
 /**
  * Helper to compute active interval list from trim timeline segments
@@ -84,13 +104,15 @@ const getActiveIntervals = (
     return [{ start: 0, end: duration }];
   }
   
-  return segments
+  const rawIntervals = segments
     .filter(seg => {
       const isKeep = seg.mode === 'keep';
       return compileMode === 'keep-selected' ? isKeep : !isKeep;
     })
     .map(seg => ({ start: seg.start, end: seg.end }))
     .sort((a, b) => a.start - b.start);
+
+  return mergeIntervals(rawIntervals);
 };
 
 /**
@@ -111,22 +133,35 @@ export const compressVideo = async (
   // Write file to memory
   await ffmpeg.writeFile(inputName, await fetchFile(file));
 
-  // Determine Duration first
-  onLog("Reading video duration...");
-  await ffmpeg.exec(['-i', inputName]); // outputs metadata in log
-  
-  // Parse duration from logs if possible, or fallback. For safety we default to 600s if parsing fails.
-  let duration = 600;
-  // Look at ffmpeg log history for duration
-  // Duration: 00:01:23.45 format
-  const logStr = ffmpegInstance ? (ffmpegInstance as any).logHistory || '' : '';
-  const durationMatch = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(logStr);
-  if (durationMatch) {
-    const hours = parseInt(durationMatch[1], 10);
-    const mins = parseInt(durationMatch[2], 10);
-    const secs = parseFloat(durationMatch[3]);
-    duration = hours * 3600 + mins * 60 + secs;
-    onLog(`Parsed video duration: ${duration.toFixed(2)}s`);
+  // Determine Duration
+  let duration = options.duration;
+  if (duration === undefined || duration <= 0) {
+    onLog("Reading video duration from stream metadata...");
+    let accumulatedLogs = '';
+    const tempLogListener = ({ message }: { message: string }) => {
+      accumulatedLogs += message + '\n';
+    };
+    ffmpeg.on('log', tempLogListener);
+    try {
+      await ffmpeg.exec(['-i', inputName]);
+    } catch (e) {
+      // ffmpeg -i returns non-zero code, which is normal
+    }
+    ffmpeg.off('log', tempLogListener);
+
+    const durationMatch = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(accumulatedLogs);
+    if (durationMatch) {
+      const hours = parseInt(durationMatch[1], 10);
+      const mins = parseInt(durationMatch[2], 10);
+      const secs = parseFloat(durationMatch[3]);
+      duration = hours * 3600 + mins * 60 + secs;
+      onLog(`Parsed video duration: ${duration.toFixed(2)}s`);
+    } else {
+      duration = 600; // Fallback
+      onLog("Could not parse video duration, using default fallback (600s)");
+    }
+  } else {
+    onLog(`Using pre-calculated video duration: ${duration.toFixed(2)}s`);
   }
 
   const activeIntervals = getActiveIntervals(duration, options.segments, options.compileMode);
@@ -254,6 +289,7 @@ export interface AudioCompressOptions {
   format: string;     // 'mp3' | 'wav' | 'ogg' | 'm4a'
   segments?: TrimSegment[];
   compileMode?: 'keep-selected' | 'cut-selected';
+  duration?: number;  // Optional preloaded duration to skip metadata dry-run
 }
 
 /**
@@ -271,16 +307,35 @@ export const compressAudio = async (
 
   await ffmpeg.writeFile(inputName, await fetchFile(file));
 
-  // Determine Duration first
-  await ffmpeg.exec(['-i', inputName]);
-  let duration = 600;
-  const logStr = ffmpegInstance ? (ffmpegInstance as any).logHistory || '' : '';
-  const durationMatch = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(logStr);
-  if (durationMatch) {
-    const hours = parseInt(durationMatch[1], 10);
-    const mins = parseInt(durationMatch[2], 10);
-    const secs = parseFloat(durationMatch[3]);
-    duration = hours * 3600 + mins * 60 + secs;
+  // Determine Duration
+  let duration = options.duration;
+  if (duration === undefined || duration <= 0) {
+    onLog("Reading audio duration from stream metadata...");
+    let accumulatedLogs = '';
+    const tempLogListener = ({ message }: { message: string }) => {
+      accumulatedLogs += message + '\n';
+    };
+    ffmpeg.on('log', tempLogListener);
+    try {
+      await ffmpeg.exec(['-i', inputName]);
+    } catch (e) {
+      // ffmpeg -i returns non-zero code, which is normal
+    }
+    ffmpeg.off('log', tempLogListener);
+
+    const durationMatch = /Duration:\s*(\d+):(\d+):(\d+\.\d+)/.exec(accumulatedLogs);
+    if (durationMatch) {
+      const hours = parseInt(durationMatch[1], 10);
+      const mins = parseInt(durationMatch[2], 10);
+      const secs = parseFloat(durationMatch[3]);
+      duration = hours * 3600 + mins * 60 + secs;
+      onLog(`Parsed audio duration: ${duration.toFixed(2)}s`);
+    } else {
+      duration = 600; // Fallback
+      onLog("Could not parse audio duration, using default fallback (600s)");
+    }
+  } else {
+    onLog(`Using pre-calculated audio duration: ${duration.toFixed(2)}s`);
   }
 
   const activeIntervals = getActiveIntervals(duration, options.segments, options.compileMode);
@@ -354,4 +409,315 @@ export const compressAudio = async (
     originalSize: file.size,
     newSize: blob.size
   };
+};
+
+/**
+ * Remuxes a WebM video blob generated by native recorder to MP4 or other target formats
+ */
+export const remuxVideoBlob = async (
+  webmBlob: Blob,
+  fileName: string,
+  targetFormat: string,
+  onLog: (msg: string) => void,
+  onProgress: (p: number) => void
+): Promise<{ blob: Blob; url: string; name: string }> => {
+  const ffmpeg = await getFFmpeg(onLog, onProgress);
+  
+  const inputName = 'input_native.webm';
+  const outputName = `output_native.${targetFormat}`;
+  
+  await ffmpeg.writeFile(inputName, await fetchFile(webmBlob));
+  
+  // Build arguments: remux video stream (copy), and convert audio stream to aac (standard compatibility)
+  const args = ['-i', inputName];
+  
+  if (targetFormat === 'mp4') {
+    // Copy video and transcode audio to aac for max compatibility (Opus is unsupported in standard MP4 containers by some players)
+    args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k');
+  } else {
+    // Standard copy for other formats (like mkv, mov, avi)
+    args.push('-c', 'copy');
+  }
+  
+  args.push(outputName);
+  
+  onLog(`Remuxing native WebM stream to ${targetFormat.toUpperCase()}: ffmpeg ${args.join(' ')}`);
+  await ffmpeg.exec(args);
+  
+  const data = await ffmpeg.readFile(outputName);
+  await ffmpeg.deleteFile(inputName);
+  await ffmpeg.deleteFile(outputName);
+  
+  let mimeType = `video/${targetFormat}`;
+  if (targetFormat === 'mov') mimeType = 'video/quicktime';
+  if (targetFormat === 'mkv') mimeType = 'video/x-matroska';
+  
+  const blob = new Blob([data as any], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  
+  const originalNameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+  const newName = `${originalNameWithoutExt}_optimized.${targetFormat}`;
+  
+  return {
+    blob,
+    url,
+    name: newName
+  };
+};
+
+/**
+ * Transcodes a video/audio file with strict quality preservation rules (no loss / best quality).
+ * Attempts fast remuxing (copying streams) first, and falls back to visually lossless encoding.
+ */
+export const transcodeFormatLossless = async (
+  file: File,
+  targetFormat: string,
+  onLog: (msg: string) => void,
+  onProgress: (p: number) => void
+): Promise<{ blob: Blob; url: string; name: string }> => {
+  const ffmpeg = await getFFmpeg(onLog, onProgress);
+  const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp4';
+  const inputName = `input_transcode.${inputExt}`;
+  const outputName = `output_transcode.${targetFormat}`;
+
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+  // Try fast copy remux first (no quality loss, <1 second execution)
+  let success = false;
+  const copyArgs = ['-i', inputName];
+
+  if (targetFormat === 'mp4') {
+    // Copy video and transcode audio to aac (since standard mp4 doesn't support Opus/vorbis audio tracks natively)
+    copyArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k');
+  } else if (targetFormat === 'mp3') {
+    copyArgs.push('-vn', '-c:a', 'libmp3lame', '-q:a', '0'); // highest quality VBR mp3
+  } else if (targetFormat === 'wav') {
+    copyArgs.push('-vn', '-c:a', 'pcm_s16le'); // lossless WAV PCM
+  } else {
+    copyArgs.push('-c', 'copy');
+  }
+  copyArgs.push(outputName);
+
+  try {
+    onLog(`Attempting lossless copy-transcode to ${targetFormat.toUpperCase()}...`);
+    await ffmpeg.exec(copyArgs);
+    success = true;
+  } catch (err) {
+    onLog("Remux failed or container incompatible. Falling back to visually lossless re-encoding...");
+  }
+
+  if (!success) {
+    // Lossless / highest quality fallback encoding arguments
+    const fallbackArgs = ['-i', inputName];
+    if (['mp4', 'mov', 'mkv', 'avi'].includes(targetFormat)) {
+      fallbackArgs.push('-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-c:a', 'aac', '-b:a', '192k');
+    } else if (targetFormat === 'webm') {
+      fallbackArgs.push('-c:v', 'libvpx-vp9', '-crf', '20', '-b:v', '0', '-c:a', 'libopus');
+    } else if (targetFormat === 'mp3') {
+      fallbackArgs.push('-vn', '-c:a', 'libmp3lame', '-q:a', '0');
+    } else if (targetFormat === 'wav') {
+      fallbackArgs.push('-vn', '-c:a', 'pcm_s16le');
+    } else if (targetFormat === 'aac') {
+      fallbackArgs.push('-vn', '-c:a', 'aac', '-b:a', '256k');
+    } else {
+      // standard fallback
+      fallbackArgs.push('-c', 'copy');
+    }
+    fallbackArgs.push(outputName);
+    
+    await ffmpeg.exec(fallbackArgs);
+  }
+
+  const data = await ffmpeg.readFile(outputName);
+  await ffmpeg.deleteFile(inputName);
+  await ffmpeg.deleteFile(outputName);
+
+  let mimeType = `video/${targetFormat}`;
+  if (['mp3', 'wav', 'aac', 'ogg'].includes(targetFormat)) mimeType = `audio/${targetFormat}`;
+  if (targetFormat === 'mov') mimeType = 'video/quicktime';
+  if (targetFormat === 'mkv') mimeType = 'video/x-matroska';
+
+  const blob = new Blob([data as any], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
+  const newName = `${originalNameWithoutExt}_converted.${targetFormat}`;
+
+  return { blob, url, name: newName };
+};
+
+export interface MetadataTags {
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: string;
+  genre?: string;
+  comment?: string;
+}
+
+/**
+ * Reads metadata tags and extracts album cover art from a media file
+ */
+export const readMediaMetadata = async (
+  file: File,
+  onLog: (msg: string) => void
+): Promise<{ tags: MetadataTags; coverUrl: string | null; coverBlob: Blob | null }> => {
+  const ffmpeg = await getFFmpeg(onLog);
+  
+  const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp3';
+  const inputName = `input_meta.${inputExt}`;
+  
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  
+  // Dry run to collect logs containing metadata
+  let accumulatedLogs = '';
+  const logListener = ({ message }: { message: string }) => {
+    accumulatedLogs += message + '\n';
+  };
+  
+  ffmpeg.on('log', logListener);
+  try {
+    await ffmpeg.exec(['-i', inputName]);
+  } catch (e) {
+    // Normal dry run exit
+  }
+  ffmpeg.off('log', logListener);
+  
+  const tags: MetadataTags = {};
+  
+  // Parse common tags from FFmpeg output logs using regex
+  // Standard format: "title           : My Title"
+  const parseTag = (key: string): string | undefined => {
+    const regex = new RegExp(`\\b${key}\\s*:\\s*(.+)`, 'i');
+    const match = regex.exec(accumulatedLogs);
+    return match ? match[1].trim() : undefined;
+  };
+  
+  tags.title = parseTag('title');
+  tags.artist = parseTag('artist') || parseTag('author') || parseTag('composer');
+  tags.album = parseTag('album');
+  tags.year = parseTag('date') || parseTag('year') || parseTag('creation_time');
+  tags.genre = parseTag('genre');
+  tags.comment = parseTag('comment') || parseTag('description');
+  
+  // Clean up year string if it contains timestamp like "2026-07-20T13:00:00Z"
+  if (tags.year && tags.year.includes('T')) {
+    tags.year = tags.year.split('T')[0];
+  }
+
+  // Attempt to extract album cover art (for audio files)
+  let coverUrl: string | null = null;
+  let coverBlob: Blob | null = null;
+  
+  const coverName = 'cover_extract.jpg';
+  try {
+    onLog("Checking for embedded cover art stream...");
+    // Extract thumbnail/cover art from stream: copy raw mjpeg stream frames
+    await ffmpeg.exec(['-i', inputName, '-an', '-vcodec', 'mjpeg', '-frames:v', '1', '-f', 'image2', coverName]);
+    
+    const coverData = await ffmpeg.readFile(coverName);
+    coverBlob = new Blob([coverData as any], { type: 'image/jpeg' });
+    coverUrl = URL.createObjectURL(coverBlob);
+    onLog("Embedded cover art extracted successfully.");
+    
+    await ffmpeg.deleteFile(coverName);
+  } catch (err) {
+    onLog("No embedded cover art stream found or format unsupported.");
+  }
+  
+  await ffmpeg.deleteFile(inputName);
+  
+  return { tags, coverUrl, coverBlob };
+};
+
+/**
+ * Writes metadata tags and inserts/replaces cover art in a media file
+ */
+export const writeMediaMetadata = async (
+  file: File,
+  tags: MetadataTags,
+  newCoverBlob: Blob | null,
+  onLog: (msg: string) => void,
+  onProgress: (p: number) => void
+): Promise<{ blob: Blob; url: string; name: string }> => {
+  const ffmpeg = await getFFmpeg(onLog, onProgress);
+  
+  const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp3';
+  const inputName = `input_meta_write.${inputExt}`;
+  const outputName = `output_meta_write.${inputExt}`;
+  
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  
+  const args = ['-i', inputName];
+  
+  // Handle Cover Art injection
+  let coverName = '';
+  if (newCoverBlob) {
+    coverName = `new_cover_meta.jpg`;
+    await ffmpeg.writeFile(coverName, await fetchFile(newCoverBlob));
+    args.push('-i', coverName);
+  }
+  
+  // Map streams: audio from input 0, and image/video from input 1 (if cover provided)
+  if (newCoverBlob) {
+    args.push('-map', '0:0', '-map', '1:0');
+  } else {
+    args.push('-map', '0');
+  }
+  
+  // Configure audio copy, video/cover art copy
+  args.push('-c', 'copy');
+  
+  // For MP3 container cover art, specify ID3v2 version 3 tag configurations
+  if (inputExt === 'mp3' && newCoverBlob) {
+    args.push('-id3v2_version', '3', '-metadata:s:v', 'title="Album cover"', '-metadata:s:v', 'comment="Cover (front)"');
+  }
+  
+  // Set metadata fields
+  const addMeta = (field: string, val?: string) => {
+    if (val !== undefined && val !== '') {
+      args.push('-metadata', `${field}=${val}`);
+    }
+  };
+  
+  addMeta('title', tags.title);
+  addMeta('artist', tags.artist);
+  addMeta('album', tags.album);
+  addMeta('date', tags.year);
+  addMeta('genre', tags.genre);
+  addMeta('comment', tags.comment);
+  
+  args.push('-y', outputName);
+  
+  onLog(`Writing metadata tags: ffmpeg ${args.join(' ')}`);
+  await ffmpeg.exec(args);
+  
+  const data = await ffmpeg.readFile(outputName);
+  
+  // Cleanup virtual filesystem
+  await ffmpeg.deleteFile(inputName);
+  await ffmpeg.deleteFile(outputName);
+  if (newCoverBlob) {
+    await ffmpeg.deleteFile(coverName);
+  }
+  
+  const mimeType = file.type;
+  const blob = new Blob([data as any], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  
+  const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
+  const newName = `${originalNameWithoutExt}_tagged.${inputExt}`;
+  
+  return { blob, url, name: newName };
+};
+
+export const terminateFFmpeg = async () => {
+  if (ffmpegInstance) {
+    try {
+      await ffmpegInstance.terminate();
+    } catch (e) {
+      console.warn("Failed to terminate FFmpeg instance:", e);
+    }
+    ffmpegInstance = null;
+    isLoaded = false;
+  }
 };

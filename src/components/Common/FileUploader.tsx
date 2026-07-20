@@ -51,17 +51,21 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
       // Check MIME type or extension
       const isAllowed = allowedExtensions.some(allowed => {
+        if (allowed === '*' || allowed === '*/*') {
+          return true;
+        }
         if (allowed.startsWith('.')) {
           return fileExtension === allowed;
         }
         if (allowed.includes('/*')) {
           const typeGroup = allowed.split('/')[0];
+          if (typeGroup === '*') return true;
           return file.type.startsWith(typeGroup);
         }
         return file.type === allowed;
       });
 
-      if (!isAllowed && accept !== '*') {
+      if (!isAllowed && accept !== '*' && accept !== '*/*') {
         setError(`File "${file.name}" is not supported. Please upload: ${accept}`);
         return;
       }
