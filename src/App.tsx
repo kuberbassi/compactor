@@ -13,27 +13,36 @@ import { NotFound } from './pages/NotFound';
 import { Diagnostics } from './pages/Diagnostics';
 import SimpleNav from './components/ui/SimpleNav';
 
+import { getStoredUploadCount, incrementStoredUploadCount } from './utils/counterStorage';
+
 function MainApp() {
   const [activeToolId, setActiveToolId] = useState<string | null>(() => window.location.hash.slice(1) || null);
-  const [uploadCount, setUploadCount] = useState<number>(() => {
-    const saved = localStorage.getItem('compactor_upload_count');
-    return saved ? parseInt(saved, 10) : 0;
-  });
+  const [uploadCount, setUploadCount] = useState<number>(56);
 
   useEffect(() => {
+    // Load count asynchronously from dual storage (localStorage + IndexedDB)
+    getStoredUploadCount().then(setUploadCount);
+
     const handleHashChange = () => {
       setActiveToolId(window.location.hash.slice(1) || null);
     };
+    const handleCustomCountUpdate = (e: Event) => {
+      const customEv = e as CustomEvent<number>;
+      if (typeof customEv.detail === 'number') {
+        setUploadCount(customEv.detail);
+      }
+    };
+
     window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('compactor:count-updated', handleCustomCountUpdate);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('compactor:count-updated', handleCustomCountUpdate);
+    };
   }, []);
 
   const incrementUploadCount = () => {
-    setUploadCount((prev) => {
-      const next = prev + 1;
-      localStorage.setItem('compactor_upload_count', next.toString());
-      return next;
-    });
+    incrementStoredUploadCount().then(setUploadCount);
   };
 
   const goHome = () => {

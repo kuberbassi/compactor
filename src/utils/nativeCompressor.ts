@@ -82,14 +82,22 @@ export const compressVideoNative = async (
     let progressInterval: number;
     let checkInterval: number;
 
+    let isCleanedUp = false;
     const cleanup = () => {
-      document.body.removeChild(video);
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+
+      if (video.parentNode) {
+        video.parentNode.removeChild(video);
+      }
       clearInterval(progressInterval);
       clearInterval(checkInterval);
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
       }
-      URL.revokeObjectURL(video.src);
+      if (video.src) {
+        URL.revokeObjectURL(video.src);
+      }
     };
 
     if (signal) {

@@ -53,7 +53,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
   useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
-      terminateFFmpeg();
+      terminateFFmpeg().catch(() => {});
     };
   }, []);
 

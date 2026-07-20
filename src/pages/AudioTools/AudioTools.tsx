@@ -45,7 +45,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
 
   useEffect(() => {
     return () => {
-      terminateFFmpeg();
+      terminateFFmpeg().catch(() => {});
     };
   }, []);
 

@@ -42,7 +42,7 @@ export function MetadataEditor({ onGoHome, onUploadSuccess }: { onGoHome: () => 
   // FFmpeg cleanup on unmount
   useEffect(() => {
     return () => {
-      terminateFFmpeg();
+      terminateFFmpeg().catch(() => {});
     };
   }, []);
 

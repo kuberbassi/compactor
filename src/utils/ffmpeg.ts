@@ -712,12 +712,15 @@ export const writeMediaMetadata = async (
 
 export const terminateFFmpeg = async () => {
   if (ffmpegInstance) {
-    try {
-      await ffmpegInstance.terminate();
-    } catch (e) {
-      console.warn("Failed to terminate FFmpeg instance:", e);
-    }
+    const inst = ffmpegInstance;
     ffmpegInstance = null;
     isLoaded = false;
+    logDelegate = null;
+    progressDelegate = null;
+    try {
+      await inst.terminate();
+    } catch (e) {
+      // Intentionally suppress FFmpeg.terminate worker shutdown exception
+    }
   }
 };
