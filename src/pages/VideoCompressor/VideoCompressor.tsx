@@ -411,20 +411,20 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
 
       {/* Top Video Sub-Tool Navigation Bar */}
       {!processing && !result && (
-        <div className="w-full flex justify-center mt-1 mb-4">
-          <div className="inline-flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm max-w-full overflow-x-auto no-scrollbar">
+        <div className="w-full flex justify-center mt-1 mb-3 sm:mb-4">
+          <div className="flex items-center gap-0.5 sm:gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm w-full sm:w-auto overflow-x-auto no-scrollbar" style={{WebkitOverflowScrolling: 'touch'}}>
             {[
-              { id: 'compress', label: 'Compress Video' },
-              { id: 'to-audio', label: 'Video to Audio' },
-              { id: 'gif', label: 'Video to GIF' },
-              { id: 'mute', label: 'Mute Audio' }
+              { id: 'compress', label: 'Compress' },
+              { id: 'to-audio', label: 'To Audio' },
+              { id: 'gif', label: 'To GIF' },
+              { id: 'mute', label: 'Mute' }
             ].map((tab) => {
               const isActive = currentMode === tab.id;
               return (
                 <button
                   key={tab.id}
                   onClick={() => { window.location.hash = tab.id === 'compress' ? 'video-compressor' : `video-${tab.id}`; }}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 ${
+                  className={`flex-1 sm:flex-none px-3 sm:px-3.5 py-1.5 rounded-lg text-[11px] sm:text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 min-h-[36px] ${
                     isActive
                       ? 'bg-zinc-800 text-white font-extrabold shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
@@ -484,7 +484,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                 onPause={() => setIsPlaying(false)}
                 onLoadedMetadata={handleLoadedMetadata}
                 onTimeUpdate={handleTimeUpdate}
-                className="w-full max-h-[280px] object-contain opacity-80"
+                className="w-full max-h-[220px] sm:max-h-[280px] object-contain opacity-80"
               />
             </div>
 
@@ -625,7 +625,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                 /* Standard Video Compression Controls */
                 <>
                   <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     {/* Target Platform Preset Selector */}
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Target Preset</label>
@@ -979,21 +979,21 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
 
               <div className="relative overflow-hidden rounded-xl bg-black border border-[var(--border-color)] shadow-inner">
                 {mode === 'to-audio' || ['mp3', 'aac', 'wav', 'flac', 'ogg', 'm4a'].includes(result.name.split('.').pop()?.toLowerCase() || '') ? (
-                  <div className="p-6 flex flex-col items-center gap-3">
+                  <div className="p-4 sm:p-6 flex flex-col items-center gap-3">
                     <div className="w-12 h-12 rounded-full bg-teal-500/20 border border-teal-500/30 flex items-center justify-center text-teal-300">
                       <FileVideo className="w-6 h-6" />
                     </div>
                     <audio src={result.url} controls className="w-full max-w-md" />
                   </div>
                 ) : mode === 'gif' || result.name.endsWith('.gif') ? (
-                  <img src={result.url} alt="Result GIF" className="w-full max-h-[360px] object-contain mx-auto" />
+                  <img src={result.url} alt="Result GIF" className="w-full max-h-[280px] sm:max-h-[360px] object-contain mx-auto" />
                 ) : (
                   <video 
                     src={result.url} 
                     controls 
                     preload="metadata"
                     playsInline
-                    className="w-full max-h-[360px] object-contain mx-auto" 
+                    className="w-full max-h-[280px] sm:max-h-[360px] object-contain mx-auto" 
                   />
                 )}
               </div>

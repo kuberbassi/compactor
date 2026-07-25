@@ -285,7 +285,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
 
             {/* Settings & Configurations */}
             <div className="border-t border-[var(--border-color)]/40 pt-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Format</label>
                   <Select value={format} onValueChange={(val) => setFormat(val || '')}>

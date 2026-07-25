@@ -9,7 +9,7 @@ interface TermsConditionsProps {
 
 export const TermsConditions: React.FC<TermsConditionsProps> = ({ onGoHome }) => {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-8 space-y-4 sm:space-y-8">
       <ToolHeader 
         title="Terms & Conditions" 
         description="Simple, transparent terms for using Compactor's 100% client-side web application." 

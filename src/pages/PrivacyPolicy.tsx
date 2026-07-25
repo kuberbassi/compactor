@@ -9,7 +9,7 @@ interface PrivacyPolicyProps {
 
 export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onGoHome }) => {
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+    <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-8 space-y-4 sm:space-y-8">
       <ToolHeader 
         title="Privacy Policy" 
         description="Compactor is engineered with 100% client-side privacy. Your files never leave your device." 

@@ -1160,8 +1160,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       {!processing && !resultUrl && extractedImages.length === 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* Adobe Acrobat Style Category Sidebar */}
-          <div className="tool-menu lg:col-span-3 space-y-4">
+          {/* Adobe Acrobat Style Category Sidebar (Desktop Only) */}
+          <div className="tool-menu hidden lg:block lg:col-span-3 space-y-4">
             {TOOL_GROUPS.map((group, gIdx) => (
               <div key={gIdx} className="space-y-1.5">
                 <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block px-1">
@@ -1189,7 +1189,38 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
             ))}
           </div>
 
-          <div className="lg:col-span-9 space-y-6">
+          <div className="col-span-1 lg:col-span-9 space-y-6">
+
+            {/* Mobile Exclusive Condensed Tool Selector (Upload Box First) */}
+            <div className="block lg:hidden w-full space-y-1.5 bg-zinc-900/80 p-3 rounded-2xl border border-zinc-800">
+              <label className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider block">
+                Active PDF Tool
+              </label>
+              <Select value={activeTool} onValueChange={(val) => { if (val) { setActiveTool(val); reset(); } }}>
+                <SelectTrigger className="w-full h-10 text-xs bg-zinc-950 border border-zinc-800 text-white font-bold rounded-xl">
+                  <SelectValue placeholder="Select PDF Tool">
+                    {getToolTitle()}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {TOOL_GROUPS.map((group) => (
+                    <div key={group.title} className="py-1">
+                      <div className="px-2 py-1 text-[9px] font-mono font-bold text-zinc-400 uppercase tracking-wider bg-zinc-900/50">
+                        {group.title}
+                      </div>
+                      {group.items.map((item) => (
+                        <SelectItem key={item.id} value={item.id} className="text-xs font-semibold py-2">
+                          <span className="flex items-center gap-2">
+                            <item.icon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                            <span>{item.label}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </div>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* 1. VISUAL PAGE ORGANIZER WORKSPACE */}
             {activeTool === 'pdf-organize' && (

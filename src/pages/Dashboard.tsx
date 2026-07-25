@@ -612,41 +612,41 @@ export function Dashboard({
   }, [selectedCat]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+    <div className="max-w-6xl mx-auto px-3 sm:px-6 py-6 sm:py-8 space-y-6 sm:space-y-8">
       
       {/* HERO HEADER */}
-      <header className="text-center space-y-4 pt-10 sm:pt-16 px-2">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900 shadow-sm max-w-full">
+      <header className="text-center space-y-3 sm:space-y-4 pt-14 sm:pt-16 px-1">
+        <div className="inline-flex items-center gap-2 px-2.5 sm:px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900 shadow-sm max-w-full">
           <span className="status-dot-glow shrink-0" />
-          <span className="text-[10px] sm:text-xs font-mono font-medium text-zinc-300 uppercase tracking-wider truncate">
+          <span className="text-[9px] sm:text-[10px] md:text-xs font-mono font-medium text-zinc-300 uppercase tracking-wider truncate">
             EVERYTHING IN ONE PLACE
           </span>
         </div>
 
-        <h1 className="text-3xl sm:text-6xl font-black text-white tracking-tight leading-tight px-1">
+        <h1 className="text-[clamp(1.75rem,8vw,4rem)] sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[0.95] px-1">
           Less file fuss.<br />
           <em className="not-italic text-zinc-400 font-serif italic">More flow.</em>
         </h1>
 
-        <p className="text-xs sm:text-base text-zinc-400 max-w-xl mx-auto leading-relaxed px-2">
+        <p className="text-[11px] sm:text-sm md:text-base text-zinc-400 max-w-sm sm:max-w-xl mx-auto leading-relaxed px-2">
           Thoughtful tools to make your files lighter, tidier, and ready to share.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-mono text-zinc-400 pt-1 max-w-full px-1">
-          <div className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 font-medium text-zinc-200 flex items-center gap-1.5 max-w-full truncate">
+          <div className="px-2.5 sm:px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 font-medium text-zinc-200 flex items-center gap-1.5 max-w-[260px] sm:max-w-full truncate">
             <span className="dot-glow-white shrink-0" />
-            <span className="truncate">{uploadCount.toLocaleString()} files finished</span>
+            <span className="truncate text-[10px] sm:text-xs">{uploadCount.toLocaleString()} files finished</span>
           </div>
           <span className="text-zinc-600 font-bold hidden sm:inline">&bull;</span>
-          <div className="px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800 text-zinc-400 max-w-full truncate">
+          <div className="px-2.5 sm:px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800 text-zinc-400 text-[10px] sm:text-xs truncate hidden xs:block">
             Pick a tool to begin
           </div>
         </div>
       </header>
 
       {/* CONCENTRIC RADII CATEGORY TABS */}
-      <div className="w-full flex justify-center my-4 sm:my-6 px-1">
-        <div className="inline-flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm max-w-full overflow-x-auto no-scrollbar scrollbar-none">
+      <div className="w-full flex justify-center my-3 sm:my-6">
+        <div className="flex items-center gap-0.5 sm:gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm w-full sm:w-auto overflow-x-auto no-scrollbar scrollbar-none" style={{WebkitOverflowScrolling: 'touch'}}>
           {CATEGORIES.map((cat) => {
             const isActive = selectedCat === cat;
             const count = cat === 'ALL' ? TOOLS.length : TOOLS.filter(t => t.category === cat).length;
@@ -654,14 +654,14 @@ export function Dashboard({
               <button
                 key={cat}
                 onClick={() => setSelectedCat(cat)}
-                className={`px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                className={`px-2 sm:px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all duration-150 flex items-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 min-h-[36px] ${
                   isActive
                     ? 'bg-zinc-800 text-white font-extrabold shadow-sm'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
                 }`}
               >
-                <span>{cat === 'ALL' ? 'ALL TOOLS' : cat}</span>
-                <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-md font-bold ${
+                <span className="whitespace-nowrap">{cat === 'ALL' ? 'ALL' : cat === 'AUDIO & CONVERT' ? 'AUDIO' : cat}</span>
+                <span className={`text-[9px] sm:text-[10px] font-mono px-1 sm:px-1.5 rounded-md font-bold ${
                   isActive ? 'bg-zinc-950 text-white' : 'bg-zinc-900 text-zinc-400'
                 }`}>
                   {count}
@@ -673,49 +673,49 @@ export function Dashboard({
       </div>
 
       {/* SHOWCASE GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
         {filteredTools.map((tool) => (
           <div
             key={tool.id}
             onClick={() => onSelectTool(tool.id)}
-            className="group bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-500 hover:bg-zinc-900/95 rounded-2xl overflow-hidden hover:shadow-[0_16px_48px_rgba(0,0,0,0.4)] transition-all duration-200 flex flex-col justify-between cursor-pointer"
+            className="group bg-zinc-900/70 border border-zinc-800/90 hover:border-zinc-500 hover:bg-zinc-900/95 rounded-2xl overflow-hidden hover:shadow-[0_16px_48px_rgba(0,0,0,0.4)] transition-all duration-200 flex flex-col justify-between cursor-pointer active:scale-[0.98]"
           >
             {/* Visual Vector Illustration Banner */}
-            <div className="w-full h-32 sm:h-36 bg-gradient-to-b from-zinc-900 to-zinc-950/80 border-b border-zinc-800 relative overflow-hidden flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-200">
+            <div className="w-full h-28 sm:h-32 lg:h-36 bg-gradient-to-b from-zinc-900 to-zinc-950/80 border-b border-zinc-800 relative overflow-hidden flex items-center justify-center group-hover:scale-[1.02] transition-transform duration-200">
               <IllustrationBanner type={tool.illustrationType} />
               
-              <span className="absolute top-2.5 left-2.5 bg-zinc-900 border border-zinc-800 text-zinc-200 text-[9px] font-mono font-bold px-2.5 py-0.5 rounded-full shadow-sm tracking-wider uppercase">
-                {tool.category}
+              <span className="absolute top-2 left-2 sm:top-2.5 sm:left-2.5 bg-zinc-900 border border-zinc-800 text-zinc-200 text-[8px] sm:text-[9px] font-mono font-bold px-2 sm:px-2.5 py-0.5 rounded-full shadow-sm tracking-wider uppercase">
+                {tool.category === 'AUDIO & CONVERT' ? 'AUDIO' : tool.category}
               </span>
             </div>
 
             {/* Card Content & Feature Tags */}
-            <div className="p-4 space-y-3 flex-1 flex flex-col justify-between">
-              <div className="space-y-1.5">
+            <div className="p-3 sm:p-4 space-y-2.5 sm:space-y-3 flex-1 flex flex-col justify-between">
+              <div className="space-y-1 sm:space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-white group-hover:text-zinc-100 transition-colors">
+                  <h3 className="text-[13px] sm:text-sm font-bold text-white group-hover:text-zinc-100 transition-colors leading-snug flex-1 min-w-0 pr-2">
                     {tool.title}
                   </h3>
-                  <div className="w-6 h-6 rounded-full bg-zinc-800/90 group-hover:!bg-white flex items-center justify-center transition-all duration-200 shadow-sm border border-zinc-700 group-hover:!border-white shrink-0 ml-2">
-                    <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400 group-hover:!text-black transition-colors stroke-[2.5]" />
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-800/90 group-hover:!bg-white flex items-center justify-center transition-all duration-200 shadow-sm border border-zinc-700 group-hover:!border-white shrink-0">
+                    <ArrowUpRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-400 group-hover:!text-black transition-colors stroke-[2.5]" />
                   </div>
                 </div>
 
-                <span className="text-[11px] font-bold text-zinc-300 block">
+                <span className="text-[10px] sm:text-[11px] font-bold text-zinc-300 block">
                   {tool.subtitle}
                 </span>
 
-                <p className="text-xs text-zinc-400 leading-relaxed font-normal">
+                <p className="text-[11px] sm:text-xs text-zinc-400 leading-relaxed font-normal line-clamp-2 sm:line-clamp-none">
                   {tool.description}
                 </p>
               </div>
 
               {/* Micro Feature Tags */}
-              <div className="pt-2.5 border-t border-zinc-800/80 flex flex-wrap gap-1.5 max-w-full overflow-hidden">
-                {tool.tags.map((tag, i) => (
+              <div className="pt-2 sm:pt-2.5 border-t border-zinc-800/80 flex flex-wrap gap-1 sm:gap-1.5 max-w-full overflow-hidden">
+                {tool.tags.slice(0, 3).map((tag, i) => (
                   <span 
                     key={i} 
-                    className="px-2 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/60 text-[10px] font-mono text-zinc-300 font-medium flex items-center gap-1.5 shadow-sm group-hover:border-zinc-600 transition-colors max-w-full truncate"
+                    className="px-1.5 sm:px-2 py-0.5 rounded-md bg-zinc-800/80 border border-zinc-700/60 text-[9px] sm:text-[10px] font-mono text-zinc-300 font-medium flex items-center gap-1 sm:gap-1.5 shadow-sm group-hover:border-zinc-600 transition-colors max-w-full"
                   >
                     <span className="w-1 h-1 rounded-full bg-zinc-400 group-hover:bg-white transition-colors shrink-0" />
                     <span className="truncate">{tag}</span>

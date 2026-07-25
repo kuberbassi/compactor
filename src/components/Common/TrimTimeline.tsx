@@ -89,6 +89,30 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
     document.addEventListener('mouseup', handleRangeMouseUp);
   };
 
+  const handleRangeTouchStart = (e: React.TouchEvent, type: 'start' | 'end') => {
+    e.stopPropagation();
+    activeHandle.current = type;
+    const handleTouchMove = (ev: TouchEvent) => {
+      if (!activeHandle.current || !trackRef.current || duration <= 0) return;
+      const touch = ev.touches[0];
+      const rect = trackRef.current.getBoundingClientRect();
+      const percentage = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+      const targetTime = parseFloat((percentage * duration).toFixed(2));
+      if (activeHandle.current === 'start') {
+        setRangeStart(Math.max(0, Math.min(targetTime, rangeEnd - 0.2)));
+      } else if (activeHandle.current === 'end') {
+        setRangeEnd(Math.min(duration, Math.max(targetTime, rangeStart + 0.2)));
+      }
+    };
+    const handleTouchEnd = () => {
+      activeHandle.current = null;
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+  };
+
   const handleRangeMouseMove = (e: MouseEvent) => {
     if (!activeHandle.current || !trackRef.current || duration <= 0) return;
     const rect = trackRef.current.getBoundingClientRect();
@@ -247,7 +271,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         .reduce((acc, curr) => acc + (curr.end - curr.start), 0);
 
   return (
-    <Card className="p-5 border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] flex flex-col gap-4 shadow-xl rounded-2xl w-full">
+    <Card className="p-3 sm:p-5 border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] flex flex-col gap-3 sm:gap-4 shadow-xl rounded-2xl w-full">
       {/* Editor Top Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--border-color)] pb-3">
         <div className="flex items-center gap-2">
@@ -325,7 +349,9 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
                 {/* Left Drag Handle */}
                 <div
                   onMouseDown={(e) => handleRangeMouseDown(e, 'start')}
-                  className="absolute left-0 top-0 bottom-0 w-3.5 bg-[var(--text-primary)] hover:opacity-90 cursor-col-resize z-30 flex items-center justify-center shadow-lg rounded-l-sm"
+                  onTouchStart={(e) => handleRangeTouchStart(e, 'start')}
+                  className="absolute left-0 top-0 bottom-0 w-4 sm:w-3.5 bg-[var(--text-primary)] hover:opacity-90 cursor-col-resize z-30 flex items-center justify-center shadow-lg rounded-l-sm"
+                  style={{ touchAction: 'none' }}
                   title="Drag left handle to change Start time"
                 >
                   <div className="w-1 h-4 bg-[var(--surface-color)] rounded-full" />
@@ -334,7 +360,9 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
                 {/* Right Drag Handle */}
                 <div
                   onMouseDown={(e) => handleRangeMouseDown(e, 'end')}
-                  className="absolute right-0 top-0 bottom-0 w-3.5 bg-[var(--text-primary)] hover:opacity-90 cursor-col-resize z-30 flex items-center justify-center shadow-lg rounded-r-sm"
+                  onTouchStart={(e) => handleRangeTouchStart(e, 'end')}
+                  className="absolute right-0 top-0 bottom-0 w-4 sm:w-3.5 bg-[var(--text-primary)] hover:opacity-90 cursor-col-resize z-30 flex items-center justify-center shadow-lg rounded-r-sm"
+                  style={{ touchAction: 'none' }}
                   title="Drag right handle to change End time"
                 >
                   <div className="w-1 h-4 bg-[var(--surface-color)] rounded-full" />

@@ -20,7 +20,9 @@ import {
   Key,
   FilePlus,
   Sliders,
-  ShieldOff
+  ShieldOff,
+  Menu,
+  X
 } from 'lucide-react';
 
 export interface SimpleNavProps {
@@ -125,6 +127,15 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeHoverGroup, setActiveHoverGroup] = useState<string | null>(null);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>('pdf');
+
+  // Sync expanded group with active tool
+  useEffect(() => {
+    if (activeToolId) {
+      const match = NAV_GROUPS.find(g => g.items.some(i => i.href === activeToolId));
+      if (match) setExpandedGroup(match.label);
+    }
+  }, [activeToolId]);
 
   // Close menu on outside click
   useEffect(() => {
@@ -142,7 +153,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
   return (
     <div
       id="simple-nav"
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[99] w-[94%] max-w-4xl h-12 rounded-full border border-zinc-800 bg-zinc-900/90 backdrop-blur-xl flex items-center justify-between px-5 transition-all duration-300 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[99] w-[94%] max-w-4xl h-12 rounded-full border border-zinc-800 bg-zinc-900/90 backdrop-blur-xl flex items-center justify-between px-4 sm:px-5 transition-all duration-300 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
       onMouseLeave={() => setActiveHoverGroup(null)}
     >
       <Logo onClick={onBrandClick} />
@@ -217,51 +228,74 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
         </div>
       </div>
 
-      {/* Mobile Hamburger */}
+      {/* Mobile Hamburger (Perfect Centering) */}
       <button
-        className="md:hidden flex flex-col gap-1 p-2 rounded-lg hover:bg-zinc-800 transition-colors"
+        className="md:hidden w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shrink-0"
         onClick={() => setMenuOpen((v) => !v)}
         aria-label={menuOpen ? 'Close menu' : 'Open menu'}
       >
-        <span className={`block w-4 h-0.5 bg-zinc-200 transition-all duration-150 ${menuOpen ? 'translate-y-1.5 rotate-45' : ''}`} />
-        <span className={`block w-4 h-0.5 bg-zinc-200 transition-all duration-150 ${menuOpen ? 'opacity-0' : ''}`} />
-        <span className={`block w-4 h-0.5 bg-zinc-200 transition-all duration-150 ${menuOpen ? '-translate-y-1.5 -rotate-45' : ''}`} />
+        {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
 
       {/* Mobile Dropdown Menu Sheet */}
       {menuOpen && (
-        <div className="absolute top-[54px] left-0 right-0 max-h-[82vh] overflow-y-auto border border-zinc-800 bg-zinc-950/95 backdrop-blur-2xl p-4 flex flex-col gap-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-            <Logo onClick={() => { onBrandClick?.(); setMenuOpen(false); }} />
+        <div className="absolute top-[54px] left-0 right-0 max-h-[82vh] overflow-y-auto border border-zinc-800 bg-zinc-950/98 backdrop-blur-2xl p-4 flex flex-col gap-3 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] animate-in fade-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800">
+            <span className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider">All Tools Navigation</span>
             <div className="px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-300 flex items-center gap-1.5">
               <span className="dot-glow-white shrink-0" />
-              <span>Client-Side</span>
+              <span>100% Client-Side</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-2">
-            {NAV_GROUPS.map((group) => (
-              <div key={group.label} className="space-y-1 bg-zinc-900/50 p-2.5 rounded-2xl border border-zinc-800/80">
-                <span className="text-[10px] font-mono font-black text-zinc-400 uppercase px-2 py-0.5 tracking-wider block">
-                  {group.label}
-                </span>
-                <div className="space-y-0.5">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.href}
-                      onClick={() => {
-                        onLinkClick?.(item.href);
-                        setMenuOpen(false);
-                      }}
-                      className="w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-white hover:bg-zinc-800 active:bg-zinc-800 transition-all flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <item.icon className="w-4 h-4 text-zinc-400 shrink-0" />
-                      <span className="truncate">{item.label}</span>
-                    </button>
-                  ))}
+          <div className="flex flex-col gap-2 pb-1">
+            {NAV_GROUPS.map((group) => {
+              const isExpanded = expandedGroup === group.label;
+              return (
+                <div key={group.label} className="bg-zinc-900/60 rounded-2xl border border-zinc-800/80 overflow-hidden">
+                  <button
+                    onClick={() => setExpandedGroup(isExpanded ? null : group.label)}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>{group.label}</span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-bold">
+                        {group.items.length}
+                      </span>
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
+                      isExpanded ? 'rotate-180 text-white' : ''
+                    }`} />
+                  </button>
+
+                  {isExpanded && (
+                    <div className="p-1.5 border-t border-zinc-800/60 space-y-0.5 animate-in fade-in duration-150">
+                      {group.items.map((item) => {
+                        const ItemIcon = item.icon;
+                        const isItemActive = activeToolId === item.href;
+                        return (
+                          <button
+                            key={item.href}
+                            onClick={() => {
+                              onLinkClick?.(item.href);
+                              setMenuOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
+                              isItemActive
+                                ? 'bg-zinc-800 text-white font-black border border-zinc-700'
+                                : 'text-zinc-300 hover:text-white hover:bg-zinc-800/60'
+                            }`}
+                          >
+                            <ItemIcon className="w-4 h-4 text-zinc-400 shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
