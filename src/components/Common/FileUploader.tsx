@@ -32,14 +32,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     }
   };
 
-  const processFiles = (fileList: FileList | null) => {
-    if (!fileList) return;
+  const processFiles = (fileList: FileList | File[] | null) => {
+    if (!fileList || fileList.length === 0) return;
     setError(null);
     const filesArray = Array.from(fileList);
 
-    // Validate size and extension
     const validFiles: File[] = [];
-    const allowedExtensions = accept.split(',').map(ext => ext.trim().toLowerCase());
+    const allowedTokens = accept.split(',').map(ext => ext.trim().toLowerCase());
 
     for (const file of filesArray) {
       const fileSizeMB = file.size / (1024 * 1024);
@@ -49,21 +48,25 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       }
 
       const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
-      // Check MIME type or extension
-      const isAllowed = allowedExtensions.some(allowed => {
-        if (allowed === '*' || allowed === '*/*') {
-          return true;
-        }
-        if (allowed.startsWith('.')) {
-          return fileExtension === allowed;
-        }
+      const fileMime = (file.type || '').toLowerCase();
+
+      // Check MIME type or extension flexibly
+      const isAllowed = allowedTokens.some(allowed => {
+        if (allowed === '*' || allowed === '*/*') return true;
+        if (allowed.startsWith('.')) return fileExtension === allowed;
         if (allowed.includes('/*')) {
           const typeGroup = allowed.split('/')[0];
-          if (typeGroup === '*') return true;
-          return file.type.startsWith(typeGroup);
+          return typeGroup === '*' || fileMime.startsWith(typeGroup + '/');
         }
-        return file.type === allowed;
-      });
+        if (allowed.includes('/')) {
+          return fileMime === allowed || fileMime.startsWith(allowed.split('/')[0] + '/');
+        }
+        return fileExtension === '.' + allowed;
+      }) 
+      || (accept.includes('video') && (fileMime.startsWith('video/') || fileExtension.match(/\.(mp4|webm|mov|mkv|avi|flv|wmv|3gp|mpeg|m4v|ts|ogv)$/i)))
+      || (accept.includes('image') && (fileMime.startsWith('image/') || fileExtension.match(/\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg|heic|avif)$/i)))
+      || (accept.includes('audio') && (fileMime.startsWith('audio/') || fileExtension.match(/\.(mp3|wav|ogg|aac|m4a|flac|opus|wma|aiff)$/i)))
+      || (accept.includes('pdf') && fileExtension === '.pdf');
 
       if (!isAllowed && accept !== '*' && accept !== '*/*') {
         setError(`File "${file.name}" is not supported. Please upload: ${accept}`);
@@ -83,19 +86,26 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     e.stopPropagation();
     setDragActive(false);
     
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFiles(e.dataTransfer.files);
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
+    e.stopPropagation();
+    if (e.target.files && e.target.files.length > 0) {
       processFiles(e.target.files);
+      // Reset input value so re-selecting the same file always triggers onChange
+      e.target.value = '';
     }
   };
 
-  const onButtonClick = () => {
+  const onButtonClick = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     fileInputRef.current?.click();
   };
 
@@ -126,6 +136,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           accept={accept}
           multiple={multiple}
           onChange={handleChange}
+          onClick={(e) => e.stopPropagation()}
         />
         
         <div className="upload-dropzone__icon">
@@ -137,7 +148,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           <p>{subLabel}</p>
         </div>
         
-        <button type="button" className="button" onClick={(event) => { event.stopPropagation(); onButtonClick(); }}>
+        <button type="button" className="button" onClick={onButtonClick}>
           Browse Files
         </button>
       </div>

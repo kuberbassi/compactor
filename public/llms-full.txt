@@ -1,0 +1,45 @@
+# Compactor Full Technical Specification for AI Agents
+
+> Author: Kuber Bassi (https://kuberbassi.com)
+> Application URL: https://compactor.kuberbassi.com
+
+Compactor is a client-side WebApplication built with React 19, WebAssembly (@ffmpeg/ffmpeg), pdf-lib, and HTML5 Canvas API.
+
+## Architecture
+- 100% In-Browser Execution: Zero server data uploads. Files processed in browser memory.
+- Multithreading: Uses SharedArrayBuffer with Cross-Origin-Opener-Policy (COOP) and Cross-Origin-Embedder-Policy (COEP) headers.
+
+## Full Tool Catalog
+
+### 1. Video Processing Suite (#video-compressor)
+- Mode: Video Compression, Video to Audio, Video to GIF, Mute Video.
+- Size Clamp Presets: Discord Free (<=10 MB), WhatsApp (<=16 MB), TikTok (<=70 MB), Instagram (<=95 MB).
+- Custom CRF Range: 18 (visually lossless) to 40 (high compression).
+- Formats Supported: MP4, WebM, MOV, MKV, AVI, FLV.
+
+### 2. PDF Studio Suite (#pdf-organize)
+- Page Management: Drag-and-drop page reordering, extraction, rotation, page deletion.
+- Document Filters:
+  - Smart Magic Color: Removes paper shadows, whitens background (lum > 150), darkens text ink.
+  - Whiteboard Clean: Removes room glare & shadows, forces whiteboard to pure #ffffff white.
+  - B&W Binary Scan: Dynamic binarization thresholding for 1-bit crisp document pages.
+  - Vibrant Diagram: High-contrast diagram and chart color boost.
+- Security: AES-128/256 password encryption and unlock decryption.
+- Signature & Stamps: Vector approval stamps (APPROVED, CONFIDENTIAL, FINAL DRAFT) and custom signature titles.
+- Page Numbers & Crop: Header/footer numbering and trim margin percentages.
+
+### 3. Image Optimizer (#image-optimizer)
+- Compression: Quality sliders for PNG, JPG, WebP, GIF, AVIF formats.
+- Transformations: Aspect ratio crop (1:1, 16:9, 4:3, 9:16), rotation, horizontal/vertical flipping.
+- Censorship Brush: Interactive pixelation brush overlay for obscuring sensitive data.
+
+### 4. Universal Format Converter (#universal-converter)
+- Supported Format Matrix: 212+ extensions (Video, Audio, Images, Documents, E-books, Spreadsheets, Archives, CAD, Fonts).
+- Smart Target Derivation: Automatic match engine recommending best output target formats based on file extension.
+
+### 5. File Metadata Editor (#metadata-editor)
+- EXIF, ID3, and PDF Metadata Tag inspection and editing.
+- Cover art image replacement and one-click tag stripping for privacy.
+
+### 6. Poster Maker (#rasterbator)
+- Converts single images into multi-page printable wall poster grid PDFs with precision cut guides.

@@ -1,8 +1,8 @@
 import type { TrimSegment } from '../components/Common/TrimTimeline';
 
 export interface NativeCompressOptions {
-  bitrateKbps: number; // e.g. 2000 for 2 Mbps
-  playbackRate: number; // e.g. 4.0x
+  bitrateKbps: number; // e.g. 3000 for 3 Mbps
+  scale?: string; // e.g. '1280:720', '854:480', '640:360' or 'no-scale'
   removeAudio: boolean;
   segments?: TrimSegment[];
   compileMode?: 'keep-selected' | 'cut-selected';
@@ -20,84 +20,130 @@ export interface NativeCompressResult {
 }
 
 /**
- * Native hardware-accelerated compressor that handles files of any size (up to 10GB+)
- * by streaming frames through MediaRecorder and seeking dynamically to trim.
+ * Merges overlapping or contiguous time intervals
+ */
+const mergeIntervals = (intervals: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
+  if (intervals.length <= 1) return intervals;
+  const merged: Array<{ start: number; end: number }> = [];
+  let current = { ...intervals[0] };
+  for (let i = 1; i < intervals.length; i++) {
+    const next = intervals[i];
+    if (next.start <= current.end) {
+      current.end = Math.max(current.end, next.end);
+    } else {
+      merged.push(current);
+      current = { ...next };
+    }
+  }
+  merged.push(current);
+  return merged;
+};
+
+/**
+ * Calculates active intervals to record from trim timeline
+ */
+const getActiveIntervals = (
+  duration: number,
+  segments?: TrimSegment[],
+  compileMode?: 'keep-selected' | 'cut-selected'
+): Array<{ start: number; end: number }> => {
+  if (!segments || segments.length === 0 || !compileMode) {
+    return [{ start: 0, end: duration }];
+  }
+  const rawIntervals = segments
+    .filter(seg => {
+      const isKeep = seg.mode === 'keep';
+      return compileMode === 'keep-selected' ? isKeep : !isKeep;
+    })
+    .map(seg => ({ start: seg.start, end: seg.end }))
+    .sort((a, b) => a.start - b.start);
+
+  if (rawIntervals.length === 0) return [];
+  return mergeIntervals(rawIntervals);
+};
+
+/**
+ * Native hardware-accelerated compressor that streams frames through MediaRecorder
+ * at exact 1.0x speed, preserving 100% of content, exact video duration, and audio sync.
  */
 export const compressVideoNative = async (
   file: File,
   options: NativeCompressOptions
 ): Promise<NativeCompressResult> => {
-  const { bitrateKbps, playbackRate, removeAudio, segments, compileMode, onProgress, onLog, signal } = options;
+  const { bitrateKbps, scale, removeAudio, segments, compileMode, onProgress, onLog, signal } = options;
 
   onLog(`Initializing Native Browser Compressor for "${file.name}"...`);
-  
-  // 1. Calculate active intervals based on trim timeline segments
-  let intervals: Array<{ start: number; end: number }> = [];
-  const duration = await new Promise<number>((resolve) => {
-    const video = document.createElement('video');
-    video.src = URL.createObjectURL(file);
-    video.onloadedmetadata = () => {
-      resolve(video.duration);
-      URL.revokeObjectURL(video.src);
+
+  // 1. Determine video duration first
+  const fileUrl = URL.createObjectURL(file);
+  const duration = await new Promise<number>((resolve, reject) => {
+    const tempVideo = document.createElement('video');
+    tempVideo.preload = 'metadata';
+    tempVideo.src = fileUrl;
+    tempVideo.onloadedmetadata = () => {
+      resolve(tempVideo.duration);
+    };
+    tempVideo.onerror = () => {
+      reject(new Error("Unable to read video metadata. File may be unsupported or corrupted."));
     };
   });
 
-  if (segments && segments.length > 0 && compileMode) {
-    const activeSegs = segments.filter(seg => {
-      const isKeep = seg.mode === 'keep';
-      return compileMode === 'keep-selected' ? isKeep : !isKeep;
-    });
-
-    intervals = activeSegs.map(seg => ({ start: seg.start, end: seg.end }));
-  } else {
-    intervals = [{ start: 0, end: duration }];
-  }
-
-  // Sort intervals by start time
-  intervals.sort((a, b) => a.start - b.end);
-
+  const intervals = getActiveIntervals(duration, segments, compileMode);
   if (intervals.length === 0) {
-    throw new Error("No portions selected to keep. Adjust your trim settings.");
+    URL.revokeObjectURL(fileUrl);
+    throw new Error("No video portions selected to keep. Adjust your trim settings.");
   }
 
-  onLog(`Trim timeline configured: ${intervals.length} segments to keep.`);
+  const totalDurationToRecord = intervals.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
+  onLog(`Trim configuration ready: ${intervals.length} zone(s) to process, total content duration: ${totalDurationToRecord.toFixed(2)}s.`);
   intervals.forEach((interval, idx) => {
-    onLog(`  Segment ${idx + 1}: ${interval.start.toFixed(2)}s to ${interval.end.toFixed(2)}s`);
+    onLog(`  Zone ${idx + 1}: ${interval.start.toFixed(2)}s -> ${interval.end.toFixed(2)}s (${(interval.end - interval.start).toFixed(2)}s)`);
   });
 
   return new Promise((resolve, reject) => {
-    // 2. Load video in an offscreen player
+    // 2. Offscreen Video Player Element
     const video = document.createElement('video');
-    video.src = URL.createObjectURL(file);
-    video.muted = removeAudio;
+    video.src = fileUrl;
     video.playsInline = true;
+    video.muted = true; // Muted to prevent loudspeaker playback; audio captured via AudioContext
+    video.playbackRate = 1.0; // STRICT 1.0x to ensure 100% video content duration accuracy
     video.style.position = 'fixed';
     video.style.top = '-9999px';
+    video.style.left = '-9999px';
+    video.style.opacity = '0';
+    video.style.pointerEvents = 'none';
     document.body.appendChild(video);
 
-    let stream: MediaStream;
-    let mediaRecorder: MediaRecorder;
+    let mediaRecorder: MediaRecorder | null = null;
+    let audioContext: AudioContext | null = null;
+    let canvasAnimId: number | null = null;
+    let checkInterval: number | null = null;
+    let progressInterval: number | null = null;
     const chunks: Blob[] = [];
-    let currentIntervalIndex = 0;
-    let progressInterval: number;
-    let checkInterval: number;
-
     let isCleanedUp = false;
+
+    let targetStream: MediaStream | null = null;
+
     const cleanup = () => {
       if (isCleanedUp) return;
       isCleanedUp = true;
 
+      if (checkInterval !== null) clearInterval(checkInterval);
+      if (progressInterval !== null) clearInterval(progressInterval);
+      if (canvasAnimId !== null) cancelAnimationFrame(canvasAnimId);
+
+      if (audioContext && audioContext.state !== 'closed') {
+        audioContext.close().catch(() => {});
+      }
+
+      if (targetStream) {
+        targetStream.getTracks().forEach(track => track.stop());
+      }
+
       if (video.parentNode) {
         video.parentNode.removeChild(video);
       }
-      clearInterval(progressInterval);
-      clearInterval(checkInterval);
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-      if (video.src) {
-        URL.revokeObjectURL(video.src);
-      }
+      URL.revokeObjectURL(fileUrl);
     };
 
     if (signal) {
@@ -114,65 +160,99 @@ export const compressVideoNative = async (
 
     video.onloadedmetadata = () => {
       try {
-        onLog(`Video metadata loaded. Resolution: ${video.videoWidth}x${video.videoHeight}. Duration: ${video.duration.toFixed(1)}s.`);
-        
-        // 3. Set up Web Audio API to prevent double audio playback
+        onLog(`Loaded metadata: ${video.videoWidth}x${video.videoHeight}px @ ${video.duration.toFixed(1)}s total.`);
+
+        let videoTrack: MediaStreamTrack;
+        let canvasElement: HTMLCanvasElement | null = null;
+
+        // Check if resolution scaling is requested
+        const needsScaling = scale && scale !== 'no-scale' && scale.includes(':');
+        if (needsScaling) {
+          const [targetW, targetH] = scale.split(':').map(n => parseInt(n, 10));
+          if (targetW > 0 && targetH > 0) {
+            onLog(`Resolution scaling enabled: Converting output to ${targetW}x${targetH}px...`);
+            canvasElement = document.createElement('canvas');
+            canvasElement.width = targetW;
+            canvasElement.height = targetH;
+            const ctx = canvasElement.getContext('2d')!;
+
+            const renderFrame = () => {
+              if (video.readyState >= 2) {
+                ctx.drawImage(video, 0, 0, targetW, targetH);
+              }
+              if (!isCleanedUp) {
+                canvasAnimId = requestAnimationFrame(renderFrame);
+              }
+            };
+            renderFrame();
+
+            const canvasStream = canvasElement.captureStream(30);
+            videoTrack = canvasStream.getVideoTracks()[0];
+          } else {
+            const rawStream = (video as any).captureStream ? (video as any).captureStream() : (video as any).mozCaptureStream();
+            videoTrack = rawStream.getVideoTracks()[0];
+          }
+        } else {
+          const rawStream = (video as any).captureStream ? (video as any).captureStream() : (video as any).mozCaptureStream();
+          videoTrack = rawStream.getVideoTracks()[0];
+        }
+
+        if (!videoTrack) {
+          throw new Error("Unable to capture video stream from offscreen player.");
+        }
+
+        // 3. Audio routing via Web Audio API (if audio requested)
+        const tracksToRecord: MediaStreamTrack[] = [videoTrack];
+
         if (!removeAudio) {
           try {
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
             const source = audioContext.createMediaElementSource(video);
-            const gainNode = audioContext.createGain();
-            gainNode.gain.value = 0; // Mute speakers
-            source.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            onLog("Web Audio capture pipeline initialized successfully.");
+            const destination = audioContext.createMediaStreamDestination();
+            source.connect(destination);
+
+            const audioTrack = destination.stream.getAudioTracks()[0];
+            if (audioTrack) {
+              tracksToRecord.push(audioTrack);
+              onLog("Isolated audio pipeline connected successfully.");
+            }
           } catch (audioErr) {
-            onLog("Warning: Could not isolate audio routing. Compressing with direct speaker play.");
+            onLog("Warning: Could not isolate audio routing. Proceeding with silent video track capture.");
           }
         }
 
-        // 4. Capture stream from video element
-        const captureStream = (video as any).captureStream || (video as any).mozCaptureStream;
-        if (!captureStream) {
-          throw new Error("Your browser does not support MediaStream capture from video elements.");
-        }
-        
-        stream = captureStream.call(video);
-        onLog("MediaStream captured from offscreen video element.");
+        targetStream = new MediaStream(tracksToRecord);
 
-        // Clean audio tracks if user requested mute
-        if (removeAudio) {
-          stream.getAudioTracks().forEach(track => {
-            stream.removeTrack(track);
-            track.stop();
-          });
-        }
+        // 4. Codec determination
+        const candidateCodecs = [
+          'video/webm;codecs=vp9,opus',
+          'video/webm;codecs=vp8,opus',
+          'video/webm;codecs=h264,opus',
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4',
+          'video/webm'
+        ];
 
-        // 5. Determine encoder mimeType
-        let mimeType = 'video/webm;codecs=vp9,opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm;codecs=vp8,opus';
-        }
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
-        }
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = ''; // Let browser choose
+        let selectedMimeType = '';
+        for (const codec of candidateCodecs) {
+          if (MediaRecorder.isTypeSupported(codec)) {
+            selectedMimeType = codec;
+            break;
+          }
         }
 
-        onLog(`Recorder codec configured: ${mimeType || 'Default browser codec'}. Target Bitrate: ${bitrateKbps} Kbps.`);
+        onLog(`Selected encoding profile: ${selectedMimeType || 'Browser default container'}. Target Bitrate: ${bitrateKbps} Kbps.`);
 
-        // 6. Initialize MediaRecorder
         const recorderOptions: MediaRecorderOptions = {
           videoBitsPerSecond: bitrateKbps * 1000,
           audioBitsPerSecond: 128000
         };
-        if (mimeType) {
-          recorderOptions.mimeType = mimeType;
+        if (selectedMimeType) {
+          recorderOptions.mimeType = selectedMimeType;
         }
 
-        mediaRecorder = new MediaRecorder(stream, recorderOptions);
-        
+        mediaRecorder = new MediaRecorder(targetStream, recorderOptions);
+
         mediaRecorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
             chunks.push(e.data);
@@ -180,13 +260,23 @@ export const compressVideoNative = async (
         };
 
         mediaRecorder.onstop = () => {
-          onLog("Media recording completed. Assembling final compression container...");
-          const finalBlob = new Blob(chunks, { type: mimeType || 'video/webm' });
+          onLog("Media stream recording complete. Finalizing output file...");
+          const finalMime = selectedMimeType.split(';')[0] || (selectedMimeType.includes('mp4') ? 'video/mp4' : 'video/webm');
+          let finalBlob = new Blob(chunks, { type: finalMime });
+
+          // Rare Special Case: If full video (no trim cuts) and recorded stream size is >= original input file
+          const isFullVideo = Math.abs(totalDurationToRecord - duration) < 1.0;
+          if (isFullVideo && finalBlob.size >= file.size) {
+            onLog("Special rare case: Native stream recording size exceeds original video file. Retaining original file.");
+            finalBlob = file;
+          }
+
           const url = URL.createObjectURL(finalBlob);
-          
+
           const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
-          const newName = `${originalNameWithoutExt}_native_compressed.webm`;
-          
+          const ext = finalBlob === file ? (file.name.split('.').pop() || 'mp4') : (finalMime.includes('mp4') ? 'mp4' : 'webm');
+          const newName = `${originalNameWithoutExt}_native_compressed.${ext}`;
+
           cleanup();
           resolve({
             blob: finalBlob,
@@ -197,50 +287,72 @@ export const compressVideoNative = async (
           });
         };
 
-        // 7. Start Playback and Recording Loop
+        // 5. Playback and Recording State Machine
+        let currentIntervalIdx = 0;
+        let isSeekingBetweenIntervals = false;
+
         video.currentTime = intervals[0].start;
-        video.playbackRate = playbackRate;
 
         video.onseeked = () => {
+          if (!mediaRecorder) return;
+
           if (mediaRecorder.state === 'inactive') {
-            onLog(`Starting MediaRecorder capture at playback acceleration: ${playbackRate}x.`);
+            onLog(`Starting MediaRecorder capture (Rate: 1.0x real-time content precision)...`);
             mediaRecorder.start(200);
+            if (audioContext && audioContext.state === 'suspended') {
+              audioContext.resume();
+            }
+            video.play().catch(reject);
+          } else if (isSeekingBetweenIntervals) {
+            isSeekingBetweenIntervals = false;
+            if (mediaRecorder.state === 'paused') {
+              mediaRecorder.resume();
+            }
             video.play().catch(reject);
           }
         };
 
+        // Interval boundary monitor loop
         checkInterval = window.setInterval(() => {
-          const currentTime = video.currentTime;
-          const currentInterval = intervals[currentIntervalIndex];
+          if (isSeekingBetweenIntervals || !mediaRecorder) return;
 
-          if (currentTime >= currentInterval.end) {
-            currentIntervalIndex++;
-            
-            if (currentIntervalIndex < intervals.length) {
-              const nextInterval = intervals[currentIntervalIndex];
-              onLog(`Segment boundary reached. Seeking playhead from ${currentTime.toFixed(1)}s to next keep zone at ${nextInterval.start.toFixed(1)}s...`);
-              
+          const currTime = video.currentTime;
+          const currentInterval = intervals[currentIntervalIdx];
+
+          if (currTime >= currentInterval.end - 0.05) {
+            currentIntervalIdx++;
+
+            if (currentIntervalIdx < intervals.length) {
+              const nextInterval = intervals[currentIntervalIdx];
+              onLog(`Segment cut reached. Advancing to keep zone ${currentIntervalIdx + 1} (${nextInterval.start.toFixed(2)}s)...`);
+
+              isSeekingBetweenIntervals = true;
+              if (mediaRecorder.state === 'recording') {
+                mediaRecorder.pause();
+              }
               video.pause();
               video.currentTime = nextInterval.start;
-              video.play().catch(reject);
             } else {
+              // Reached end of all intervals
               video.pause();
-              mediaRecorder.stop();
+              if (mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+              }
             }
           }
-        }, 50);
+        }, 30);
 
-        const totalDurationToRecord = intervals.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
-        
+        // Progress Reporter
         progressInterval = window.setInterval(() => {
           let recordedSoFar = 0;
-          for (let i = 0; i < currentIntervalIndex; i++) {
+          for (let i = 0; i < currentIntervalIdx; i++) {
             recordedSoFar += (intervals[i].end - intervals[i].start);
           }
-          const currentSegmentProgress = video.currentTime - intervals[currentIntervalIndex].start;
-          recordedSoFar += Math.max(0, currentSegmentProgress);
-
-          const progressPct = Math.min(99, (recordedSoFar / totalDurationToRecord) * 100);
+          if (currentIntervalIdx < intervals.length) {
+            const segProgress = video.currentTime - intervals[currentIntervalIdx].start;
+            recordedSoFar += Math.max(0, segProgress);
+          }
+          const progressPct = Math.min(99.9, (recordedSoFar / totalDurationToRecord) * 100);
           onProgress(progressPct);
         }, 100);
 
@@ -252,7 +364,8 @@ export const compressVideoNative = async (
 
     video.onerror = () => {
       cleanup();
-      reject(new Error("Video playback error. The file might be corrupted or in an unsupported format."));
+      reject(new Error("Offscreen video playback failed. The file format may be unsupported by your browser."));
     };
   });
 };
+

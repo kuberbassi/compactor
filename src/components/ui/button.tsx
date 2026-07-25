@@ -8,16 +8,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/80",
+        default: "bg-zinc-50 hover:bg-zinc-200 text-zinc-950 dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold shadow-sm cursor-pointer transition-all active:scale-[0.98]",
+        primary: "bg-zinc-50 hover:bg-zinc-200 text-zinc-950 dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold shadow-sm cursor-pointer transition-all active:scale-[0.98]",
+        secondary: "bg-zinc-900 hover:bg-zinc-800 text-zinc-100 border border-zinc-800 font-semibold shadow-sm cursor-pointer transition-all active:scale-[0.98]",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] hover:bg-[var(--surface-hover)] font-semibold transition-all cursor-pointer",
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "hover:bg-zinc-800/60 text-zinc-300 hover:text-white font-medium transition-colors cursor-pointer",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-rose-950/40 text-rose-300 border border-rose-900/50 hover:bg-rose-900/40 font-semibold transition-all cursor-pointer",
+        pill: "bg-gradient-to-r from-zinc-100 to-zinc-300 hover:from-white hover:to-zinc-200 text-zinc-950 font-black tracking-wide rounded-full shadow-md transition-all active:scale-[0.98] cursor-pointer",
+        hero: "h-11 px-6 rounded-full bg-white text-zinc-950 hover:bg-zinc-100 font-black text-xs shadow-[0_0_20px_rgba(255,255,255,0.25)] hover:shadow-[0_0_28px_rgba(255,255,255,0.4)] hover:scale-105 active:scale-95 transition-all cursor-pointer",
+        link: "text-primary underline-offset-4 hover:underline cursor-pointer",
       },
       size: {
         default:

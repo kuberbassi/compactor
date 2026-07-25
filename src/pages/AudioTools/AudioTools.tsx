@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
+import { ToolHeader } from '../../components/Common/ToolHeader';
 import { TrimTimeline } from '../../components/Common/TrimTimeline';
 import type { TrimSegment } from '../../components/Common/TrimTimeline';
 import { compressAudio, getFFmpeg, terminateFFmpeg } from '../../utils/ffmpeg';
@@ -176,17 +177,18 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
 
   return (
     <div className="tool-layout">
-      <div className="tool-layout__header">
-        <div>
-          <h2 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-zinc-50">Compress audio</h2>
-          <p className="text-xs text-zinc-500 mt-1">
-            Trim a track, reduce its size, and choose the sound quality you want.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={onGoHome} className="h-9">
-          All tools
-        </Button>
-      </div>
+      <ToolHeader 
+        title="Compress Audio" 
+        description="Trim a track, reduce its size, and choose the sound quality you want." 
+        icon={Music} 
+        onGoHome={() => {
+          if (file || result || processing) {
+            reset();
+          } else {
+            onGoHome();
+          }
+        }} 
+      />
 
       {!file && !result && (
         <div className="max-w-2xl mx-auto py-10">
@@ -215,43 +217,43 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
               </Button>
             </div>
 
-            {/* Original vs Estimated Sizes */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-[var(--bg-color)]/20 border border-[var(--border-color)] rounded-lg text-center">
-                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Original Size</span>
-                <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-1">{formatBytes(file.size)}</span>
-              </div>
-              <div className="p-3 bg-[var(--bg-color)]/20 border border-[var(--border-color)] rounded-lg text-center">
-                <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Estimated Target</span>
-                <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-1">
-                  {format === 'wav' 
-                    ? formatBytes(file.size * 1.5) 
-                    : formatBytes(file.size * (bitrate === '256k' ? 0.85 : bitrate === '192k' ? 0.65 : 0.45))
-                  }
-                </span>
-              </div>
+            {/* File Metrics */}
+            <div className="p-3 bg-[var(--bg-color)]/20 border border-[var(--border-color)] rounded-lg text-center">
+              <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Original Size</span>
+              <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-1">{formatBytes(file.size)}</span>
             </div>
 
-            {/* Silent Animated Waveform Preview Block */}
-            <div className="flex flex-col items-center justify-center py-8 bg-zinc-950/20 rounded-lg border border-[var(--border-color)] gap-3">
-              <div className="flex items-center gap-1.5 justify-center">
-                <span className="w-[3px] h-6 bg-[var(--text-secondary)] rounded-full animate-pulse" />
-                <span className="w-[3px] h-8 bg-[var(--text-primary)] rounded-full animate-pulse" />
-                <span className="w-[3px] h-10 bg-[var(--text-primary)] rounded-full animate-pulse" />
-                <span className="w-[3px] h-8 bg-[var(--text-primary)] rounded-full animate-pulse" />
-                <span className="w-[3px] h-6 bg-[var(--text-secondary)] rounded-full animate-pulse" />
+            {/* Interactive Audio Player & Waveform Preview */}
+            <div className="flex flex-col p-4 bg-zinc-950/40 rounded-xl border border-[var(--border-color)] space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center">
+                    <Music className="w-4 h-4 text-zinc-300" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-[var(--text-primary)] block truncate max-w-[240px]">{file.name}</span>
+                    <span className="text-[10px] text-[var(--text-secondary)] font-medium">
+                      {audioDuration ? `${Math.floor(audioDuration / 60)}:${Math.floor(audioDuration % 60).toString().padStart(2, '0')}` : '0:00'} &bull; {format.toUpperCase()} Audio Track
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="w-[3px] h-3 bg-zinc-500 rounded-full animate-pulse" />
+                  <span className="w-[3px] h-5 bg-zinc-300 rounded-full animate-pulse" />
+                  <span className="w-[3px] h-4 bg-zinc-400 rounded-full animate-pulse" />
+                </div>
               </div>
-              <span className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] font-bold">Audio Preview Active</span>
-            </div>
 
-            {/* Hidden audio tag to parse metadata and manage duration */}
-            <audio 
-              ref={audioRef}
-              src={previewUrl || undefined} 
-              onLoadedMetadata={handleLoadedMetadata}
-              onTimeUpdate={handleTimeUpdate}
-              className="hidden"
-            />
+              {/* Native HTML5 Audio Player */}
+              <audio 
+                ref={audioRef}
+                controls
+                src={previewUrl || undefined} 
+                onLoadedMetadata={handleLoadedMetadata}
+                onTimeUpdate={handleTimeUpdate}
+                className="w-full h-9 rounded-lg accent-zinc-200"
+              />
+            </div>
 
             {/* Optional Timeline Trim Switch */}
             <div className="border-t border-[var(--border-color)]/40 pt-4">
@@ -289,25 +291,31 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
                   <Select value={format} onValueChange={(val) => setFormat(val || '')}>
                     <SelectTrigger className="w-full h-8 text-xs bg-transparent border-[var(--border-color)]">
                       <SelectValue placeholder="Format">
-                        {format === 'mp3' ? "MP3 (Standard)" : format === 'm4a' ? "M4A (AAC)" : format === 'ogg' ? "OGG (Vorbis)" : "WAV (PCM)"}
+                        {format === 'mp3' ? "MP3 (Standard)" : format === 'm4a' ? "M4A (AAC)" : format === 'ogg' ? "OGG (Vorbis)" : format === 'flac' ? "FLAC (Lossless)" : "WAV (PCM Uncompressed)"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="mp3">MP3 (Standard)</SelectItem>
                       <SelectItem value="m4a">M4A (AAC)</SelectItem>
                       <SelectItem value="ogg">OGG (Vorbis)</SelectItem>
-                      <SelectItem value="wav">WAV (PCM)</SelectItem>
+                      <SelectItem value="flac">FLAC (Lossless Audio)</SelectItem>
+                      <SelectItem value="wav">WAV (PCM Uncompressed)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                {format !== 'wav' && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Bitrate</label>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Bitrate / Quality</label>
+                  {format === 'wav' || format === 'flac' ? (
+                    <div className="h-8 px-3 border border-[var(--border-color)] rounded-md bg-zinc-950/20 flex items-center justify-between text-xs text-[var(--text-primary)] font-medium">
+                      <span>Lossless (Full Quality)</span>
+                      <span className="text-[10px] text-zinc-200 font-bold uppercase">No Loss</span>
+                    </div>
+                  ) : (
                     <Select value={bitrate} onValueChange={(val) => setBitrate(val || '')}>
                       <SelectTrigger className="w-full h-8 text-xs bg-transparent border-[var(--border-color)]">
                         <SelectValue placeholder="Bitrate">
-                          {bitrate === '64k' ? "64 kbps (Eco)" : bitrate === '128k' ? "128 kbps (Normal)" : bitrate === '192k' ? "192 kbps (High)" : "256 kbps (Premium)"}
+                          {bitrate === '64k' ? "64 kbps (Eco)" : bitrate === '128k' ? "128 kbps (Normal)" : bitrate === '192k' ? "192 kbps (High)" : bitrate === '256k' ? "256 kbps (Premium)" : "320 kbps (Max / Lossless Quality)"}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
@@ -315,10 +323,11 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ onGoHome, onUploadSucces
                         <SelectItem value="128k">128 kbps (Normal)</SelectItem>
                         <SelectItem value="192k">192 kbps (High)</SelectItem>
                         <SelectItem value="256k">256 kbps (Premium)</SelectItem>
+                        <SelectItem value="320k">320 kbps (Max / Lossless Quality)</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 

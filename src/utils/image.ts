@@ -17,6 +17,7 @@ export interface ImageProcessOptions {
   cropTopPct?: number;
   cropWidthPct?: number;
   cropHeightPct?: number;
+  pixelateBox?: { leftPct: number; topPct: number; widthPct: number; heightPct: number; pixelSize?: number };
 }
 
 export interface ImageProcessResult {
@@ -81,7 +82,7 @@ export const processImage = async (
   let originalWidth = img.naturalWidth;
   let originalHeight = img.naturalHeight;
 
-  // 1. Calculate Crop bounds (manual crop percentages override cropAspect preset)
+  // 1. Calculate Crop bounds
   let cropX = 0;
   let cropY = 0;
   let cropW = originalWidth;
@@ -104,185 +105,143 @@ export const processImage = async (
     cropY = Math.round((top / 100) * originalHeight);
     cropW = Math.round((wPct / 100) * originalWidth);
     cropH = Math.round((hPct / 100) * originalHeight);
-
-    // Bounding safety guards
-    cropX = Math.max(0, Math.min(cropX, originalWidth - 10));
-    cropY = Math.max(0, Math.min(cropY, originalHeight - 10));
-    cropW = Math.max(10, Math.min(cropW, originalWidth - cropX));
-    cropH = Math.max(10, Math.min(cropH, originalHeight - cropY));
   } else if (options.cropAspect && options.cropAspect !== 'none') {
-    const parts = options.cropAspect.split(':');
-    const aspectW = parseFloat(parts[0]);
-    const aspectH = parseFloat(parts[1]);
-    
-    if (!isNaN(aspectW) && !isNaN(aspectH)) {
-      const targetAspect = aspectW / aspectH;
-      const currentAspect = originalWidth / originalHeight;
-      
-      if (currentAspect > targetAspect) {
-        // Crop width sides
-        cropH = originalHeight;
-        cropW = Math.round(originalHeight * targetAspect);
-        cropX = Math.round((originalWidth - cropW) / 2);
-      } else {
-        // Crop height top/bottom
-        cropW = originalWidth;
-        cropH = Math.round(originalWidth / targetAspect);
-        cropY = Math.round((originalHeight - cropH) / 2);
-      }
+    let targetRatio = 1;
+    if (options.cropAspect === '1:1') targetRatio = 1;
+    else if (options.cropAspect === '16:9') targetRatio = 16 / 9;
+    else if (options.cropAspect === '4:3') targetRatio = 4 / 3;
+    else if (options.cropAspect === '9:16') targetRatio = 9 / 16;
+
+    const currentRatio = originalWidth / originalHeight;
+
+    if (currentRatio > targetRatio) {
+      cropW = originalHeight * targetRatio;
+      cropH = originalHeight;
+      cropX = (originalWidth - cropW) / 2;
+      cropY = 0;
+    } else {
+      cropW = originalWidth;
+      cropH = originalWidth / targetRatio;
+      cropX = 0;
+      cropY = (originalHeight - cropH) / 2;
     }
   }
 
-  // 2. Calculate Rotation bounding dimensions (swapping width/height for 90 or 270 deg)
-  let rotatedWidth = cropW;
-  let rotatedHeight = cropH;
-  const rotationAngle = options.rotation || 0;
-  if (rotationAngle === 90 || rotationAngle === 270) {
-    rotatedWidth = cropH;
-    rotatedHeight = cropW;
-  }
-
-  // 3. Apply Resizing constraints on the rotated bounds
-  let width = rotatedWidth;
-  let height = rotatedHeight;
+  // 2. Calculate scaling based on max dimensions
+  let width = cropW;
+  let height = cropH;
 
   if (options.maxWidth && width > options.maxWidth) {
     height = Math.round((height * options.maxWidth) / width);
     width = options.maxWidth;
   }
-  
+
   if (options.maxHeight && height > options.maxHeight) {
     width = Math.round((width * options.maxHeight) / height);
     height = options.maxHeight;
   }
 
-  // Define helper to convert canvas to blob for a given format and quality
-  const getBlob = (format: string, quality: number): Promise<Blob | null> => {
+  const rotation = options.rotation || 0;
+  const isRotated90or270 = rotation === 90 || rotation === 270;
+
+  if (isRotated90or270) {
+    canvas.width = height;
+    canvas.height = width;
+  } else {
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  ctx.save();
+
+  if (isRotated90or270) {
+    ctx.translate(height / 2, width / 2);
+  } else {
+    ctx.translate(width / 2, height / 2);
+  }
+
+  if (rotation !== 0) {
+    ctx.rotate((rotation * Math.PI) / 180);
+  }
+
+  const scaleX = options.flipH ? -1 : 1;
+  const scaleY = options.flipV ? -1 : 1;
+  ctx.scale(scaleX, scaleY);
+
+  if (options.grayscale) {
+    ctx.filter = 'grayscale(100%)';
+  }
+
+  ctx.drawImage(
+    img,
+    cropX, cropY, cropW, cropH,
+    -width / 2, -height / 2, width, height
+  );
+
+  ctx.restore();
+
+  // 3. Pixelating Blur Censorship Brush Overlay
+  if (options.pixelateBox && options.pixelateBox.widthPct > 0 && options.pixelateBox.heightPct > 0) {
+    const pxSize = options.pixelateBox.pixelSize || 14;
+    const pxLeft = (options.pixelateBox.leftPct / 100) * canvas.width;
+    const pxTop = (options.pixelateBox.topPct / 100) * canvas.height;
+    const pxWidth = (options.pixelateBox.widthPct / 100) * canvas.width;
+    const pxHeight = (options.pixelateBox.heightPct / 100) * canvas.height;
+
+    for (let x = pxLeft; x < pxLeft + pxWidth; x += pxSize) {
+      for (let y = pxTop; y < pxTop + pxHeight; y += pxSize) {
+        const w = Math.min(pxSize, pxLeft + pxWidth - x);
+        const h = Math.min(pxSize, pxTop + pxHeight - y);
+        const data = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+        ctx.fillStyle = `rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+        ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(w), Math.ceil(h));
+      }
+    }
+  }
+
+  let finalFormat = options.format || file.type || 'image/jpeg';
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(finalFormat)) {
+    finalFormat = 'image/jpeg';
+  }
+
+  const outputFormat = finalFormat;
+
+  const getBlob = (fmt: string, q: number): Promise<Blob | null> => {
     return new Promise((resolve) => {
-      const mime = format === 'image/jpg' ? 'image/jpeg' : format;
-      canvas.toBlob((b) => resolve(b), mime, quality);
+      canvas.toBlob((b) => resolve(b), fmt, q);
     });
   };
 
-  // 4. Drawing pipeline helper supporting scaling factors (for target size iteration check)
-  const drawImagePipeline = (s: number) => {
-    const w = Math.max(10, Math.round(width * s));
-    const h = Math.max(10, Math.round(height * s));
-    
-    canvas.width = w;
-    canvas.height = h;
-    
-    ctx.clearRect(0, 0, w, h);
-    ctx.save();
-    
-    // Filters: Grayscale
-    if (options.grayscale) {
-      ctx.filter = 'grayscale(100%)';
-    }
-    
-    // Move to center for rotate & flip scale
-    ctx.translate(w / 2, h / 2);
-    
-    // Scale flip (H/V)
-    const scaleX = options.flipH ? -1 : 1;
-    const scaleY = options.flipV ? -1 : 1;
-    ctx.scale(scaleX, scaleY);
-    
-    // Rotation Angle
-    if (rotationAngle !== 0) {
-      ctx.rotate((rotationAngle * Math.PI) / 180);
-    }
-    
-    // Bounding dimensions scaled
-    const dstW = rotatedWidth * s;
-    const dstH = rotatedHeight * s;
-    ctx.drawImage(img, cropX, cropY, cropW, cropH, -dstW / 2, -dstH / 2, dstW, dstH);
-    
-    ctx.restore();
-  };
+  let finalBlob = await getBlob(outputFormat, options.quality);
 
-  // Set output format, defaulting to the original type if not specified
-  let outputFormat = options.format || file.type;
-  if (!['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(outputFormat)) {
-    outputFormat = 'image/jpeg';
-  }
-
-  let finalBlob: Blob | null = null;
-  let finalFormat = outputFormat;
-
-  // 5. Run pipeline and compress with target size checks or simple quality settings
   if (options.targetSizeKB && options.targetSizeKB > 0) {
     const targetBytes = options.targetSizeKB * 1024;
-    if (finalFormat === 'image/png') {
-      finalFormat = 'image/webp';
-    }
-
-    let scale = 1.0;
-    let bestBlob: Blob | null = null;
-    let finalWidth = width;
-    let finalHeight = height;
-
-    for (let attempts = 0; attempts < 5; attempts++) {
-      drawImagePipeline(scale);
-      finalWidth = canvas.width;
-      finalHeight = canvas.height;
-
-      // Pre-check lowest quality (0.02) to see if size constraint can be satisfied at this scale.
-      const minBlob = await getBlob(finalFormat, 0.02);
-      if (minBlob && minBlob.size > targetBytes) {
-        // Even at minimum quality it's too large; skip binary search and scale down immediately
-        bestBlob = minBlob;
-        scale -= 0.18;
-        if (scale < 0.15) {
-          break;
-        }
-        continue;
-      }
-
-      let low = 0.02;
-      let high = 0.98;
-      let localBest: Blob | null = minBlob;
-
-      for (let iter = 0; iter < 7; iter++) {
-        const q = (low + high) / 2;
-        const b = await getBlob(finalFormat, q);
-        if (b) {
-          localBest = b;
-          if (b.size > targetBytes) {
-            high = q;
+    
+    if (finalBlob && finalBlob.size > targetBytes) {
+      let minQ = 0.05;
+      let maxQ = options.quality;
+      let bestBlob = finalBlob;
+      
+      for (let i = 0; i < 6; i++) {
+        const midQ = (minQ + maxQ) / 2;
+        const testBlob = await getBlob(outputFormat, midQ);
+        if (testBlob) {
+          if (testBlob.size <= targetBytes) {
+            bestBlob = testBlob;
+            minQ = midQ;
           } else {
-            low = q;
+            maxQ = midQ;
           }
         }
       }
-
-      if (localBest) {
-        bestBlob = localBest;
-        if (localBest.size <= targetBytes) {
-          break;
-        }
-      }
-
-      scale -= 0.18; // reduce width/height
-      if (scale < 0.15) {
-        break;
-      }
+      finalBlob = bestBlob;
     }
-
-    finalBlob = bestBlob;
-    width = finalWidth;
-    height = finalHeight;
-  } else {
-    // Normal render at full size (1.0 scale)
-    drawImagePipeline(1.0);
-    finalBlob = await getBlob(outputFormat, options.quality);
   }
 
   if (!finalBlob) {
     throw new Error('Canvas serialization failed');
   }
 
-  // 2. Smart compression fallback logic:
   const isTargetSizeSet = !!(options.targetSizeKB && options.targetSizeKB > 0);
   const hasVisualMods = 
     (options.maxWidth && img.naturalWidth > options.maxWidth) ||
@@ -295,11 +254,11 @@ export const processImage = async (
     (options.cropWidthPct !== undefined && options.cropWidthPct < 100) ||
     (options.cropHeightPct !== undefined && options.cropHeightPct < 100) ||
     (options.cropAspect && options.cropAspect !== 'none') ||
-    (options.grayscale);
+    (options.grayscale) ||
+    (options.pixelateBox && options.pixelateBox.widthPct > 0);
 
   if (!hasVisualMods && finalBlob.size >= file.size) {
     if (!isTargetSizeSet) {
-      // Step down quality sequentially using the target output format only to preserve format
       const stepQualities = [0.72, 0.64, 0.54, 0.45, 0.35];
       for (const q of stepQualities) {
         const lowerBlob = await getBlob(outputFormat, q);
@@ -311,14 +270,11 @@ export const processImage = async (
     }
   }
 
-  // 3. Absolute fallback: If the compressed file is still larger than the original file,
-  // we simply return the original file to prevent any size increase, unless visual mods were requested.
   if (!hasVisualMods && finalBlob.size >= file.size) {
     finalBlob = file;
     finalFormat = file.type;
   }
 
-  // Generate a new download name with appropriate extension
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
   const ext = finalFormat.split('/')[1] || 'png';
   const newName = `${originalNameWithoutExt}_optimized.${ext}`;
@@ -334,4 +290,3 @@ export const processImage = async (
     height
   };
 };
-

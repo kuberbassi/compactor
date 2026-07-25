@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://compactor.kuberbassi.com/sitemap.xml
+# LLM Agentic Browsing Support
+# See https://compactor.kuberbassi.com/llms.txt for structured AI agent documentation.

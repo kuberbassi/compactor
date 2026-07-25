@@ -31,7 +31,10 @@ export const getFFmpeg = async (
   });
   
   ffmpeg.on('progress', ({ progress }) => {
-    if (progressDelegate) progressDelegate(progress * 100);
+    if (progressDelegate) {
+      const normalizedPct = progress > 1 ? Math.min(100, Math.max(0, progress)) : Math.min(100, Math.max(0, progress * 100));
+      progressDelegate(normalizedPct);
+    }
   });
 
   const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
@@ -63,6 +66,7 @@ export interface VideoCompressOptions {
   audioBitrate?: string;
   frameRate?: number;
   duration?: number;  // Optional preloaded duration to skip metadata dry-run
+  targetMaxMB?: number; // Strict platform size limit e.g. 9.5 for Discord, 15.5 for WhatsApp
 }
 
 export interface VideoCompressResult {
@@ -169,6 +173,11 @@ export const compressVideo = async (
     throw new Error("No portions selected to keep. Adjust your trim settings.");
   }
 
+  // Calculate source stream bitrate to prevent file size expansion
+  const totalBitrateBps = duration > 0 ? (file.size * 8) / duration : 2000000;
+  const audioBps = options.removeAudio ? 0 : 96000;
+  const originalVideoBitrateKbps = Math.max(100, Math.round((totalBitrateBps - audioBps) / 1000));
+
   // Build command arguments
   const args: string[] = [];
 
@@ -201,6 +210,18 @@ export const compressVideo = async (
       // Single segment GIF
       const scaleArg = options.scale !== 'no-scale' ? `scale=${options.scale.split(':')[0]}:-1` : 'scale=480:-1';
       args.push('-vf', `fps=15,${scaleArg}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`, '-loop', '0');
+    }
+  } else if (['mp3', 'aac', 'wav', 'm4a', 'flac', 'ogg'].includes(options.format)) {
+    // Audio extraction mode (Video to Audio)
+    args.push('-vn'); // Disable video stream
+    if (options.format === 'mp3') {
+      args.push('-acodec', 'libmp3lame', '-b:a', options.audioBitrate || '192k');
+    } else if (options.format === 'aac' || options.format === 'm4a') {
+      args.push('-acodec', 'aac', '-b:a', options.audioBitrate || '192k');
+    } else if (options.format === 'wav') {
+      args.push('-acodec', 'pcm_s16le');
+    } else {
+      args.push('-b:a', options.audioBitrate || '192k');
     }
   } else {
     // Video standard encoding configurations
@@ -241,21 +262,57 @@ export const compressVideo = async (
       }
     }
 
-    // Standard codecs parameters
+    // Standard codecs parameters & bitrate optimization
     if (options.frameRate) {
       args.push('-r', options.frameRate.toString());
     }
 
+    // Determine target bitrate ratio based on quality profile
+    let crfRatio = 0.55; // Balanced default (CRF ~28)
+    if (options.crf <= 22) crfRatio = 0.80; // High Quality
+    else if (options.crf >= 32) crfRatio = 0.35; // Eco Mode
+
+    let targetBitrateKbps = Math.round(originalVideoBitrateKbps * crfRatio);
+
     if (options.videoBitrate) {
-      args.push('-vcodec', 'libx264', '-b:v', options.videoBitrate, '-preset', options.preset);
+      const parsedBitrateKbps = parseInt(options.videoBitrate.replace('k', ''), 10);
+      if (!isNaN(parsedBitrateKbps)) {
+        targetBitrateKbps = Math.min(parsedBitrateKbps, Math.round(originalVideoBitrateKbps * 0.85));
+      }
+    }
+
+    // Bound target bitrate between 150 Kbps and source bitrate
+    targetBitrateKbps = Math.max(150, Math.min(targetBitrateKbps, Math.round(originalVideoBitrateKbps * 0.85)));
+
+    onLog(`Smart Bitrate Configured: Original ~${originalVideoBitrateKbps} Kbps -> Target Max ~${targetBitrateKbps} Kbps.`);
+
+    if (options.format === 'webm') {
+      args.push(
+        '-vcodec', 'libvpx-vp9',
+        '-crf', options.crf.toString(),
+        '-b:v', `${targetBitrateKbps}k`,
+        '-maxrate', `${targetBitrateKbps}k`,
+        '-bufsize', `${targetBitrateKbps * 2}k`
+      );
     } else {
-      args.push('-vcodec', 'libx264', '-crf', options.crf.toString(), '-preset', options.preset);
+      // Standard H.264 MP4 / MOV / MKV / AVI
+      args.push(
+        '-vcodec', 'libx264',
+        '-crf', options.crf.toString(),
+        '-maxrate', `${targetBitrateKbps}k`,
+        '-bufsize', `${targetBitrateKbps * 2}k`,
+        '-preset', options.preset || 'fast',
+        '-pix_fmt', 'yuv420p'
+      );
+      if (options.format === 'mp4') {
+        args.push('-movflags', '+faststart');
+      }
     }
     
     if (options.removeAudio) {
       args.push('-an');
     } else {
-      args.push('-acodec', 'aac', '-b:a', options.audioBitrate || '128k');
+      args.push('-acodec', 'aac', '-b:a', options.audioBitrate || '96k');
     }
   }
 
@@ -264,16 +321,112 @@ export const compressVideo = async (
   onLog(`Executing FFmpeg: ffmpeg ${args.join(' ')}`);
   await ffmpeg.exec(args);
 
-  const data = await ffmpeg.readFile(outputName);
+  let data = await ffmpeg.readFile(outputName);
+  const isAudio = ['mp3', 'aac', 'wav', 'm4a', 'flac', 'ogg'].includes(options.format);
+  const mimeType = options.format === 'gif' 
+    ? 'image/gif' 
+    : isAudio 
+      ? `audio/${options.format === 'mp3' ? 'mpeg' : options.format}` 
+      : `video/${options.format}`;
+  let blob = new Blob([data as any], { type: mimeType });
+
+  // Safeguard against file inflation: If full video (no trim) was processed and output size is >= original size
+  const totalIntervalDuration = activeIntervals.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
+  const isFullVideo = Math.abs(totalIntervalDuration - duration) < 1.0;
+  if (isFullVideo && options.format !== 'gif' && blob.size >= file.size * 0.98) {
+    onLog(`Notice: Compressed result (${(blob.size / 1024 / 1024).toFixed(2)} MB) exceeds target reduction threshold. Triggering strict bitrate fallback pass...`);
+
+    const strictBitrateKbps = Math.max(100, Math.round(originalVideoBitrateKbps * 0.50));
+    const fallbackArgs: string[] = ['-i', inputName];
+
+    if (activeIntervals.length === 1) {
+      const { start, end } = activeIntervals[0];
+      fallbackArgs.push('-ss', start.toString(), '-to', end.toString());
+    }
+    if (options.scale && options.scale !== 'no-scale') {
+      fallbackArgs.push('-vf', `scale=${options.scale}`);
+    }
+    fallbackArgs.push(
+      '-vcodec', 'libx264',
+      '-b:v', `${strictBitrateKbps}k`,
+      '-maxrate', `${strictBitrateKbps}k`,
+      '-bufsize', `${strictBitrateKbps * 2}k`,
+      '-preset', 'fast',
+      '-pix_fmt', 'yuv420p'
+    );
+    if (options.format === 'mp4') {
+      fallbackArgs.push('-movflags', '+faststart');
+    }
+    if (options.removeAudio) {
+      fallbackArgs.push('-an');
+    } else {
+      fallbackArgs.push('-acodec', 'aac', '-b:a', '96k');
+    }
+    fallbackArgs.push(outputName);
+
+    onLog(`Executing Fallback FFmpeg: ffmpeg ${fallbackArgs.join(' ')}`);
+    await ffmpeg.exec(fallbackArgs);
+
+    data = await ffmpeg.readFile(outputName);
+    blob = new Blob([data as any], { type: mimeType });
+  }
+
+  // Platform Target Size Enforcement (e.g. Discord ≤10MB, WhatsApp ≤16MB)
+  if (options.targetMaxMB && options.format !== 'gif' && blob.size > options.targetMaxMB * 1024 * 1024) {
+    const targetBytes = options.targetMaxMB * 1024 * 1024;
+    onLog(`Platform limit target (${options.targetMaxMB} MB) exceeded (current: ${(blob.size / 1024 / 1024).toFixed(2)} MB). Executing strict size-clamping pass...`);
+
+    const audioBytes = options.removeAudio ? 0 : Math.round((96000 * totalIntervalDuration) / 8);
+    const availableVideoBytes = Math.max(100000, targetBytes - audioBytes);
+    const targetVideoBps = Math.max(50000, Math.floor(((availableVideoBytes * 8) / totalIntervalDuration) * 0.93));
+    const targetBitrateKbps = Math.floor(targetVideoBps / 1000);
+
+    const clampArgs: string[] = ['-i', inputName];
+    if (activeIntervals.length === 1) {
+      const { start, end } = activeIntervals[0];
+      clampArgs.push('-ss', start.toString(), '-to', end.toString());
+    }
+    if (options.scale && options.scale !== 'no-scale') {
+      clampArgs.push('-vf', `scale=${options.scale}`);
+    }
+    clampArgs.push(
+      '-vcodec', 'libx264',
+      '-b:v', `${targetBitrateKbps}k`,
+      '-maxrate', `${targetBitrateKbps}k`,
+      '-bufsize', `${targetBitrateKbps * 2}k`,
+      '-preset', 'fast',
+      '-pix_fmt', 'yuv420p'
+    );
+    if (options.format === 'mp4') {
+      clampArgs.push('-movflags', '+faststart');
+    }
+    if (options.removeAudio) {
+      clampArgs.push('-an');
+    } else {
+      clampArgs.push('-acodec', 'aac', '-b:a', '96k');
+    }
+    clampArgs.push(outputName);
+
+    onLog(`Executing Size Clamping Pass (${targetBitrateKbps} Kbps): ffmpeg ${clampArgs.join(' ')}`);
+    await ffmpeg.exec(clampArgs);
+
+    data = await ffmpeg.readFile(outputName);
+    blob = new Blob([data as any], { type: mimeType });
+  }
+
+  // Rare Special Case: If after all compression passes the output is still >= original input file (and no trimming was requested)
+  if (isFullVideo && options.format !== 'gif' && !options.targetMaxMB && blob.size >= file.size) {
+    onLog("Special rare case: Video is already maximally compressed by source codec. Serving original file to prevent quality loss or size expansion.");
+    blob = file;
+  }
+
   await ffmpeg.deleteFile(inputName);
   await ffmpeg.deleteFile(outputName);
-
-  const mimeType = options.format === 'gif' ? 'image/gif' : `video/${options.format}`;
-  const blob = new Blob([data as any], { type: mimeType });
-  const url = URL.createObjectURL(blob);
   
+  const url = URL.createObjectURL(blob);
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
-  const newName = `${originalNameWithoutExt}_optimized.${options.format}`;
+  const outExt = blob === file ? (file.name.split('.').pop() || options.format) : options.format;
+  const newName = `${originalNameWithoutExt}_optimized.${outExt}`;
 
   return {
     blob,
@@ -347,9 +500,13 @@ export const compressAudio = async (
 
   if (activeIntervals.length === 1) {
     const { start, end } = activeIntervals[0];
-    args.push('-i', inputName, '-ss', start.toString(), '-to', end.toString());
+    const isTrimmed = start > 0.05 || (duration > 0 && Math.abs(end - duration) > 0.1);
+    args.push('-i', inputName, '-vn');
+    if (isTrimmed) {
+      args.push('-ss', start.toString(), '-to', end.toString());
+    }
   } else {
-    args.push('-i', inputName);
+    args.push('-i', inputName, '-vn');
     
     // Multi-segment audio trim concat
     const filterComplexParts: string[] = [];
@@ -373,12 +530,14 @@ export const compressAudio = async (
     args.push('-acodec', 'libvorbis');
   } else if (options.format === 'm4a') {
     args.push('-acodec', 'aac');
+  } else if (options.format === 'flac') {
+    args.push('-acodec', 'flac');
   } else {
     // wav - uncompressed pcm
     args.push('-acodec', 'pcm_s16le');
   }
 
-  if (options.format !== 'wav') {
+  if (options.format !== 'wav' && options.format !== 'flac') {
     args.push('-ab', options.bitrate);
   }
 
@@ -393,6 +552,7 @@ export const compressAudio = async (
 
   let mimeType = 'audio/mpeg';
   if (options.format === 'wav') mimeType = 'audio/wav';
+  if (options.format === 'flac') mimeType = 'audio/flac';
   if (options.format === 'ogg') mimeType = 'audio/ogg';
   if (options.format === 'm4a') mimeType = 'audio/x-m4a';
 
@@ -647,34 +807,30 @@ export const writeMediaMetadata = async (
   
   await ffmpeg.writeFile(inputName, await fetchFile(file));
   
+  const isAudio = file.type.startsWith('audio/') || ['.mp3', '.m4a', '.flac', '.wav', '.ogg', '.opus'].some(e => file.name.toLowerCase().endsWith(e));
+
   const args = ['-i', inputName];
   
-  // Handle Cover Art injection
+  // Handle Cover Art injection for audio files
   let coverName = '';
-  if (newCoverBlob) {
+  if (newCoverBlob && isAudio) {
     coverName = `new_cover_meta.jpg`;
     await ffmpeg.writeFile(coverName, await fetchFile(newCoverBlob));
     args.push('-i', coverName);
-  }
-  
-  // Map streams: audio from input 0, and image/video from input 1 (if cover provided)
-  if (newCoverBlob) {
-    args.push('-map', '0:0', '-map', '1:0');
+    args.push('-map', '0:a', '-map', '1:0', '-c', 'copy', '-disposition:v:0', 'attached_pic');
+    if (inputExt === 'mp3') {
+      args.push('-id3v2_version', '3', '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
+    }
+  } else if (newCoverBlob === null && isAudio) {
+    // Explicitly copy audio stream only to strip old cover art stream
+    args.push('-map', '0:a', '-c', 'copy');
   } else {
-    args.push('-map', '0');
+    args.push('-map', '0', '-c', 'copy');
   }
   
-  // Configure audio copy, video/cover art copy
-  args.push('-c', 'copy');
-  
-  // For MP3 container cover art, specify ID3v2 version 3 tag configurations
-  if (inputExt === 'mp3' && newCoverBlob) {
-    args.push('-id3v2_version', '3', '-metadata:s:v', 'title="Album cover"', '-metadata:s:v', 'comment="Cover (front)"');
-  }
-  
-  // Set metadata fields
+  // Set or clear metadata fields
   const addMeta = (field: string, val?: string) => {
-    if (val !== undefined && val !== '') {
+    if (val !== undefined) {
       args.push('-metadata', `${field}=${val}`);
     }
   };
@@ -706,6 +862,43 @@ export const writeMediaMetadata = async (
   
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
   const newName = `${originalNameWithoutExt}_tagged.${inputExt}`;
+  
+  return { blob, url, name: newName };
+};
+
+/**
+ * Strips all metadata tags and embedded artwork from a media file for privacy protection
+ */
+export const stripMediaMetadata = async (
+  file: File,
+  onLog: (msg: string) => void,
+  onProgress: (p: number) => void
+): Promise<{ blob: Blob; url: string; name: string }> => {
+  const ffmpeg = await getFFmpeg(onLog, onProgress);
+  
+  const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp3';
+  const inputName = `input_meta_strip.${inputExt}`;
+  const outputName = `output_meta_strip.${inputExt}`;
+  
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  
+  // -map_metadata -1 removes global and stream metadata tags
+  const args = ['-i', inputName, '-map_metadata', '-1', '-c', 'copy', '-y', outputName];
+  
+  onLog(`Stripping all metadata tags: ffmpeg ${args.join(' ')}`);
+  await ffmpeg.exec(args);
+  
+  const data = await ffmpeg.readFile(outputName);
+  
+  await ffmpeg.deleteFile(inputName);
+  await ffmpeg.deleteFile(outputName);
+  
+  const mimeType = file.type;
+  const blob = new Blob([data as any], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  
+  const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
+  const newName = `${originalNameWithoutExt}_clean.${inputExt}`;
   
   return { blob, url, name: newName };
 };

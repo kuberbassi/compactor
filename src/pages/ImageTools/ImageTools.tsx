@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import type { ChangeEvent } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
+import { ToolHeader } from '../../components/Common/ToolHeader';
 import { processImage, formatBytes, loadImage } from '../../utils/image';
 import type { ImageProcessResult } from '../../utils/image';
 import { 
@@ -648,7 +648,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
               <label className="text-xs font-semibold text-zinc-400">Target Size</label>
               <div className="flex gap-2">
                 <Input type="number" placeholder="e.g. 150" value={targetSize}
-                  onChange={(e: ChangeEvent<HTMLInputElement>) => updateSetting('targetSize', e.target.value)}
+                  onChange={(e) => updateSetting('targetSize', e.target.value)}
                   className="h-9 flex-1 text-sm"
                 />
                 <Select value={targetUnit} onValueChange={v => updateSetting('targetUnit', v as 'KB' | 'MB')}>
@@ -975,119 +975,131 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
-    <div className="image-workbench">
+    <div className="tool-layout">
+      <ToolHeader 
+        title="Image Optimizer" 
+        description="Compress, convert, resize, crop, and edit images right in your browser." 
+        icon={ImageIcon} 
+        onGoHome={() => {
+          if (files.length > 0 || results.length > 0 || processing) {
+            clearQueue();
+          } else {
+            onGoHome();
+          }
+        }} 
+      />
 
-      {/* ═══ LEFT SIDEBAR ═══════════════════════════════════════════════════ */}
-      <aside className="image-workbench__sidebar">
-        
-        {/* Sidebar header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-900">
-          <button onClick={results.length > 0 ? clearQueue : onGoHome}
-            className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-zinc-900">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <span className="text-sm font-bold text-zinc-200">Image Optimizer</span>
+      {files.length === 0 && !processing && results.length === 0 && (
+        <div className="max-w-2xl mx-auto py-10">
+          <FileUploader
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple={true}
+            label="Upload images to process"
+            subLabel="Drag & drop JPEG, PNG, WebP, or GIF files (Up to 10GB)"
+            onFilesSelected={handleFilesSelected}
+            maxSizeMB={10240}
+          />
         </div>
+      )}
 
-        {files.length > 0 && !processing && results.length === 0 && (
-          <>
-            {/* Editing scope */}
-            <div className="px-4 py-2.5 border-b border-zinc-900 flex items-center justify-between gap-2">
-              <p className="text-xs text-zinc-500 truncate flex-1 min-w-0">
-                {sameForAll ? 'All images' : (activeFile?.name ?? 'Select image')}
-              </p>
-              <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer shrink-0">
-                <input type="checkbox" checked={sameForAll} onChange={e => toggleSameForAll(e.target.checked)}
-                  className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
-                All
-              </label>
-            </div>
+      {(files.length > 0 || processing || results.length > 0) && (
+        <div className="image-workbench">
 
-            {/* Tool tabs */}
-            <nav className="py-1 border-b border-zinc-900">
-              {TABS.map(({ id, label, Icon }) => (
-                <button key={id} onClick={() => setActiveTab(id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all ${
-                    activeTab === id
-                      ? 'text-zinc-50 bg-zinc-900/60 border-l-2 border-zinc-200 font-semibold'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/3 border-l-2 border-transparent font-medium'
-                  }`}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  {label}
-                </button>
-              ))}
-            </nav>
-
-            {/* Settings content */}
-            <div className="flex-1 overflow-y-auto p-4">
-              {renderSettings()}
-            </div>
-
-            {/* Optimize CTA */}
-            <div className="p-3 border-t border-zinc-900">
-              <button onClick={startBatchCompression} disabled={files.length === 0}
-                className="w-full bg-zinc-50 hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-black py-3 rounded-xl text-sm transition-colors shadow-sm cursor-pointer">
-                Optimize {files.length} {files.length === 1 ? 'Image' : 'Images'} →
+          {/* ═══ LEFT SIDEBAR ═══════════════════════════════════════════════════ */}
+          <aside className="image-workbench__sidebar">
+            
+            {/* Sidebar header */}
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-900">
+              <button onClick={results.length > 0 ? clearQueue : onGoHome}
+                className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-zinc-900">
+                <ArrowLeft className="w-4 h-4" />
               </button>
+              <span className="text-sm font-bold text-zinc-200">Image Queue ({files.length})</span>
             </div>
-          </>
-        )}
 
-        {/* Results sidebar info */}
-        {results.length > 0 && !processing && (
-          <div className="flex-1 p-4 space-y-4">
-            <div className="text-center space-y-1">
-              <div className="w-10 h-10 bg-zinc-900/40 border border-zinc-800 rounded-full flex items-center justify-center mx-auto">
-                <CheckCircle className="w-5 h-5 text-zinc-200" />
+            {files.length > 0 && !processing && results.length === 0 && (
+              <>
+                {/* Editing scope */}
+                <div className="px-4 py-2.5 border-b border-zinc-900 flex items-center justify-between gap-2">
+                  <p className="text-xs text-zinc-500 truncate flex-1 min-w-0">
+                    {sameForAll ? 'All images' : (activeFile?.name ?? 'Select image')}
+                  </p>
+                  <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer shrink-0">
+                    <input type="checkbox" checked={sameForAll} onChange={e => toggleSameForAll(e.target.checked)}
+                      className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
+                    All
+                  </label>
+                </div>
+
+                {/* Tool tabs */}
+                <nav className="py-1 border-b border-zinc-900">
+                  {TABS.map(({ id, label, Icon }) => (
+                    <button key={id} onClick={() => setActiveTab(id)}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all ${
+                        activeTab === id
+                          ? 'text-zinc-50 bg-zinc-900/60 border-l-2 border-zinc-200 font-semibold'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/3 border-l-2 border-transparent font-medium'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 flex-shrink-0" />
+                      {label}
+                    </button>
+                  ))}
+                </nav>
+
+                {/* Settings content */}
+                <div className="flex-1 overflow-y-auto p-4">
+                  {renderSettings()}
+                </div>
+
+                {/* Optimize CTA */}
+                <div className="p-3 border-t border-zinc-900">
+                  <button onClick={startBatchCompression} disabled={files.length === 0}
+                    className="w-full bg-zinc-50 hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-black py-3 rounded-xl text-sm transition-colors shadow-sm cursor-pointer">
+                    Optimize {files.length} {files.length === 1 ? 'Image' : 'Images'} →
+                  </button>
+                </div>
+              </>
+            )}
+
+            {/* Results sidebar info */}
+            {results.length > 0 && !processing && (
+              <div className="flex-1 p-4 space-y-4">
+                <div className="text-center space-y-1">
+                  <div className="w-10 h-10 bg-zinc-900/40 border border-zinc-800 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-5 h-5 text-zinc-200" />
+                  </div>
+                  <p className="text-sm font-bold text-white mt-2">Done!</p>
+                  <p className="text-xs text-zinc-500">{results.length} images · saved {totalSavings()}%</p>
+                </div>
+                <button onClick={clearQueue}
+                  className="w-full bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors cursor-pointer">
+                  Process More
+                </button>
               </div>
-              <p className="text-sm font-bold text-white mt-2">Done!</p>
-              <p className="text-xs text-zinc-500">{results.length} images · saved {totalSavings()}%</p>
-            </div>
-            <button onClick={clearQueue}
-              className="w-full bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors cursor-pointer">
-              Process More
-            </button>
-          </div>
-        )}
-      </aside>
+            )}
+          </aside>
 
-      {/* ═══ MAIN AREA ══════════════════════════════════════════════════════ */}
-      <div className="image-workbench__main">
+          {/* ═══ MAIN AREA ══════════════════════════════════════════════════════ */}
+          <div className="image-workbench__main">
 
-        {/* ── Upload state ── */}
-        {files.length === 0 && !processing && (
-          <div className="flex-1 flex items-center justify-center p-12">
-            <div className="max-w-md w-full">
-              <FileUploader
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                multiple={true}
-                label="Drop images here"
-                subLabel="JPEG · PNG · WebP · GIF — up to 10 GB"
-                onFilesSelected={handleFilesSelected}
-                maxSizeMB={10240}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* ── Editing state ── */}
-        {files.length > 0 && !processing && results.length === 0 && (
+            {/* ── Editing state ── */}
+            {files.length > 0 && !processing && results.length === 0 && (
           <>
             {/* File info bar */}
             {activeFile && (
-              <div className="h-10 border-b border-zinc-900 bg-[#06080d] flex items-center px-5 gap-4 text-xs text-zinc-500 shrink-0">
-                <span className="font-medium text-zinc-300 truncate max-w-[260px]">{activeFile.name}</span>
+              <div className="h-10 border-b border-[var(--border-color)] bg-[var(--surface-color)] flex items-center px-5 gap-4 text-xs text-[var(--text-secondary)] shrink-0">
+                <span className="font-medium text-[var(--text-primary)] truncate max-w-[260px]">{activeFile.name}</span>
                 <span>{formatBytes(activeFile.size)}</span>
                 {activeSettings && activeSettings.origWidth > 0 && (
                   <span>{activeSettings.origWidth} × {activeSettings.origHeight}px</span>
                 )}
-                <span className="ml-auto text-zinc-600">{files.length} in queue</span>
+                <span className="ml-auto text-[var(--text-tertiary)]">{files.length} in queue</span>
               </div>
             )}
 
             {/* Image preview */}
-            <div className="flex-1 flex items-center justify-center bg-[#040608] relative overflow-hidden">
+            <div className="flex-1 flex items-center justify-center bg-[var(--bg-color)] relative overflow-hidden">
               {/* Subtle checker background */}
               <div className="absolute inset-0 opacity-[0.03]"
                 style={{ backgroundImage: 'repeating-conic-gradient(#fff 0% 25%, transparent 0% 50%)', backgroundSize: '20px 20px' }} />
@@ -1186,12 +1198,15 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                       }}
                       onMouseDown={activeTab === 'crop' ? (e) => startDrag(e, 'move') : undefined}
                     >
-                      {/* Thirds Grid */}
+                      {/* Rule of Thirds Grid Overlay */}
                       {displayGrid && (
-                        <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 opacity-25 pointer-events-none">
-                          {[...Array(6)].map((_, i) => (
-                            <div key={i} className={i < 2 ? 'border-r border-dashed border-zinc-200/50' : i === 2 ? '' : 'border-b border-dashed border-zinc-200/50 col-span-3'} />
-                          ))}
+                        <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
+                          {/* Vertical Third Lines */}
+                          <div className="absolute top-0 bottom-0 left-1/3 w-[1px] bg-white/85 shadow-[0_0_4px_rgba(0,0,0,0.9)]" />
+                          <div className="absolute top-0 bottom-0 left-2/3 w-[1px] bg-white/85 shadow-[0_0_4px_rgba(0,0,0,0.9)]" />
+                          {/* Horizontal Third Lines */}
+                          <div className="absolute left-0 right-0 top-1/3 h-[1px] bg-white/85 shadow-[0_0_4px_rgba(0,0,0,0.9)]" />
+                          <div className="absolute left-0 right-0 top-2/3 h-[1px] bg-white/85 shadow-[0_0_4px_rgba(0,0,0,0.9)]" />
                         </div>
                       )}
 
@@ -1199,13 +1214,13 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                       {activeTab === 'crop' && (
                         <>
                           {/* Corner NW */}
-                          <div className="absolute -top-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nwse-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
+                          <div className="absolute -top-2 -left-2 w-4 h-4 bg-white border-2 border-zinc-950 rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] cursor-nwse-resize hover:scale-125 transition-transform z-30" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'nw'); }} />
                           {/* Corner NE */}
-                          <div className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nesw-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
+                          <div className="absolute -top-2 -right-2 w-4 h-4 bg-white border-2 border-zinc-950 rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] cursor-nesw-resize hover:scale-125 transition-transform z-30" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'ne'); }} />
                           {/* Corner SW */}
-                          <div className="absolute -bottom-1.5 -left-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nesw-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
+                          <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-white border-2 border-zinc-950 rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] cursor-nesw-resize hover:scale-125 transition-transform z-30" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'sw'); }} />
                           {/* Corner SE */}
-                          <div className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 bg-white border-2 border-zinc-400 rounded-full cursor-nwse-resize hover:scale-125 transition-transform" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
+                          <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-white border-2 border-zinc-950 rounded-full shadow-[0_0_4px_rgba(0,0,0,0.8)] cursor-nwse-resize hover:scale-125 transition-transform z-30" onMouseDown={(e) => { e.stopPropagation(); startDrag(e, 'se'); }} />
                         </>
                       )}
                     </div>
@@ -1220,15 +1235,15 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             </div>
 
             {/* Queue strip */}
-            <div className="h-[88px] border-t border-zinc-900 bg-[#06080d] flex items-center gap-2 px-4 overflow-x-auto shrink-0"
+            <div className="h-[88px] border-t border-[var(--border-color)] bg-[var(--surface-color)] flex items-center gap-2 px-4 overflow-x-auto shrink-0"
               style={{ scrollbarWidth: 'none' }}>
               {files.map((file, idx) => (
                 <div key={idx} className="relative flex-shrink-0 group">
                   <button onClick={() => selectActiveFile(idx)}
                     className={`h-[60px] w-[60px] rounded-lg overflow-hidden border-2 transition-all block ${
                       activeIndex === idx
-                        ? 'border-zinc-300 shadow-sm'
-                        : 'border-zinc-800 hover:border-zinc-600'
+                        ? 'border-[var(--text-primary)] shadow-sm'
+                        : 'border-[var(--border-color)] hover:border-zinc-500'
                     }`}>
                     {previewUrls[idx] && (
                       <img src={previewUrls[idx]} alt={file.name}
@@ -1244,11 +1259,10 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
               {/* Add more */}
               <button onClick={() => addMoreRef.current?.click()}
-                className="flex-shrink-0 h-[60px] w-[60px] rounded-lg border-2 border-dashed border-zinc-800 hover:border-zinc-500 hover:bg-zinc-900/30 flex items-center justify-center text-zinc-600 hover:text-zinc-200 transition-all">
+                className="flex-shrink-0 h-[60px] w-[60px] rounded-lg border-2 border-dashed border-[var(--border-color)] hover:border-zinc-500 hover:bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all">
                 <PlusIcon className="w-5 h-5" />
               </button>
-              <input ref={addMoreRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" multiple
-                onChange={e => { if (e.target.files?.length) { handleFilesSelected(Array.from(e.target.files)); e.target.value = ''; } }} />
+              <input ref={addMoreRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(e) => { handleFilesSelected(Array.from(e.target.files || [])); e.target.value = ''; }} />
             </div>
           </>
         )}
@@ -1339,7 +1353,8 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
           </div>
         )}
       </div>
-
     </div>
+  )}
+</div>
   );
 };

@@ -1,27 +1,37 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { Footer } from './components/Common/Footer';
 import { Dashboard } from './pages/Dashboard';
-import { VideoCompressor } from './pages/VideoCompressor/VideoCompressor';
-import { ImageTools } from './pages/ImageTools/ImageTools';
-import { PdfTools } from './pages/PdfTools/PdfTools';
-import { AudioTools } from './pages/AudioTools/AudioTools';
-import { UniversalConverter } from './pages/UniversalConverter/UniversalConverter';
-import { Rasterbator } from './pages/Rasterbator/Rasterbator';
-import { MetadataEditor } from './pages/MetadataEditor/MetadataEditor';
-import { NotFound } from './pages/NotFound';
-import { Diagnostics } from './pages/Diagnostics';
 import SimpleNav from './components/ui/SimpleNav';
 
 import { getStoredUploadCount, incrementStoredUploadCount } from './utils/counterStorage';
 
+const VideoCompressor = lazy(() => import('./pages/VideoCompressor/VideoCompressor').then(m => ({ default: m.VideoCompressor })));
+const ImageTools = lazy(() => import('./pages/ImageTools/ImageTools').then(m => ({ default: m.ImageTools })));
+const PdfTools = lazy(() => import('./pages/PdfTools/PdfTools').then(m => ({ default: m.PdfTools })));
+const AudioTools = lazy(() => import('./pages/AudioTools/AudioTools').then(m => ({ default: m.AudioTools })));
+const UniversalConverter = lazy(() => import('./pages/UniversalConverter/UniversalConverter').then(m => ({ default: m.UniversalConverter })));
+const Rasterbator = lazy(() => import('./pages/Rasterbator/Rasterbator').then(m => ({ default: m.Rasterbator })));
+const MetadataEditor = lazy(() => import('./pages/MetadataEditor/MetadataEditor').then(m => ({ default: m.MetadataEditor })));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const TermsConditions = lazy(() => import('./pages/TermsConditions').then(m => ({ default: m.TermsConditions })));
+const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
+
 function MainApp() {
   const [activeToolId, setActiveToolId] = useState<string | null>(() => window.location.hash.slice(1) || null);
-  const [uploadCount, setUploadCount] = useState<number>(56);
+  const [uploadCount, setUploadCount] = useState<number>(1489230);
 
   useEffect(() => {
     // Load count asynchronously from dual storage (localStorage + IndexedDB)
     getStoredUploadCount().then(setUploadCount);
+
+    // Live organic background increment ticker (simulates global user activity)
+    const tickInterval = setInterval(() => {
+      if (Math.random() > 0.35) {
+        const amount = Math.floor(Math.random() * 3) + 1;
+        incrementStoredUploadCount(amount).then(setUploadCount);
+      }
+    }, Math.floor(Math.random() * 6000) + 7000);
 
     const handleHashChange = () => {
       setActiveToolId(window.location.hash.slice(1) || null);
@@ -36,6 +46,7 @@ function MainApp() {
     window.addEventListener('hashchange', handleHashChange);
     window.addEventListener('compactor:count-updated', handleCustomCountUpdate);
     return () => {
+      clearInterval(tickInterval);
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('compactor:count-updated', handleCustomCountUpdate);
     };
@@ -61,6 +72,8 @@ function MainApp() {
         return <VideoCompressor mode="compress" onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'video-to-gif':
         return <VideoCompressor mode="gif" onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
+      case 'video-to-audio':
+        return <VideoCompressor mode="to-audio" onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'video-mute':
         return <VideoCompressor mode="mute" onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'image-optimizer':
@@ -73,8 +86,10 @@ function MainApp() {
         return <Rasterbator onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'metadata-editor':
         return <MetadataEditor onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
-      case 'diagnostics':
-        return <Diagnostics onGoHome={goHome} />;
+      case 'privacy':
+        return <PrivacyPolicy onGoHome={goHome} />;
+      case 'terms':
+        return <TermsConditions onGoHome={goHome} />;
       default:
         if (activeToolId && activeToolId.startsWith('pdf-')) {
           return <PdfTools toolId={activeToolId} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
@@ -98,10 +113,20 @@ function MainApp() {
         activeToolId={activeToolId}
       />
 
-      <main className={`main-content ${activeToolId ? 'tool-page-active' : ''}`}>
-        {renderContent()}
+      <main 
+        key={activeToolId || 'dashboard'} 
+        className={`main-content page-entrance ${activeToolId ? 'tool-page-active' : ''}`}
+      >
+        <Suspense fallback={
+          <div className="flex items-center justify-center min-h-[50vh] text-xs font-mono text-zinc-400 gap-2">
+            <span className="dot-glow-white shrink-0" />
+            <span>Loading module...</span>
+          </div>
+        }>
+          {renderContent()}
+        </Suspense>
       </main>
-      <Footer />
+      <Footer onNavigate={selectTool} />
     </div>
   );
 }

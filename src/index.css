@@ -194,13 +194,14 @@ a {
 .main-content {
   flex: 1;
   width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* No top padding: hero is full viewport and handles its own spacing */
-  padding: 0 0 4rem 0;
+  padding: 0 1.5rem 4rem;
 }
 
 /* â”€â”€ Glass nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
@@ -226,11 +227,7 @@ a {
   display: flex;
   align-items: center;
   overflow: hidden;
-  /* The cyber cube image */
-  background-image: url('/cyber-cube-bg.png');
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
+  background-color: var(--bg-color);
 }
 
 /* Dark vignette overlay so text stays readable */
@@ -658,195 +655,16 @@ a {
 }
 
 /* ==========================================================================
-   GLOBAL CYBER THEME OVERRIDES FOR SHADCN & COMPONENT LAYER
+   ULTRA MINIMAL DARK CHARCOAL THEME (NOTION STYLE)
    ========================================================================== */
-
-/* 1. Global Cards Override */
-.card,
-[class*="Card"],
-[data-slot="card"],
-.dark .card,
-.dark [class*="Card"],
-.dark [data-slot="card"] {
-  background: rgba(10, 13, 18, 0.6) !important;
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
-  border-radius: 16px !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
-}
-
-.card-header,
-[class*="CardHeader"],
-[data-slot="card-header"] {
-  background: rgba(0, 0, 0, 0.25) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-  border-top-left-radius: 16px !important;
-  border-top-right-radius: 16px !important;
-  padding: 1.5rem 1.5rem !important;
-}
-
-[data-slot="card-content"] {
-  padding: 1.5rem !important;
-}
-
-/* 2. Global Primary Buttons (Vibrant Neon Green/Cyan) */
-.bg-sky-500,
-.bg-sky-600,
-.bg-primary,
-button[class*="bg-sky-"],
-button[class*="bg-blue-"] {
-  background: linear-gradient(135deg, var(--cube-green) 0%, #00cc6a 100%) !important;
-  color: #020804 !important;
-  font-weight: 800 !important;
-  border: none !important;
-  box-shadow: 0 0 15px rgba(0, 255, 136, 0.3) !important;
-  transition: all 0.3s ease !important;
-}
-
-.bg-sky-500:hover,
-.bg-sky-600:hover,
-.bg-primary:hover,
-button[class*="bg-sky-"]:hover,
-button[class*="bg-blue-"]:hover {
-  background: linear-gradient(135deg, #1affa0 0%, var(--cube-green) 100%) !important;
-  box-shadow: 0 0 25px rgba(0, 255, 136, 0.5) !important;
-  transform: translateY(-1px) !important;
-}
-
-.bg-sky-500:active,
-.bg-sky-600:active,
-button[class*="bg-sky-"]:active {
-  transform: scale(0.98) !important;
-}
-
-/* 3. Global Muted Outline Buttons & Borders */
-.border-zinc-200,
-.dark\:border-zinc-800,
-.border-zinc-150,
-.dark\:border-zinc-900,
-div[class*="border-zinc-"],
-button[class*="border-"] {
-  border-color: rgba(255, 255, 255, 0.08) !important;
-}
-
-button[class*="hover\:bg-zinc-"],
-button[class*="hover\:bg-rose-"],
-button[class*="variant-outline"] {
-  transition: all 0.2s ease !important;
-}
-
-/* 4. Global Inputs & Textareas */
-input,
-textarea,
-input[class*="Input"] {
-  background-color: #06080c !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  color: #d0e8d8 !important;
-  border-radius: 8px !important;
-  transition: all 0.2s ease !important;
-}
-
-input:focus,
-input[class*="Input"]:focus {
-  border-color: var(--cube-green) !important;
-  box-shadow: 0 0 10px rgba(0, 255, 136, 0.2) !important;
-  outline: none !important;
-}
-
-/* 5. Global Dropdowns and Select Bars */
-[role="combobox"],
-[class*="SelectTrigger"],
-select {
-  background-color: #06080c !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  color: #d0e8d8 !important;
-  border-radius: 8px !important;
-}
-
-[role="listbox"],
-[class*="SelectContent"],
-.select-content {
-  background-color: #080c12 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #d0e8d8 !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6) !important;
-}
-
-[role="option"]:hover,
-[class*="SelectItem"]:hover {
-  background-color: rgba(0, 255, 136, 0.1) !important;
-  color: #00FF88 !important;
-}
-
-/* 6. Sliders Overrides */
-[data-slot="slider-track"],
-[class*="SliderTrack"] {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-  height: 6px !important;
-}
-
-[data-slot="slider-range"],
-[class*="SliderRange"] {
-  background: linear-gradient(90deg, var(--cube-green), var(--cube-cyan)) !important;
-  box-shadow: 0 0 8px rgba(0, 255, 136, 0.5) !important;
-}
-
-[data-slot="slider-thumb"],
-[class*="SliderThumb"] {
-  border: 2px solid var(--cube-green) !important;
-  background-color: #040608 !important;
-  box-shadow: 0 0 12px rgba(0, 255, 136, 0.6) !important;
-  width: 18px !important;
-  height: 18px !important;
-}
-
-/* 7. Active Tool Page Layout & Padding Override */
-.main-content.tool-page-active {
-  padding: 100px 2rem 4rem 2rem !important;
-  max-width: 1600px !important;
-  margin: 0 auto !important;
-  width: 100% !important;
-  box-sizing: border-box !important;
-}
-
-/* 8. Nested Dropzones and Queue Items */
-.card-content .group.relative {
-  border-radius: 12px !important;
-  padding: 2rem 1.5rem !important;
-  margin-top: 1rem !important;
-}
-
-.dark .bg-zinc-50\/30,
-.dark .bg-zinc-900\/20,
-.bg-zinc-50\/30,
-.bg-zinc-900\/20 {
-  background-color: rgba(6, 8, 12, 0.5) !important;
-  border: 1px solid rgba(255, 255, 255, 0.04) !important;
-  border-radius: 8px !important;
-  padding: 0.75rem 1rem !important;
-}
-
-/* 9. Accents and Icon Color Alignment */
-.text-sky-500,
-.text-sky-600,
-.text-blue-500,
-.text-blue-600 {
-  color: var(--cube-cyan) !important;
-}
-
-.text-green-500,
-.text-green-600 {
-  color: var(--cube-green) !important;
-}
 
 /* ── ULTRA MINIMAL LIGHT GREY & DOTTED OUTLINE OVERRIDES ── */
 /* ── ULTRA MINIMAL DARK CHARCOAL & BLUEPRINT GRID OVERRIDES ── */
 :root {
   /* Colors */
-  --bg-color: #0b0c10 !important;
-  --surface-color: #121318 !important;
-  --surface-hover: #171921 !important;
+  --bg-color: #09090b !important;
+  --surface-color: #18181b !important;
+  --surface-hover: #27272a !important;
   --border-color: #27272a !important;
   --text-primary: #f4f4f5 !important;
   --text-secondary: #a1a1aa !important;
@@ -860,8 +678,8 @@ select {
   --secondary-hover: #d4d4d8 !important;
   --secondary-light: #18181b !important;
 
-  --cube-bg: #0b0c10 !important;
-  --cube-surface: #121318 !important;
+  --cube-bg: #09090b !important;
+  --cube-surface: #18181b !important;
   --cube-border: #27272a !important;
   --cube-border-hover: #ffffff !important;
   --cube-green: #ffffff !important;
@@ -960,11 +778,11 @@ Card,
 \.bg-\[\#06080d\],
 .bg-zinc-900\/30,
 \.bg-\[\#040608\] {
-  background: #121318 !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: #18181b !important;
+  border: 1px solid #27272a !important;
   box-shadow: none !important;
   border-radius: 12px !important;
-  color: #e4e4e7 !important;
+  color: #f4f4f5 !important;
 }
 
 .tool-big::before {
@@ -1112,19 +930,19 @@ Card,
 \.bg-\[\#121318\],
 .tool-big,
 .tool-small {
-  background: rgba(18, 20, 27, 0.45) !important;
+  background: #18181b !important;
   backdrop-filter: blur(16px) saturate(120%) !important;
   -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid #27272a !important;
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3) !important;
   border-radius: 16px !important;
-  color: #e4e4e7 !important;
+  color: #f4f4f5 !important;
 }
 
 .tool-big:hover,
 .tool-small:hover {
-  background: rgba(26, 29, 39, 0.65) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  background: #27272a !important;
+  border-color: #3f3f46 !important;
   box-shadow:
     0 20px 40px rgba(0, 0, 0, 0.35),
     0 0 0 1px rgba(255, 255, 255, 0.1) !important;
@@ -1134,24 +952,27 @@ Card,
 input,
 select,
 textarea,
+[data-slot="input"],
+[data-slot="select-trigger"],
+[data-slot="select-content"],
 .bg-zinc-900,
 .bg-zinc-900\/20,
 .bg-zinc-50\/50,
 .bg-white {
-  background: rgba(255, 255, 255, 0.02) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  backdrop-filter: blur(8px) saturate(100%) !important;
-  -webkit-backdrop-filter: blur(8px) saturate(100%) !important;
-  color: #ffffff !important;
+  background: #18181b !important;
+  border: 1px solid #27272a !important;
+  color: #f4f4f5 !important;
   transition: all 0.2s ease !important;
 }
 
 input:focus,
 select:focus,
-textarea:focus {
-  border-color: rgba(255, 255, 255, 0.25) !important;
-  background: rgba(255, 255, 255, 0.04) !important;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.04) !important;
+textarea:focus,
+[data-slot="input"]:focus-visible,
+[data-slot="select-trigger"]:focus-visible {
+  border-color: #3f3f46 !important;
+  background: #27272a !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.05) !important;
   outline: none !important;
 }
 
@@ -1162,6 +983,14 @@ textarea:focus {
 
 .text-zinc-400 {
   color: #d4d4d8 !important;
+}
+
+.group:hover .group-hover\:text-black,
+.group:hover \.group-hover\:\!text-black,
+.group:hover svg.group-hover\:text-black,
+.group:hover svg\.group-hover\:\!text-black {
+  color: #000000 !important;
+  stroke: #000000 !important;
 }
 
 /* Shared application primitives */
@@ -1186,8 +1015,46 @@ body,
 }
 
 .main-content.tool-page-active {
-  max-width: 1240px !important;
-  padding-top: 6.5rem !important;
+  max-width: 1160px !important;
+  margin: 0 auto !important;
+  padding-top: 5rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
+}
+
+/* Universal Glowing Status Dots System */
+.status-dot-glow,
+.dot-glow-emerald {
+  display: inline-block !important;
+  width: 0.625rem !important;
+  height: 0.625rem !important;
+  border-radius: 9999px !important;
+  background-color: #10b981 !important;
+  box-shadow: 0 0 8px #10b981, 0 0 16px rgba(16, 185, 129, 0.85), 0 0 24px rgba(16, 185, 129, 0.5) !important;
+  animation: dotNeonPulse 2s infinite ease-in-out !important;
+}
+
+.dot-glow-blue {
+  display: inline-block !important;
+  width: 0.625rem !important;
+  height: 0.625rem !important;
+  border-radius: 9999px !important;
+  background-color: #3b82f6 !important;
+  box-shadow: 0 0 8px #3b82f6, 0 0 16px rgba(59, 130, 246, 0.85), 0 0 24px rgba(59, 130, 246, 0.5) !important;
+  animation: dotNeonPulse 2s infinite ease-in-out !important;
+}
+
+@keyframes dotNeonPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 8px currentColor, 0 0 16px currentColor;
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+    box-shadow: 0 0 12px currentColor, 0 0 22px currentColor;
+  }
 }
 
 .button {
@@ -1500,11 +1367,11 @@ body,
 
 /* Compactor visual language: layered glass, soft light, and intentional motion. */
 :root {
-  --ink: #ecece8;
-  --soft-ink: #aaa9a5;
-  --night: #111110;
-  --glass: rgba(33, 33, 31, .6);
-  --hairline: rgba(255, 255, 255, .105);
+  --ink: #f4f4f5;
+  --soft-ink: #a1a1aa;
+  --night: #09090b;
+  --glass: #18181b;
+  --hairline: #27272a;
 }
 
 body {
@@ -1837,7 +1704,12 @@ body {
 
 .main-content.tool-page-active {
   position: relative;
-  padding-top: 8.7rem !important;
+  width: 100%;
+  max-width: 1160px !important;
+  margin: 0 auto !important;
+  padding-top: 7rem !important;
+  padding-left: 1.5rem !important;
+  padding-right: 1.5rem !important;
 }
 
 .tool-layout {
@@ -2011,8 +1883,9 @@ body {
   }
 
   .main-content.tool-page-active {
-    padding-top: 5.5rem !important;
-    padding-inline: .65rem !important;
+    padding-top: 6rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
   }
 
   .nav-note {
@@ -2213,9 +2086,9 @@ body {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
   overflow: hidden;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--border-color) !important;
   border-radius: 1.15rem;
-  background: rgba(15, 15, 15, .78);
+  background: var(--surface-color) !important;
   box-shadow: inset 0 1px rgba(255, 255, 255, .05), 0 30px 70px rgba(0, 0, 0, .24);
   animation: fade-up .45s both;
 }
@@ -2225,8 +2098,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid var(--hairline);
-  background: rgba(255, 255, 255, .025);
+  border-right: 1px solid var(--border-color) !important;
+  background: var(--surface-color) !important;
 }
 
 .image-workbench__main {
@@ -2368,5 +2241,46 @@ a.bg-zinc-50:hover {
   .image-workbench__main {
     min-height: auto;
     padding-bottom: 2rem;
+  }
+}
+
+/* Universal White Neon Glowing Dot */
+.dot-glow-white,
+.status-dot-glow {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background-color: #ffffff !important;
+  box-shadow: 0 0 6px #ffffff, 0 0 12px rgba(255, 255, 255, 0.95), 0 0 18px rgba(255, 255, 255, 0.7) !important;
+  display: inline-block !important;
+  animation: pulse-white-glow 2s infinite ease-in-out;
+}
+
+@keyframes pulse-white-glow {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 6px #ffffff, 0 0 12px rgba(255, 255, 255, 0.95), 0 0 18px rgba(255, 255, 255, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    box-shadow: 0 0 3px #ffffff, 0 0 6px rgba(255, 255, 255, 0.5);
+    transform: scale(0.85);
+  }
+}
+
+/* Smooth View & Page Entrance Transitions */
+.page-entrance {
+  animation: pageFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }

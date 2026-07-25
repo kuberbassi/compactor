@@ -8,38 +8,49 @@ interface ProgressBarProps {
 
 export const ProgressBar: React.FC<ProgressBarProps> = ({ 
   progress, 
-  statusText = "Processing...", 
-  subText = "Your file is being prepared."
+  statusText = "Processing Video...", 
+  subText = "Compressing stream while preserving full video duration..."
 }) => {
+  // Strictly clamp progress between 0 and 100 to prevent 100000000% overflow glitches
+  const safeProgress = Number.isFinite(progress)
+    ? Math.max(0, Math.min(100, Math.round(progress)))
+    : 0;
+
   return (
-    <div className="flex flex-col items-center justify-center p-10 border border-zinc-900 bg-[#0a0b0d] backdrop-blur-md rounded-3xl max-w-lg mx-auto w-full shadow-lg">
-      {/* Spinner */}
-      <div className="w-8 h-8 border-[3px] border-[var(--text-primary)] border-t-transparent rounded-full animate-spin mb-6"></div>
-      
-      <div className="text-lg font-bold tracking-tight text-[var(--text-primary)] text-center mb-6">{statusText}</div>
-      
-      {/* Progress bar - bigger and more visible */}
-      <div className="w-full bg-[var(--bg-color)] h-4 rounded-full relative mb-3 border border-[var(--border-color)] overflow-hidden">
-        <div 
-          className="h-full bg-[var(--text-primary)] rounded-full transition-all duration-300 ease-out relative"
-          style={{ 
-            width: `${progress}%`
-          }}
-        >
-          {/* Animated shimmer on bar */}
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_1.5s_infinite]" />
-        </div>
+    <div className="flex flex-col items-center justify-center p-8 border border-[var(--border-color)] bg-[var(--surface-color)] rounded-2xl max-w-lg mx-auto w-full shadow-lg transition-all duration-300">
+      {/* Outer Spinner */}
+      <div className="relative w-16 h-16 flex items-center justify-center mb-6">
+        <div className="w-14 h-14 border-2 border-[var(--border-color)] border-t-[var(--text-primary)] rounded-full animate-spin" />
+        <span className="absolute text-[12px] font-extrabold text-[var(--text-primary)] font-sans tabular-nums">
+          {safeProgress}%
+        </span>
       </div>
       
-      <div className="text-2xl font-black text-[var(--text-primary)] mb-2">
-        {Math.round(progress)}%
+      {/* Status Title */}
+      <div className="text-sm font-bold tracking-tight text-[var(--text-primary)] text-center mb-2">
+        {statusText}
+      </div>
+      
+      {/* Smooth Progress Bar Container */}
+      <div className="w-full bg-[var(--bg-color)] h-2.5 rounded-full relative my-3 border border-[var(--border-color)] overflow-hidden p-0.5">
+        <div 
+          className="h-full bg-[var(--text-primary)] rounded-full transition-all duration-300 ease-out relative opacity-90"
+          style={{ width: `${safeProgress}%` }}
+        />
+      </div>
+      
+      {/* Progress metrics */}
+      <div className="flex justify-between w-full text-[11px] font-bold text-[var(--text-secondary)] px-1 mt-1">
+        <span>Processing</span>
+        <span className="text-[var(--text-primary)] font-sans font-bold tabular-nums">{safeProgress}% Complete</span>
       </div>
       
       {subText && (
-        <div className="text-sm text-[var(--text-secondary)] max-w-xs text-center leading-relaxed mt-2 font-medium">
+        <div className="text-xs text-[var(--text-secondary)] max-w-xs text-center leading-relaxed mt-3 font-medium">
           {subText}
         </div>
       )}
     </div>
   );
 };
+

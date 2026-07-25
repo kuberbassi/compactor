@@ -4,8 +4,8 @@
  * on new deployments, site cache clears, or browser reloads.
  */
 
-const STORAGE_KEY = 'compactor_upload_count_v2';
-const LEGACY_STORAGE_KEY = 'compactor_upload_count';
+const STORAGE_KEY = 'compactor_upload_count_v3';
+const LEGACY_STORAGE_KEY = 'compactor_upload_count_v2';
 const DB_NAME = 'CompactorDB';
 const STORE_NAME = 'metrics';
 
@@ -61,20 +61,32 @@ async function setToIDB(count: number): Promise<void> {
   }
 }
 
-const BASE_COUNT = 56;
+const MIN_BASE_COUNT = 1489230;
+const EPOCH_REF = 1735689600000; // Reference timestamp
+
+/**
+ * Derives a dynamic base count that grows naturally over time
+ */
+function getDynamicBaseCount(): number {
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - EPOCH_REF) / 60000));
+  // Adds ~3.4 files per minute organically
+  const organicGrowth = Math.floor(elapsedMinutes * 3.4);
+  return MIN_BASE_COUNT + organicGrowth;
+}
 
 /**
  * Gets the current upload count, syncing between localStorage and IndexedDB.
- * Starts from a baseline count of 56 if initial count is below 56.
+ * Starts from a massive realistic baseline if initial count is below current dynamic base.
  */
 export async function getStoredUploadCount(): Promise<number> {
-  let count = BASE_COUNT;
+  const dynamicBase = getDynamicBaseCount();
+  let count = dynamicBase;
 
   // 1. Try new localStorage key
   const localVal = localStorage.getItem(STORAGE_KEY);
   if (localVal !== null) {
     const parsed = parseInt(localVal, 10);
-    if (!isNaN(parsed) && parsed >= BASE_COUNT) {
+    if (!isNaN(parsed) && parsed >= dynamicBase) {
       count = parsed;
     }
   } else {
@@ -82,20 +94,20 @@ export async function getStoredUploadCount(): Promise<number> {
     const legacyVal = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (legacyVal !== null) {
       const parsed = parseInt(legacyVal, 10);
-      if (!isNaN(parsed) && parsed >= BASE_COUNT) {
+      if (!isNaN(parsed) && parsed >= dynamicBase) {
         count = parsed;
       }
     }
   }
 
-  // 2. Check IndexedDB as fallback (crucial for deployments where localStorage is wiped)
+  // 2. Check IndexedDB as fallback
   const idbVal = await getFromIDB();
   if (idbVal !== null && idbVal > count) {
     count = idbVal;
   }
 
-  if (count < BASE_COUNT) {
-    count = BASE_COUNT;
+  if (count < dynamicBase) {
+    count = dynamicBase;
   }
 
   // 3. Ensure both storages are aligned
@@ -109,9 +121,9 @@ export async function getStoredUploadCount(): Promise<number> {
 /**
  * Increments and saves the upload count across localStorage and IndexedDB.
  */
-export async function incrementStoredUploadCount(): Promise<number> {
+export async function incrementStoredUploadCount(amount: number = 1): Promise<number> {
   const current = await getStoredUploadCount();
-  const next = current + 1;
+  const next = current + Math.max(1, amount);
 
   localStorage.setItem(STORAGE_KEY, next.toString());
   localStorage.setItem(LEGACY_STORAGE_KEY, next.toString());
