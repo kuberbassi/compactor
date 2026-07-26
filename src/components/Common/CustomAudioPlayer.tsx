@@ -112,27 +112,28 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         onLoadedMetadata={handleLoadedMetadata}
       />
 
+      {/* Header Info */}
       {(title || subtitle) && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 truncate">
-            <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0">
-              <Music className="w-3.5 h-3.5 text-zinc-300" />
+        <div className="flex items-center justify-between gap-3 border-b border-zinc-800/60 pb-2.5 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
+              <Music className="w-3.5 h-3.5" />
             </div>
-            <div className="truncate">
+            <div className="min-w-0 flex-1 truncate">
               {title && <span className="text-xs font-bold text-white block truncate">{title}</span>}
               {subtitle && <span className="text-[10px] text-zinc-400 font-medium block truncate">{subtitle}</span>}
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 ml-2">
             {pitchSemitones !== 0 && (
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-300">
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 whitespace-nowrap">
                 {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones
               </span>
             )}
             {speedRatio !== 1.0 && (
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-300">
-                {speedRatio}x Speed
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 whitespace-nowrap">
+                {speedRatio.toFixed(2)}x Speed
               </span>
             )}
           </div>

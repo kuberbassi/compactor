@@ -548,16 +548,16 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="text-zinc-400 font-bold uppercase tracking-wider">PITCH</span>
                     <span className="text-indigo-300 font-extrabold text-sm">
-                      {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones}
+                      {pitchSemitones > 0 ? `+${useSemitonesMode ? pitchSemitones : pitchSemitones.toFixed(2)}` : (useSemitonesMode ? pitchSemitones : pitchSemitones.toFixed(2))}
                     </span>
                   </div>
                   <input 
                     type="range" 
                     min="-12" 
                     max="12" 
-                    step="1"
+                    step={useSemitonesMode ? "1" : "0.01"}
                     value={pitchSemitones}
-                    onChange={(e) => setPitchSemitones(parseInt(e.target.value, 10))}
+                    onChange={(e) => setPitchSemitones(parseFloat(e.target.value))}
                     className="w-full accent-indigo-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
@@ -585,18 +585,23 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               {/* Dynamic KEY & BPM Info Cards Column */}
               <div className="md:col-span-4 space-y-3">
                 {/* KEY DISPLAY CARD */}
-                <div className="p-3.5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl space-y-1 text-center">
+                <div className="p-4 bg-zinc-950/90 border border-zinc-800/90 rounded-xl text-center space-y-2 flex flex-col items-center justify-center min-h-[110px]">
                   <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">KEY</span>
-                  <div className="text-2xl font-black text-white tracking-tight leading-none">
-                    {transposedKey.root} <span className="text-xs font-medium text-zinc-400 font-mono block">{transposedKey.mode}</span>
+                  <div className="flex flex-col items-center justify-center leading-none">
+                    <span className="text-3xl font-black text-white tracking-tight">{transposedKey.root}</span>
+                    <span className="text-xs font-semibold text-indigo-400 font-mono mt-1 uppercase tracking-wider">{transposedKey.mode}</span>
                   </div>
-                  <div className="flex items-center justify-center gap-1.5 pt-1">
+                  <div className="flex items-center justify-center gap-1.5 pt-1.5 border-t border-zinc-900 w-full">
                     <input 
                       type="checkbox" 
                       id="semitones-check"
                       checked={useSemitonesMode} 
-                      onChange={(e) => setUseSemitonesMode(e.target.checked)}
-                      className="rounded accent-indigo-500 w-3 h-3 cursor-pointer"
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setUseSemitonesMode(checked);
+                        if (checked) setPitchSemitones(Math.round(pitchSemitones));
+                      }}
+                      className="rounded accent-indigo-500 w-3.5 h-3.5 cursor-pointer"
                     />
                     <label htmlFor="semitones-check" className="text-[11px] font-mono text-zinc-400 cursor-pointer select-none">
                       semitones
