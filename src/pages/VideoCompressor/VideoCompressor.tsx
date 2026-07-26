@@ -652,7 +652,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">Engine</label>
                       <Tabs value={engine} onValueChange={(v: string) => setEngine(v as any)} className="w-full">
-                        <TabsList className="grid grid-cols-2 w-full h-8">
+                        <TabsList className="video-engine-tabs grid grid-cols-2 w-full h-8">
                           <TabsTrigger value="wasm" className="text-[11px] py-1">WASM</TabsTrigger>
                           <TabsTrigger value="native" className="text-[11px] py-1">Native</TabsTrigger>
                         </TabsList>

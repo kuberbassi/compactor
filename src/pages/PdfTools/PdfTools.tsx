@@ -1137,7 +1137,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   };
 
   return (
-    <div className="tool-layout">
+    <div className="tool-layout pdf-tool-layout">
       <ToolHeader 
         title={getToolTitle()} 
         description={getToolDesc()} 
@@ -1392,7 +1392,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                     maxSizeMB={150}
                   />
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="pdf-mobile-stack grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Card className="md:col-span-2 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
                       <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
                         <div>
@@ -1738,7 +1738,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                     maxSizeMB={200}
                   />
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="pdf-mobile-stack grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Card className="md:col-span-2 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-5">
                       <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
                         <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Source Document</span>
@@ -2374,19 +2374,19 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       {/* POWERTOYS PEEK MODAL */}
       {peekPageIndex !== null && pagesList[peekPageIndex] && createPortal(
         <div 
-          className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md flex flex-col justify-between p-4 sm:p-6 overflow-hidden select-none animate-in fade-in duration-200"
+          className="pdf-peek fixed inset-0 z-[99999] bg-black/60 backdrop-blur-md flex flex-col justify-between p-4 sm:p-6 overflow-hidden select-none animate-in fade-in duration-200"
           onClick={() => setPeekPageIndex(null)}
         >
           <div 
-            className="w-full max-w-5xl mx-auto flex items-center justify-between bg-zinc-950/80 backdrop-blur-md border border-zinc-800/80 p-3 rounded-2xl shadow-2xl shrink-0 z-20"
+            className="pdf-peek__header w-full max-w-5xl mx-auto flex items-center justify-between bg-zinc-950/80 backdrop-blur-md border border-zinc-800/80 p-3 rounded-2xl shadow-2xl shrink-0 z-20"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
+            <div className="pdf-peek__file flex items-center gap-3 min-w-0 flex-1">
               <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 font-bold text-xs">
                 P.{peekPageIndex + 1}
               </div>
-              <div>
-                <span className="block text-xs font-bold text-white truncate max-w-xs sm:max-w-md">
+              <div className="min-w-0 flex-1">
+                <span className="pdf-peek__title block text-xs font-bold text-white truncate max-w-xs sm:max-w-md">
                   Page {peekPageIndex + 1} of {pagesList.length} &bull; {singleFile?.file.name || multipleFiles[peekPageIndex]?.file.name}
                 </span>
               </div>
@@ -2397,7 +2397,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                 variant="ghost"
                 size="sm"
                 onClick={() => setPeekPageIndex(null)}
-                className="h-8 text-xs text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg px-3 flex items-center gap-1 whitespace-nowrap"
+                className="pdf-peek__close h-8 text-xs text-zinc-400 hover:text-white hover:bg-zinc-900 rounded-lg px-3 flex items-center gap-1 whitespace-nowrap"
               >
                 <CloseIcon className="w-4 h-4" /> Close (Esc)
               </Button>
@@ -2405,26 +2405,27 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
           </div>
 
           <div 
-            className="flex-1 w-full max-w-5xl mx-auto flex items-center justify-center relative overflow-hidden my-3"
+            className="pdf-peek__stage flex-1 w-full max-w-5xl mx-auto flex items-center justify-center relative overflow-hidden my-3"
             onClick={e => e.stopPropagation()}
           >
             <button
               onClick={() => setPeekPageIndex(peekPageIndex > 0 ? peekPageIndex - 1 : pagesList.length - 1)}
-              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-zinc-900/90 border border-zinc-700 text-white flex items-center justify-center shadow-2xl hover:bg-zinc-800 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+              className="pdf-peek__previous absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-zinc-900/90 border border-zinc-700 text-white flex items-center justify-center shadow-2xl hover:bg-zinc-800 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+              aria-label="Previous page"
             >
               <ArrowLeft className="w-6 h-6" />
             </button>
 
-            <div className="w-full h-full flex items-center justify-center p-2">
+            <div className="pdf-peek__document w-full h-full flex items-center justify-center p-2">
               <div 
-                className="bg-white rounded-xl shadow-2xl border border-zinc-700 overflow-hidden flex items-center justify-center transition-transform duration-300 max-h-[78vh] max-w-[85vw]"
+                className="pdf-peek__paper bg-white rounded-xl shadow-2xl border border-zinc-700 overflow-hidden flex items-center justify-center transition-transform duration-300 max-h-[78vh] max-w-[85vw]"
                 style={{ transform: `rotate(${pagesList[peekPageIndex].rotation}deg)` }}
               >
                 {pagesList[peekPageIndex].thumbnailUrl ? (
                   <img 
                     src={pagesList[peekPageIndex].thumbnailUrl} 
                     alt={`Page ${peekPageIndex + 1}`} 
-                    className="max-h-[76vh] w-auto h-auto object-contain block rounded shadow-inner"
+                    className="pdf-peek__image max-h-[76vh] w-auto h-auto object-contain block rounded shadow-inner"
                   />
                 ) : (
                   <div className="w-96 h-[60vh] flex flex-col items-center justify-center text-zinc-600">
@@ -2437,7 +2438,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
             <button
               onClick={() => setPeekPageIndex(peekPageIndex < pagesList.length - 1 ? peekPageIndex + 1 : 0)}
-              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-zinc-900/90 border border-zinc-700 text-white flex items-center justify-center shadow-2xl hover:bg-zinc-800 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+              className="pdf-peek__next absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-zinc-900/90 border border-zinc-700 text-white flex items-center justify-center shadow-2xl hover:bg-zinc-800 hover:scale-110 active:scale-95 transition-all cursor-pointer"
+              aria-label="Next page"
             >
               <ArrowRight className="w-6 h-6" />
             </button>

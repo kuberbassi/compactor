@@ -230,7 +230,7 @@ export function MetadataEditor({ onGoHome, onUploadSuccess }: { onGoHome: () => 
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm p-6 space-y-6">
             
             {/* Header info */}
-            <div className="flex items-center justify-between pb-4 border-b border-[var(--border-color)]">
+            <div className="metadata-file-bar flex flex-col xs:flex-row xs:items-center justify-between gap-3 pb-4 border-b border-[var(--border-color)]">
               <div className="flex items-center gap-3 truncate min-w-0">
                 <button onClick={reset} className="text-zinc-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-zinc-900 border border-zinc-800">
                   <ArrowLeft className="w-4 h-4" />
@@ -247,7 +247,7 @@ export function MetadataEditor({ onGoHome, onUploadSuccess }: { onGoHome: () => 
               <Button
                 onClick={stripAllTags}
                 variant="outline"
-                className="h-8 text-[11px] font-bold text-rose-400 hover:text-rose-300 border-rose-900/40 hover:bg-rose-950/30 rounded-lg flex items-center gap-1.5"
+                className="w-full xs:w-auto h-8 text-[11px] font-bold text-rose-400 hover:text-rose-300 border-rose-900/40 hover:bg-rose-950/30 rounded-lg flex items-center justify-center gap-1.5 shrink-0"
                 title="Remove all EXIF and ID3 tags for privacy"
               >
                 <ShieldIcon className="w-3.5 h-3.5" /> Strip All Tags
@@ -255,7 +255,7 @@ export function MetadataEditor({ onGoHome, onUploadSuccess }: { onGoHome: () => 
             </div>
 
             {/* Layout grid containing Cover Image and Input Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            <div className="metadata-editor-grid grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
               
               {/* Cover Art Box (visible for audio formats) */}
               {isAudioFile ? (
@@ -393,7 +393,7 @@ export function MetadataEditor({ onGoHome, onUploadSuccess }: { onGoHome: () => 
             </div>
 
             {/* Action buttons */}
-            <div className="flex gap-3 pt-4 border-t border-[var(--border-color)]">
+            <div className="flex flex-col xs:flex-row gap-3 pt-4 border-t border-[var(--border-color)]">
               <Button onClick={reset} variant="outline" className="flex-1 rounded-full h-10 text-xs border-[var(--border-color)]">
                 Reset Form
               </Button>

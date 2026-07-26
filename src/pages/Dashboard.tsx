@@ -242,7 +242,7 @@ const TOOLS: ToolItem[] = [
     description: 'Combine and merge multiple audio tracks sequentially into a single track.',
     category: 'AUDIO & CONVERT',
     tags: ['Merge Audio Tracks', 'Reorder Queue', 'WAV / MP3 Output'],
-    illustrationType: 'audio-compress'
+    illustrationType: 'audio-joiner'
   },
   {
     id: 'audio-bpm-finder',
@@ -251,7 +251,7 @@ const TOOLS: ToolItem[] = [
     description: 'Analyze tempo (BPM), musical key and Camelot wheel code 100% client-side.',
     category: 'AUDIO & CONVERT',
     tags: ['BPM Detector', 'Key Identification', 'Camelot Wheel'],
-    illustrationType: 'audio-audio'
+    illustrationType: 'audio-bpm-finder'
   },
   {
     id: 'audio-pitch-speed',
@@ -260,7 +260,7 @@ const TOOLS: ToolItem[] = [
     description: 'Adjust pitch (-12 to +12 semitones) and playback speed (0.5x to 2.0x).',
     category: 'AUDIO & CONVERT',
     tags: ['Pitch Shift', 'Speed 0.5x-2.0x', 'Semitone Transpose'],
-    illustrationType: 'audio-compress'
+    illustrationType: 'audio-pitch-speed'
   },
   {
     id: 'universal-converter',
@@ -594,6 +594,50 @@ const IllustrationBanner: React.FC<{ type: string }> = ({ type }) => {
         </div>
       );
 
+    case 'audio-joiner':
+      return (
+        <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-violet-500/30 bg-violet-950/30 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="flex items-center gap-1.5 font-mono text-xs text-violet-200 bg-zinc-900 border border-violet-500/40 px-3 py-1.5 rounded-lg shadow">
+              <span className="text-[10px] text-zinc-400">Track 1 + Track 2</span>
+              <span className="text-violet-400 font-bold">➔ Merged</span>
+            </div>
+          </div>
+        </div>
+      );
+
+    case 'audio-bpm-finder':
+      return (
+        <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-emerald-500/30 bg-emerald-950/30 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="flex items-center gap-2.5 bg-zinc-900 border border-emerald-500/40 px-3 py-1.5 rounded-lg shadow">
+              <div className="text-center font-mono">
+                <span className="text-[9px] text-zinc-400 font-bold block uppercase">BPM</span>
+                <span className="text-sm font-black text-emerald-400">148</span>
+              </div>
+              <div className="w-px h-6 bg-zinc-700" />
+              <div className="text-center font-mono">
+                <span className="text-[9px] text-zinc-400 font-bold block uppercase">KEY</span>
+                <span className="text-xs font-black text-indigo-300">G Minor <span className="text-[9px] text-indigo-400 font-bold">6A</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+    case 'audio-pitch-speed':
+      return (
+        <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-indigo-500/30 bg-indigo-950/30 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="flex items-center gap-2.5 font-mono bg-zinc-900 border border-indigo-500/40 px-3 py-1.5 rounded-lg shadow">
+              <span className="text-xs font-extrabold text-indigo-300">+2 st</span>
+              <span className="text-zinc-600 font-bold">•</span>
+              <span className="text-xs font-extrabold text-emerald-300">1.25x</span>
+            </div>
+          </div>
+        </div>
+      );
+
     case 'convert':
       return (
         <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
@@ -673,7 +717,7 @@ export function Dashboard({
 
       {/* CONCENTRIC RADII CATEGORY TABS */}
       <div className="w-full flex justify-center my-2.5 sm:my-6">
-        <div className="flex items-center gap-0.5 sm:gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm w-full sm:w-auto overflow-x-auto no-scrollbar scrollbar-none" style={{WebkitOverflowScrolling: 'touch'}}>
+        <div className="dashboard-category-tabs flex items-center gap-0.5 sm:gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm w-full overflow-x-auto no-scrollbar scrollbar-none" style={{WebkitOverflowScrolling: 'touch'}}>
           {CATEGORIES.map((cat) => {
             const isActive = selectedCat === cat;
             const count = cat === 'ALL' ? TOOLS.length : TOOLS.filter(t => t.category === cat).length;
@@ -681,7 +725,7 @@ export function Dashboard({
               <button
                 key={cat}
                 onClick={() => setSelectedCat(cat)}
-                className={`px-1.5 xs:px-2.5 sm:px-3.5 py-1.5 rounded-lg text-[9px] xs:text-[10px] sm:text-xs font-bold transition-all duration-150 flex items-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 min-h-[32px] xs:min-h-[36px] ${
+                className={`px-1.5 xs:px-2.5 sm:px-3.5 py-1.5 rounded-lg text-[9px] xs:text-[10px] sm:text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 min-h-[32px] xs:min-h-[36px] ${
                   isActive
                     ? 'bg-zinc-800 text-white font-extrabold shadow-sm'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'

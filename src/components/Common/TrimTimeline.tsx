@@ -271,7 +271,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         .reduce((acc, curr) => acc + (curr.end - curr.start), 0);
 
   return (
-    <Card className="p-3 sm:p-5 border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] flex flex-col gap-3 sm:gap-4 shadow-xl rounded-2xl w-full">
+    <Card className="trim-timeline p-3 sm:p-5 border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] flex flex-col gap-3 sm:gap-4 shadow-xl rounded-2xl w-full">
       {/* Editor Top Bar */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--border-color)] pb-3">
         <div className="flex items-center gap-2">
@@ -282,7 +282,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         </div>
 
         {/* Tab Selector & Reset */}
-        <div className="flex items-center gap-3">
+        <div className="trim-timeline__tabs flex items-center gap-3">
           <div className="flex bg-[var(--bg-color)] border border-[var(--border-color)] rounded-lg p-0.5 text-xs font-semibold">
             <button
               onClick={() => setEditorTab('range')}
@@ -427,7 +427,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
       </div>
 
       {/* Frame Step Controls & Video Play/Pause Bar */}
-      <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--bg-color)]/60 p-3 rounded-xl border border-[var(--border-color)] gap-3">
+      <div className="trim-timeline__controls flex flex-col sm:flex-row justify-between items-center bg-[var(--bg-color)]/60 p-3 rounded-xl border border-[var(--border-color)] gap-3">
         <div className="flex items-center gap-3">
           {/* Play/Pause Video Toggle Button */}
           {onTogglePlay && (
@@ -455,7 +455,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="trim-timeline__steps flex items-center gap-2">
           {/* Frame Step Buttons */}
           <Button 
             variant="outline" 
@@ -492,7 +492,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
       {/* Multi-Segment Cut Table (when Multi mode active) */}
       {editorTab === 'multi' && (
         <div className="flex flex-col gap-2 pt-1 border-t border-[var(--border-color)]/50">
-          <div className="flex justify-between items-center">
+          <div className="trim-timeline__segment-header flex justify-between items-center">
             <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
               Segment Regions ({segments.length})
             </span>
@@ -511,7 +511,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
               return (
                 <div 
                   key={seg.id} 
-                  className={`flex justify-between items-center p-2 rounded-lg border text-xs transition-colors ${
+                  className={`trim-timeline__segment flex justify-between items-center p-2 rounded-lg border text-xs transition-colors ${
                     isActive 
                       ? 'border-[var(--border-color)] bg-[var(--surface-hover)]' 
                       : 'border-[var(--border-color)]/50 bg-[var(--bg-color)] opacity-60'
@@ -561,4 +561,3 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
     </Card>
   );
 };
-

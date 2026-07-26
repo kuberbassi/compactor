@@ -2316,6 +2316,8 @@ a.bg-zinc-50:hover {
     padding-top: 5.75rem !important;
     padding-left: 0.75rem !important;
     padding-right: 0.75rem !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
 
   /* Tool layout header stacks on mobile */
@@ -2596,5 +2598,386 @@ a.bg-zinc-50:hover {
   .main-content {
     padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
     padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Narrow-screen safety net
+   The workbench pages include dense queues and controls.  Keep their layout
+   inside the viewport instead of masking overflow at the application shell.
+   -------------------------------------------------------------------------- */
+#root,
+.app-container,
+.main-content,
+.tool-layout {
+  min-width: 0;
+}
+
+.tool-layout > *,
+.tool-layout [class*="grid"] > *,
+.tool-layout .flex-1 {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  html,
+  body,
+  #root,
+  .app-container {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .main-content.tool-page-active {
+    width: 100%;
+  }
+
+  /* Cards should not use their desktop padding to force a wider canvas. */
+  .tool-page-active [data-slot="card"] {
+    min-width: 0;
+  }
+
+  .tool-page-active [data-slot="card"].p-6,
+  .tool-page-active .surface-card.p-6 {
+    padding: 1rem !important;
+  }
+
+  /* Dense file queues: retain all actions, with names yielding space first. */
+  .tool-page-active .truncate {
+    min-width: 0;
+  }
+
+  .tool-page-active .flex.items-center.justify-between {
+    min-width: 0;
+  }
+
+  /* Prevent two-column settings forms becoming unreadable on narrow phones. */
+  .tool-page-active .grid.grid-cols-2:not([class*="sm:grid-cols"]),
+  .tool-page-active .grid.grid-cols-2[class*="sm:grid-cols-2"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  /* Keep visual thumbnail grids useful without ever overflowing. */
+  .tool-page-active .grid.grid-cols-3,
+  .tool-page-active .grid.grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  /* The audio pitch controls intentionally stay compact; their button labels
+     are short enough to remain tappable at 320px. */
+  .tool-page-active .grid.grid-cols-7 {
+    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+    gap: .2rem !important;
+  }
+
+  .tool-page-active .grid.grid-cols-6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  /* File metadata and result headers prioritise readable filenames/actions. */
+  .metadata-file-bar > :first-child {
+    width: 100%;
+  }
+
+  .metadata-file-bar [data-slot="button"] {
+    white-space: nowrap;
+  }
+
+  /* A long audio/video filename cannot push an action off screen. */
+  .tool-page-active .max-w-xs,
+  .tool-page-active .max-w-sm {
+    max-width: min(100%, 13rem);
+  }
+}
+
+@media (max-width: 400px) {
+  .tool-page-active [data-slot="card"].p-6,
+  .tool-page-active .surface-card.p-6 {
+    padding: .75rem !important;
+  }
+
+  .tool-page-active .grid.grid-cols-7 button {
+    padding-left: .1rem !important;
+    padding-right: .1rem !important;
+    font-size: .65rem !important;
+  }
+
+  .tool-page-active .grid.grid-cols-6 button {
+    min-height: 2.25rem;
+  }
+}
+
+/* Loaded workspaces need a stricter layout than their empty upload states. */
+@media (max-width: 767px) {
+  /* PDF task panels are intentionally one column on phones.  A queue must
+     never compete with its action panel for half a narrow viewport. */
+  .pdf-mobile-stack,
+  .metadata-editor-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .pdf-mobile-stack > * {
+    min-width: 0;
+  }
+
+  /* PDF tools have several independent queues, option groups, and output
+     panels. On a phone each becomes a full-width step in the workflow. */
+  .pdf-tool-layout .grid.grid-cols-2,
+  .pdf-tool-layout .grid.grid-cols-3,
+  .pdf-tool-layout .grid.grid-cols-4,
+  .pdf-tool-layout .grid.grid-cols-5,
+  .pdf-tool-layout .grid.grid-cols-12 {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .metadata-editor-grid {
+    gap: 1rem !important;
+  }
+
+  .metadata-editor-grid > :first-child {
+    width: 100%;
+  }
+
+  /* The engine selector is a true two-way segmented control, not a settings
+     grid: preserve its two tabs even where ordinary grids stack. */
+  .tool-page-active .video-engine-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    min-height: 2.5rem !important;
+    height: auto !important;
+    padding: .15rem !important;
+    overflow: hidden;
+  }
+
+  .tool-page-active .video-engine-tabs [role="tab"] {
+    min-width: 0;
+    min-height: 2rem;
+    padding-inline: .4rem !important;
+    white-space: nowrap;
+  }
+
+  /* Image editor: prevent the sidebar and preview canvas from retaining their
+     desktop dimensions while preserving the editing controls in reading order. */
+  .image-workbench {
+    width: 100% !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .image-workbench__sidebar,
+  .image-workbench__main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .image-workbench__sidebar {
+    max-height: none !important;
+  }
+
+  .image-workbench__sidebar nav {
+    max-width: 100%;
+  }
+
+  .image-workbench__main > div:first-child {
+    height: auto !important;
+    min-height: 3.5rem;
+    padding: .6rem .75rem !important;
+    gap: .5rem !important;
+  }
+
+  /* Fill the filter rail evenly at desktop/tablet widths; its horizontal
+     scroll behaviour remains available at the very narrow end. */
+  .dashboard-category-tabs {
+    max-width: 52rem;
+  }
+
+  .dashboard-category-tabs > button {
+    flex: 1 1 0;
+  }
+
+  /* Trim studio: stack information before actions, then make the actions a
+     stable three-button row instead of allowing them to collide. */
+  .trim-timeline__tabs {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .5rem !important;
+  }
+
+  .trim-timeline__tabs > div {
+    min-width: 0;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trim-timeline__tabs > div button {
+    min-width: 0;
+    min-height: 3.25rem;
+    padding: .4rem !important;
+    line-height: 1.15;
+  }
+
+  .trim-timeline__tabs > [data-slot="button"] {
+    min-height: 3.25rem;
+    padding-inline: .65rem !important;
+  }
+
+  .trim-timeline__controls {
+    align-items: stretch !important;
+  }
+
+  .trim-timeline__controls > div:first-child {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .trim-timeline__steps {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .trim-timeline__steps [data-slot="button"] {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.75rem;
+    padding-inline: .25rem !important;
+  }
+
+  .trim-timeline__segment-header {
+    align-items: flex-start;
+    gap: .5rem;
+  }
+
+  .trim-timeline__segment {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: .6rem;
+  }
+
+  .trim-timeline__segment > div {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .trim-timeline__segment > div:first-child {
+    flex-wrap: wrap;
+  }
+
+  .trim-timeline__segment > div:last-child {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 400px) {
+  .dashboard-category-tabs > button {
+    flex: 0 0 auto;
+  }
+
+  .trim-timeline__segment-header {
+    flex-direction: column;
+  }
+}
+
+@media (min-width: 768px) {
+  .dashboard-category-tabs {
+    width: min(100%, 52rem) !important;
+  }
+
+  .dashboard-category-tabs > button {
+    flex: 1 1 0;
+  }
+}
+
+/* PDF Peek: the document is the focus, so compact phone controls live in
+   their own safe space instead of covering the page. */
+@media (max-width: 640px) {
+  .pdf-peek {
+    padding: .75rem !important;
+    gap: .5rem;
+    background: rgba(0, 0, 0, .78) !important;
+  }
+
+  .pdf-peek__header {
+    min-height: 3.5rem;
+    padding: .55rem .65rem !important;
+    border-radius: 1rem !important;
+    gap: .5rem;
+  }
+
+  .pdf-peek__file {
+    gap: .55rem !important;
+  }
+
+  .pdf-peek__file > div:first-child {
+    width: 2.4rem;
+    height: 2.4rem;
+    flex: 0 0 2.4rem;
+  }
+
+  .pdf-peek__title {
+    max-width: none !important;
+    font-size: .72rem !important;
+  }
+
+  .pdf-peek__close {
+    width: 2.4rem;
+    min-width: 2.4rem;
+    height: 2.4rem !important;
+    padding: 0 !important;
+    justify-content: center;
+    font-size: 0 !important;
+  }
+
+  .pdf-peek__close svg {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0 !important;
+  }
+
+  .pdf-peek__stage {
+    min-height: 0;
+    margin: 0 !important;
+    padding-bottom: 3.75rem;
+    overflow: visible !important;
+  }
+
+  .pdf-peek__document {
+    padding: .25rem !important;
+    align-items: center;
+  }
+
+  .pdf-peek__paper {
+    max-width: calc(100vw - 2rem) !important;
+    max-height: calc(100svh - 10rem) !important;
+    border-radius: .9rem !important;
+  }
+
+  .pdf-peek__image {
+    max-width: calc(100vw - 2.35rem);
+    max-height: calc(100svh - 10.35rem) !important;
+  }
+
+  .pdf-peek__previous,
+  .pdf-peek__next {
+    top: auto !important;
+    bottom: .35rem;
+    width: 2.85rem;
+    height: 2.85rem;
+    transform: none !important;
+    border-radius: .8rem !important;
+  }
+
+  .pdf-peek__previous {
+    left: calc(50% - 3.2rem) !important;
+  }
+
+  .pdf-peek__next {
+    right: calc(50% - 3.2rem) !important;
+  }
+
+  .pdf-peek__previous svg,
+  .pdf-peek__next svg {
+    width: 1.35rem;
+    height: 1.35rem;
   }
 }

@@ -15,7 +15,10 @@ export const renderPdfThumbnails = async (
 ): Promise<string[]> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+    const loadingTask = pdfjsLib.getDocument({ 
+      data: new Uint8Array(arrayBuffer),
+      verbosity: 0,
+    });
     const pdfDoc = await loadingTask.promise;
 
     const numPages = Math.min(pdfDoc.numPages, maxPages);
@@ -70,7 +73,10 @@ export const renderPdfThumbnails = async (
 export const extractRealPdfMarkdown = async (file: File): Promise<string> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+    const loadingTask = pdfjsLib.getDocument({ 
+      data: new Uint8Array(arrayBuffer),
+      verbosity: 0,
+    });
     const pdfDoc = await loadingTask.promise;
     const numPages = pdfDoc.numPages;
 
@@ -129,7 +135,10 @@ export const renderPdfPagesToImages = async (
   dpiScale: number = 2.5
 ): Promise<{ pageNumber: number; blob: Blob; url: string }[]> => {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const loadingTask = pdfjsLib.getDocument({ 
+      data: new Uint8Array(arrayBuffer),
+      verbosity: 0,
+    });
   const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
   const results: { pageNumber: number; blob: Blob; url: string }[] = [];
