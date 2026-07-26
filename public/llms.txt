@@ -1,30 +1,72 @@
 # Compactor — 100% Private Client-Side Media Processing Suite
 
-> Compactor by Kuber Bassi is a fast, 100% private, client-side web application for video compression, PDF editing, audio optimization, image conversion, and file metadata editing. All operations run directly in the browser via WebAssembly and HTML5 Canvas with zero server uploads.
+> Compactor by Kuber Bassi is a fast, 100% private, client-side web application for video compression, PDF editing, audio processing, image optimization, metadata editing, and file conversion. Every operation runs entirely inside your browser using WebAssembly, FFmpeg, HTML5 APIs, and Canvas. No files are uploaded to any server.
 
 ## Core Capabilities & Tools
 
-- [Video Compressor](https://compactor.kuberbassi.com/#video-compressor): 2-Pass size clamping presets for Discord (<=10 MB), WhatsApp (<=16 MB), TikTok (<=70 MB), Instagram (<=95 MB).
-- [Video to Audio](https://compactor.kuberbassi.com/#video-to-audio): Extract MP3/AAC/WAV audio tracks from video files.
-- [Video to GIF](https://compactor.kuberbassi.com/#video-to-gif): Create animated GIFs with 24/15/10 FPS control.
-- [Mute Video](https://compactor.kuberbassi.com/#video-mute): Strip audio streams from video files.
-- [PDF Studio Pro](https://compactor.kuberbassi.com/#pdf-organize): Document Scan Filters (Magic Color, Whiteboard Clean, B&W Binary Thresholding), Page Reordering, Merge, Split, Trim Margins, Vector Stamps, Digital Signatures, Password Encryption/Decryption.
-- [Image Optimizer](https://compactor.kuberbassi.com/#image-optimizer): PNG, JPG, WebP, GIF, AVIF lossy/lossless compression, aspect ratio crop, pixelation censorship brush.
-- [Audio Optimizer](https://compactor.kuberbassi.com/#audio-optimizer): Trim audio timeline and WASM audio transcoding.
-- [Universal Format Converter](https://compactor.kuberbassi.com/#universal-converter): Compatibility matrix supporting 212+ formats.
-- [Metadata Editor](https://compactor.kuberbassi.com/#metadata-editor): Client-side EXIF, ID3, and PDF tag reader & editor.
-- [Poster Maker](https://compactor.kuberbassi.com/#rasterbator): Multi-page printable wall poster grid generator.
+### Video Tools
 
-## Privacy & Security Architecture
+- [Video Compressor](https://compactor.kuberbassi.com/#video-compressor): Compress videos using intelligent size presets for Discord, WhatsApp, TikTok, Instagram, email, and custom file size targets.
+- [Video to Audio](https://compactor.kuberbassi.com/#video-to-audio): Extract MP3, AAC, or WAV audio tracks from videos.
+- [Video to GIF](https://compactor.kuberbassi.com/#video-to-gif): Convert video clips into optimized animated GIFs with FPS control.
+- [Mute Video](https://compactor.kuberbassi.com/#video-mute): Remove audio tracks while preserving video quality.
 
-- [Privacy Policy](https://compactor.kuberbassi.com/#privacy-policy): Detailed breakdown of 100% client-side data privacy. Zero server data uploads.
-- [Terms & Conditions](https://compactor.kuberbassi.com/#terms-conditions): Terms of service for client-side tool usage.
+### PDF Studio Pro
 
-## Creator & Attribution
+- [Organize PDF Pages](https://compactor.kuberbassi.com/#pdf-organize): Rearrange, rotate, and remove pages.
+- [Merge PDFs](https://compactor.kuberbassi.com/#pdf-merge): Combine multiple PDF documents.
+- [Split PDF](https://compactor.kuberbassi.com/#pdf-split): Extract selected pages or split documents.
+- [Crop PDF Margins](https://compactor.kuberbassi.com/#pdf-crop-tool): Remove unnecessary white borders.
+- [Compress PDF](https://compactor.kuberbassi.com/#pdf-compress): Reduce document size while preserving readability.
+- [Add Stamp or Watermark](https://compactor.kuberbassi.com/#pdf-stamps): Apply text or image watermarks.
+- [Protect PDF](https://compactor.kuberbassi.com/#pdf-protect): Encrypt PDF files using password protection.
+- [Unlock PDF](https://compactor.kuberbassi.com/#pdf-unlock): Remove password protection from authorized documents.
+- [Insert Page Numbers](https://compactor.kuberbassi.com/#pdf-page-numbers): Add customizable page numbering.
+- [PDF to Images](https://compactor.kuberbassi.com/#pdf-to-image): Export pages as high-resolution PNG or JPG.
+- [Images to PDF](https://compactor.kuberbassi.com/#pdf-jpg-to-pdf): Combine photos into a PDF scanner document.
+- [Markdown to PDF](https://compactor.kuberbassi.com/#pdf-word-to-pdf): Convert Markdown documents into PDFs.
+- [PDF to Markdown](https://compactor.kuberbassi.com/#pdf-to-word): Extract searchable text into Markdown.
 
-- [Kuber Bassi Portfolio](https://kuberbassi.com): Creator website & developer profile.
-- [GitHub Repository](https://github.com/kuberbassi/compactor): Open-source repository for Compactor.
+### Image Tools
 
-## Optional
+- [Image Optimizer](https://compactor.kuberbassi.com/#image-optimizer): Resize, compress, crop, blur, and optimize PNG, JPG, WebP, GIF, and AVIF images.
+- [Poster Maker (Rasterbator)](https://compactor.kuberbassi.com/#rasterbator): Create printable multi-page wall posters.
 
-- [Full Technical Specification](https://compactor.kuberbassi.com/llms-full.txt): Complete technical architecture, WASM capabilities, and details for AI agents.
+### Audio Tools
+
+- [Audio Compressor](https://compactor.kuberbassi.com/#audio-optimizer): Compress MP3, WAV, and FLAC audio files.
+- [Audio Joiner](https://compactor.kuberbassi.com/#audio-joiner): Merge multiple audio tracks into one.
+- [Key & BPM Finder](https://compactor.kuberbassi.com/#audio-bpm-finder): Detect tempo, musical key, and Camelot notation.
+- [Pitch & Speed Changer](https://compactor.kuberbassi.com/#audio-pitch-speed): Adjust playback speed and musical pitch.
+
+### File Utilities
+
+- [Universal Format Converter](https://compactor.kuberbassi.com/#universal-converter): Convert between 212+ supported file formats.
+- [Metadata Editor](https://compactor.kuberbassi.com/#metadata-editor): Read, edit, or remove EXIF, ID3, and document metadata.
+
+## Privacy & Security
+
+- [Privacy Policy](https://compactor.kuberbassi.com/#privacy): Learn how Compactor keeps every file local with zero server uploads.
+- [Terms & Conditions](https://compactor.kuberbassi.com/#terms): Terms governing the use of Compactor.
+
+## Technology
+
+- 100% client-side processing
+- WebAssembly (WASM)
+- FFmpeg.wasm
+- HTML5 File APIs
+- Canvas API
+- IndexedDB
+- Progressive Web App (PWA)
+- Zero cloud processing
+- No account required
+- Cross-platform browser support
+
+## Creator
+
+- [Kuber Bassi](https://kuberbassi.com): Creator and developer.
+- [GitHub Repository](https://github.com/kuberbassi/compactor): Open-source source code.
+
+## Documentation
+
+- [Full Technical Specification](https://compactor.kuberbassi.com/llms-full.txt): Complete architecture, supported formats, implementation details, and AI-readable documentation.
