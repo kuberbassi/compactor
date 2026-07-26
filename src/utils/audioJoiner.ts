@@ -1,39 +1,66 @@
 /**
  * 100% Client-Side Audio Joiner Utility
  * Merges multiple audio files sequentially into a single seamless audio track.
+ *
+ * Handles mismatched sample rates by resampling each file to the target rate
+ * (the highest sample rate among all input files) using OfflineAudioContext.
  */
 
-function encodeWAV(samples: Float32Array, sampleRate: number, numChannels: number = 2): Blob {
-  const buffer = new ArrayBuffer(44 + samples.length * 2);
+function encodeWAV(channels: Float32Array[], sampleRate: number): Blob {
+  const numChannels = channels.length;
+  const numSamples = channels[0].length;
+  const buffer = new ArrayBuffer(44 + numSamples * numChannels * 2);
   const view = new DataView(buffer);
 
-  /* RIFF identifier */
   view.setUint32(0, 0x52494646, false); // "RIFF"
-  view.setUint32(4, 36 + samples.length * 2, true);
+  view.setUint32(4, 36 + numSamples * numChannels * 2, true);
   view.setUint32(8, 0x57415645, false); // "WAVE"
-
-  /* fmt sub-chunk */
   view.setUint32(12, 0x666d7420, false); // "fmt "
-  view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-  view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);           // PCM
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * 2, true); // ByteRate
-  view.setUint16(32, numChannels * 2, true); // BlockAlign
-  view.setUint16(34, 16, true); // BitsPerSample
-
-  /* data sub-chunk */
+  view.setUint32(28, sampleRate * numChannels * 2, true);
+  view.setUint16(32, numChannels * 2, true);
+  view.setUint16(34, 16, true);
   view.setUint32(36, 0x64617461, false); // "data"
-  view.setUint32(40, samples.length * 2, true);
+  view.setUint32(40, numSamples * numChannels * 2, true);
 
-  // Write PCM samples
   let offset = 44;
-  for (let i = 0; i < samples.length; i++, offset += 2) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  for (let i = 0; i < numSamples; i++) {
+    for (let c = 0; c < numChannels; c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      offset += 2;
+    }
   }
 
   return new Blob([buffer], { type: 'audio/wav' });
+}
+
+/**
+ * Resample an AudioBuffer to a target sample rate using OfflineAudioContext.
+ * Returns a new AudioBuffer at the target rate.
+ */
+async function resampleBuffer(
+  sourceBuffer: AudioBuffer,
+  targetSampleRate: number
+): Promise<AudioBuffer> {
+  if (sourceBuffer.sampleRate === targetSampleRate) return sourceBuffer;
+
+  const targetLength = Math.round(sourceBuffer.duration * targetSampleRate);
+  const offlineCtx = new OfflineAudioContext(
+    sourceBuffer.numberOfChannels,
+    targetLength,
+    targetSampleRate
+  );
+
+  const bufferSource = offlineCtx.createBufferSource();
+  bufferSource.buffer = sourceBuffer;
+  bufferSource.connect(offlineCtx.destination);
+  bufferSource.start(0);
+
+  return offlineCtx.startRendering();
 }
 
 export async function joinAudioFiles(
@@ -45,49 +72,55 @@ export async function joinAudioFiles(
   const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
   try {
+    // Decode all files
     const decodedBuffers: AudioBuffer[] = [];
-    let totalLengthSamples = 0;
-    let targetSampleRate = 44100;
-
     for (let i = 0; i < files.length; i++) {
-      onProgress?.(Math.round(((i + 1) / files.length) * 60));
+      onProgress?.(Math.round(((i + 0.5) / files.length) * 50));
       const arrayBuffer = await files[i].arrayBuffer();
       const decoded = await audioCtx.decodeAudioData(arrayBuffer);
       decodedBuffers.push(decoded);
-      totalLengthSamples += decoded.length;
-      if (i === 0) targetSampleRate = decoded.sampleRate;
     }
 
-    // Create interleaved stereo output buffer
-    const mergedLeft = new Float32Array(totalLengthSamples);
-    const mergedRight = new Float32Array(totalLengthSamples);
-    let sampleOffset = 0;
+    onProgress?.(50);
 
+    // Use the highest sample rate among all files as the target
+    // (downsampling loses quality; upsampling to max ensures no data is lost)
+    const targetSampleRate = Math.max(...decodedBuffers.map((b) => b.sampleRate));
+    const targetChannels = Math.max(...decodedBuffers.map((b) => b.numberOfChannels));
+
+    // Resample all buffers to target rate (no-op if already matching)
+    const resampledBuffers: AudioBuffer[] = [];
     for (let i = 0; i < decodedBuffers.length; i++) {
-      const buffer = decodedBuffers[i];
-      const left = buffer.getChannelData(0);
-      const right = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : left;
-
-      mergedLeft.set(left, sampleOffset);
-      mergedRight.set(right, sampleOffset);
-
-      sampleOffset += buffer.length;
+      onProgress?.(50 + Math.round(((i + 0.5) / decodedBuffers.length) * 35));
+      const resampled = await resampleBuffer(decodedBuffers[i], targetSampleRate);
+      resampledBuffers.push(resampled);
     }
 
-    onProgress?.(80);
+    onProgress?.(85);
 
-    // Interleave left and right for stereo WAV encoding
-    const interleaved = new Float32Array(totalLengthSamples * 2);
-    for (let i = 0; i < totalLengthSamples; i++) {
-      interleaved[i * 2] = mergedLeft[i];
-      interleaved[i * 2 + 1] = mergedRight[i];
+    // Calculate total length
+    const totalLength = resampledBuffers.reduce((acc, b) => acc + b.length, 0);
+
+    // Merge into per-channel arrays
+    const mergedChannels: Float32Array[] = Array.from({ length: targetChannels }, () =>
+      new Float32Array(totalLength)
+    );
+
+    let sampleOffset = 0;
+    for (const buf of resampledBuffers) {
+      for (let c = 0; c < targetChannels; c++) {
+        // If this file has fewer channels, duplicate the last available channel
+        const srcChannel = buf.getChannelData(Math.min(c, buf.numberOfChannels - 1));
+        mergedChannels[c].set(srcChannel, sampleOffset);
+      }
+      sampleOffset += buf.length;
     }
 
     onProgress?.(95);
 
-    const wavBlob = encodeWAV(interleaved, targetSampleRate, 2);
+    const wavBlob = encodeWAV(mergedChannels, targetSampleRate);
     const url = URL.createObjectURL(wavBlob);
-    const totalDuration = totalLengthSamples / targetSampleRate;
+    const totalDuration = totalLength / targetSampleRate;
 
     onProgress?.(100);
 

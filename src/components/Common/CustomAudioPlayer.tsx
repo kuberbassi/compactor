@@ -6,10 +6,16 @@ interface CustomAudioPlayerProps {
   src: string;
   title?: string;
   subtitle?: string;
+  /**
+   * When set, shows a pitch badge and applies speed-only preview
+   * (actual pitch processing happens server-side via Rubber Band WASM).
+   */
   pitchSemitones?: number;
+  /**
+   * When set, applies playback speed to the preview player.
+   * This is accurate for speed changes.
+   */
   speedRatio?: number;
-  playbackRate?: number;
-  preservesPitch?: boolean;
   className?: string;
 }
 
@@ -19,8 +25,6 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   subtitle,
   pitchSemitones = 0,
   speedRatio = 1.0,
-  playbackRate,
-  preservesPitch,
   className = '',
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -30,19 +34,26 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
 
-  // Calculate rate and preservesPitch mode
-  const effectivePitchFactor = Math.pow(2, pitchSemitones / 12);
-  const effectiveRate = playbackRate !== undefined ? playbackRate : (effectivePitchFactor * speedRatio);
-  const effectivePreservesPitch = preservesPitch !== undefined ? preservesPitch : (pitchSemitones === 0);
-
+  // Speed preview: apply speedRatio to playback rate.
+  // For pitch: we do NOT fake pitch via playbackRate — that changes speed too.
+  // The pitch badge is informational only; true pitch shift requires Rubber Band export.
+  // Always preserve pitch when using playbackRate (browser-native pitch correction).
   useEffect(() => {
-    if (audioRef.current) {
-      (audioRef.current as any).preservesPitch = effectivePreservesPitch;
-      (audioRef.current as any).mozPreservesPitch = effectivePreservesPitch;
-      (audioRef.current as any).webkitPreservesPitch = effectivePreservesPitch;
-      audioRef.current.playbackRate = effectiveRate;
-    }
-  }, [effectiveRate, effectivePreservesPitch]);
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    // Apply speed-only via playbackRate with pitch preservation enabled
+    audio.playbackRate = speedRatio;
+    (audio as any).preservesPitch = true;
+    (audio as any).mozPreservesPitch = true;
+    (audio as any).webkitPreservesPitch = true;
+  }, [speedRatio]);
+
+  // Reset position when src changes
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+  }, [src]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -54,15 +65,11 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   };
 
   const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setCurrentTime(audioRef.current.currentTime);
-    }
+    if (audioRef.current) setCurrentTime(audioRef.current.currentTime);
   };
 
   const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
+    if (audioRef.current) setDuration(audioRef.current.duration);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -84,21 +91,19 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
 
   const toggleMute = () => {
     if (!audioRef.current) return;
-    if (isMuted) {
-      audioRef.current.muted = false;
-      setIsMuted(false);
-    } else {
-      audioRef.current.muted = true;
-      setIsMuted(true);
-    }
+    audioRef.current.muted = !isMuted;
+    setIsMuted(!isMuted);
   };
 
   const formatTime = (secs: number) => {
-    if (isNaN(secs) || secs < 0) return '0:00';
+    if (!isFinite(secs) || secs < 0) return '0:00';
     const m = Math.floor(secs / 60);
     const s = Math.floor(secs % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
+
+  const hasPitchBadge = pitchSemitones !== 0;
+  const hasSpeedBadge = speedRatio !== 1.0;
 
   return (
     <div className={`p-3.5 bg-zinc-950/80 border border-zinc-800 rounded-xl space-y-3 shadow-sm ${className}`}>
@@ -107,37 +112,48 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         src={src}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={() => { setIsPlaying(false); setCurrentTime(0); }}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
       />
 
       {/* Header Info */}
       {(title || subtitle) && (
-        <div className="flex items-center justify-between gap-3 border-b border-zinc-800/60 pb-2.5 min-w-0">
+        <div className="flex items-center justify-between gap-2 border-b border-zinc-800/60 pb-2.5 min-w-0">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 shrink-0">
               <Music className="w-3.5 h-3.5" />
             </div>
-            <div className="min-w-0 flex-1 truncate">
+            <div className="min-w-0 flex-1">
               {title && <span className="text-xs font-bold text-white block truncate">{title}</span>}
               {subtitle && <span className="text-[10px] text-zinc-400 font-medium block truncate">{subtitle}</span>}
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 ml-2">
-            {pitchSemitones !== 0 && (
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 whitespace-nowrap">
-                {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones
+          {/* Badges */}
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+            {hasPitchBadge && (
+              <span
+                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 whitespace-nowrap"
+                title="Pitch shift applied on export via Rubber Band WASM"
+              >
+                {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} st
               </span>
             )}
-            {speedRatio !== 1.0 && (
+            {hasSpeedBadge && (
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 whitespace-nowrap">
-                {speedRatio.toFixed(2)}x Speed
+                {speedRatio.toFixed(2)}x
               </span>
             )}
           </div>
         </div>
+      )}
+
+      {/* Pitch preview note */}
+      {hasPitchBadge && (
+        <p className="text-[10px] font-mono text-zinc-500 -mt-1 leading-tight">
+          ℹ️ Pitch preview not available — speed preview only. Export for full Rubber Band quality.
+        </p>
       )}
 
       {/* Main Controls Row */}
@@ -171,7 +187,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
           </span>
         </div>
 
-        {/* Volume Mute Toggle */}
+        {/* Volume Control */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"

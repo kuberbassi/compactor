@@ -229,18 +229,27 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
     if (activeTool === 'audio-pitch-speed') {
       if (!file) return;
+      if (pitchSemitones === 0 && speedRatio === 1.0) {
+        alert('No changes applied — adjust pitch or speed before exporting.');
+        return;
+      }
       setProcessing(true);
-      setProgress(10);
-      setStatusText('Processing pitch & speed with SoundTouch engine...');
+      setProgress(5);
+      const pitchLabel = pitchSemitones !== 0 ? `${pitchSemitones > 0 ? '+' : ''}${pitchSemitones}st` : null;
+      const speedLabel = speedRatio !== 1.0 ? `${speedRatio.toFixed(2)}x` : null;
+      const changeDesc = [pitchLabel, speedLabel].filter(Boolean).join(' ');
+      setStatusText(`Applying ${changeDesc} via Rubber Band WASM — processing offline...`);
       try {
         const processed = await processPitchAndSpeed(
           file,
           { pitchSemitones, speedRatio },
           (pct) => setProgress(pct)
         );
+        const pitchSuffix = pitchSemitones !== 0 ? `_pitch${pitchSemitones > 0 ? '+' : ''}${pitchSemitones}` : '';
+        const speedSuffix = speedRatio !== 1.0 ? `_${speedRatio.toFixed(2)}x` : '';
         setResult({
           url: processed.url,
-          name: `${file.name.replace(/\.[^/.]+$/, '')}_pitch${pitchSemitones}_speed${speedRatio}x.wav`,
+          name: `${file.name.replace(/\.[^/.]+$/, '')}${pitchSuffix}${speedSuffix}.wav`,
           blob: processed.blob,
           originalSize: file.size,
           newSize: processed.blob.size,
@@ -291,7 +300,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
   const currentToolInfo = getToolInfo();
   const transposedKey = transposeKeyDisplay(analysisResult?.key || null, pitchSemitones);
-  const currentBpm = Math.round((analysisResult?.bpm || 120) * speedRatio);
+  const currentBpm = analysisResult ? Math.round(analysisResult.bpm * speedRatio) : null;
 
   return (
     <div className="tool-layout space-y-3">
@@ -585,16 +594,26 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                 {/* KEY DISPLAY CARD */}
                 <div className="p-4 bg-zinc-950/90 border border-zinc-800/90 rounded-xl text-center space-y-1.5 flex flex-col items-center justify-center min-h-[105px]">
                   <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">KEY</span>
-                  <div className="flex flex-col items-center justify-center leading-none my-1">
-                    <span className="text-3xl font-black text-white tracking-tight">{transposedKey.root}</span>
-                    <span className="text-xs font-bold text-indigo-400 font-mono mt-1 uppercase tracking-wider">{transposedKey.mode}</span>
-                  </div>
+                  {analyzingBpm ? (
+                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto my-2" />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center leading-none my-1">
+                      <span className="text-3xl font-black text-white tracking-tight">{transposedKey.root}</span>
+                      <span className="text-xs font-bold text-indigo-400 font-mono mt-1 uppercase tracking-wider">{transposedKey.mode}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* BPM DISPLAY CARD */}
                 <div className="p-3.5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl text-center space-y-0.5">
                   <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">BPM</span>
-                  <span className="text-2xl font-black text-emerald-400 block font-mono">{currentBpm}</span>
+                  {analyzingBpm ? (
+                    <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto my-1" />
+                  ) : currentBpm !== null ? (
+                    <span className="text-2xl font-black text-emerald-400 block font-mono">{currentBpm}</span>
+                  ) : (
+                    <span className="text-xl font-black text-zinc-600 block font-mono">—</span>
+                  )}
                 </div>
               </div>
             </div>
