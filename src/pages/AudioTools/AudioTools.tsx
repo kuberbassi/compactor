@@ -15,7 +15,7 @@ import { processPitchAndSpeed } from '../../utils/audioPitchSpeed';
 
 import { 
   Music, Download, RefreshCw, CheckCircle, 
-  Disc, Sliders, Layers, ArrowUp, ArrowDown, Trash2, Zap, Plus
+  Disc, Sliders, Layers, ArrowUp, ArrowDown, Trash2, Zap, Plus, Loader2
 } from 'lucide-react';
 import { Switch } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
@@ -70,6 +70,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   // Pitch & Speed State
   const [pitchSemitones, setPitchSemitones] = useState<number>(0);
   const [speedRatio, setSpeedRatio] = useState<number>(1.0);
+  const [livePreviewUrl, setLivePreviewUrl] = useState<string>('');
+  const [isGeneratingLivePreview, setIsGeneratingLivePreview] = useState(false);
 
   // Result State
   const [result, setResult] = useState<{
@@ -86,6 +88,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   useEffect(() => {
     if (!file) {
       setPreviewUrl('');
+      setLivePreviewUrl('');
       return;
     }
     const url = URL.createObjectURL(file);
@@ -100,6 +103,39 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
       URL.revokeObjectURL(url);
     };
   }, [file]);
+
+  // Live pitch & speed preview generator
+  useEffect(() => {
+    if (activeTool !== 'audio-pitch-speed' || !file) {
+      setLivePreviewUrl('');
+      return;
+    }
+
+    if (pitchSemitones === 0 && speedRatio === 1.0) {
+      setLivePreviewUrl(previewUrl);
+      return;
+    }
+
+    let isMounted = true;
+    const timeout = setTimeout(async () => {
+      setIsGeneratingLivePreview(true);
+      try {
+        const res = await processPitchAndSpeed(file, { pitchSemitones, speedRatio });
+        if (isMounted) {
+          setLivePreviewUrl(res.url);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (isMounted) setIsGeneratingLivePreview(false);
+      }
+    }, 200);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeout);
+    };
+  }, [file, pitchSemitones, speedRatio, activeTool, previewUrl]);
 
   useEffect(() => {
     return () => {
@@ -131,6 +167,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     setAnalysisResult(null);
     setPitchSemitones(0);
     setSpeedRatio(1.0);
+    setLivePreviewUrl('');
   };
 
   // Mode Handlers
@@ -493,7 +530,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         </div>
       )}
 
-      {/* ── MODE 4: PITCH & SPEED CONTROLS WITH LIVE PREVIEW ── */}
+      {/* ── MODE 4: PITCH & SPEED CONTROLS WITH REAL-TIME LIVE PREVIEW ── */}
       {activeTool === 'audio-pitch-speed' && file && !result && !processing && (
         <div className="max-w-xl mx-auto space-y-3">
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-6 space-y-5 rounded-2xl shadow-sm">
@@ -573,14 +610,22 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               </div>
             </div>
 
-            {/* Live Audio Preview with Live Pitch & Speed Manipulator */}
-            {previewUrl && (
+            {/* Live Audio Preview with Studio-Exact Render */}
+            {(livePreviewUrl || previewUrl) && (
               <div className="space-y-1.5 pt-2 border-t border-[var(--border-color)]">
-                <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Live Pitch & Speed Audio Preview</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Live Studio Preview</span>
+                  {isGeneratingLivePreview && (
+                    <span className="flex items-center gap-1 text-[10px] font-mono text-indigo-400">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Updating preview...</span>
+                    </span>
+                  )}
+                </div>
                 <CustomAudioPlayer
-                  src={previewUrl}
+                  src={livePreviewUrl || previewUrl}
                   title={file.name}
-                  subtitle="Track Audio Preview"
+                  subtitle={`${pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones • ${speedRatio}x Speed`}
                   pitchSemitones={pitchSemitones}
                   speedRatio={speedRatio}
                 />
