@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { BrandMark } from '../Common/BrandMark';
 import { 
   ChevronDown, 
@@ -110,7 +111,7 @@ const NAV_GROUPS: NavGroup[] = [
 const Logo: React.FC<{ onClick?: () => void }> = ({ onClick }) => (
   <button
     onClick={onClick}
-    className="flex items-center gap-2 group focus:outline-none cursor-pointer"
+    className="flex items-center gap-2 group focus:outline-none cursor-pointer shrink-0"
     aria-label="Compactor home"
   >
     <BrandMark className="brand-mark" />
@@ -126,8 +127,13 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
   activeToolId,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeHoverGroup, setActiveHoverGroup] = useState<string | null>(null);
-  const [expandedGroup, setExpandedGroup] = useState<string | null>('pdf');
+  const [menuState, setMenuState] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed');
+  // Desktop: toggled group (click/touch-friendly for tablets)
+  const [activeDesktopGroup, setActiveDesktopGroup] = useState<string | null>(null);
+  // Mobile accordion expanded group
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const navRef = useRef<HTMLDivElement>(null);
+  const [sheetPos, setSheetPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
 
   // Sync expanded group with active tool
   useEffect(() => {
@@ -137,169 +143,295 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
     }
   }, [activeToolId]);
 
-  // Close menu on outside click
+  // Open menu: calculate position, mount sheet, then transition to open
+  const openMenu = () => {
+    if (navRef.current) {
+      const r = navRef.current.getBoundingClientRect();
+      setSheetPos({ top: r.bottom + 8, left: r.left, width: r.width });
+    }
+    setMenuOpen(true);
+    setMenuState('opening');
+    // Two rAFs ensure the DOM is painted in 'opening' state before transitioning
+    requestAnimationFrame(() => requestAnimationFrame(() => setMenuState('open')));
+  };
+
+  // Close menu: play exit animation, then unmount
+  const closeMenu = () => {
+    setMenuState('closing');
+    setTimeout(() => {
+      setMenuOpen(false);
+      setMenuState('closed');
+    }, 230); // slightly longer than CSS duration so animation completes
+  };
+
+  // Calculate sheet position whenever menuOpen changes
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
+    if (menuOpen && navRef.current) {
+      const r = navRef.current.getBoundingClientRect();
+      setSheetPos({ top: r.bottom + 8, left: r.left, width: r.width });
+    }
+  }, [menuOpen]);
+
+  // Lock body scroll while sheet is open â€” prevents page scrolling behind the menu
+  useEffect(() => {
+    if (menuOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = '100%';
+    } else {
+      const top = document.body.style.top;
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      if (top) window.scrollTo(0, -parseInt(top, 10));
+    }
+    return () => {
+      // Cleanup on unmount
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+    };
+  }, [menuOpen]);
+
+  // Recalculate sheet position on resize only
+  useEffect(() => {
+    if (!menuOpen) return;
+    const update = () => {
+      if (navRef.current) {
+        const r = navRef.current.getBoundingClientRect();
+        setSheetPos({ top: r.bottom + 8, left: r.left, width: r.width });
+      }
+    };
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, [menuOpen]);
+
+  // Close on outside click/touch
+  useEffect(() => {
+    const handler = (e: MouseEvent | TouchEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('#simple-nav')) {
-        setMenuOpen(false);
-        setActiveHoverGroup(null);
+      if (!target.closest('#simple-nav') && !target.closest('#simple-nav-sheet')) {
+        if (menuState === 'open' || menuState === 'opening') closeMenu();
+        setActiveDesktopGroup(null);
       }
     };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    document.addEventListener('touchstart', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('touchstart', handler);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuState]);
+
+  // Close dropdowns on route change
+  useEffect(() => {
+    if (menuState === 'open' || menuState === 'opening') closeMenu();
+    setActiveDesktopGroup(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeToolId]);
 
   return (
-    <div
-      id="simple-nav"
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[99] w-[94%] max-w-4xl h-12 rounded-full border border-zinc-800 bg-zinc-900/90 backdrop-blur-xl flex items-center justify-between px-4 sm:px-5 transition-all duration-300 shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
-      onMouseLeave={() => setActiveHoverGroup(null)}
-    >
-      <Logo onClick={onBrandClick} />
+    <>
+      <div
+        id="simple-nav"
+        ref={navRef}
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] w-[94%] max-w-4xl h-12 rounded-full border border-zinc-800 bg-zinc-900/95 backdrop-blur-xl flex items-center justify-between px-4 sm:px-5 transition-all duration-300 shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+        onMouseLeave={() => setActiveDesktopGroup(null)}
+      >
+        <Logo onClick={onBrandClick} />
 
-      {/* Desktop Navigation Links */}
-      <nav className="hidden md:flex items-center gap-1" aria-label="Tools navigation">
-        {NAV_GROUPS.map((group) => {
-          const isActive = activeToolId?.startsWith(group.label) || activeHoverGroup === group.label;
-          const hasMultipleItems = group.items.length > 1;
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-0.5" aria-label="Tools navigation">
+          {NAV_GROUPS.map((group) => {
+            const isActive = (activeToolId && NAV_GROUPS.find(g => g.label === group.label)?.items.some(i => i.href === activeToolId)) || activeDesktopGroup === group.label;
+            const hasMultipleItems = group.items.length > 1;
+            const isOpen = activeDesktopGroup === group.label;
 
-          return (
-            <div 
-              key={group.label}
-              className="relative"
-              onMouseEnter={() => setActiveHoverGroup(group.label)}
-            >
-              <button
-                onClick={() => {
-                  onLinkClick?.(group.defaultHref);
-                  setActiveHoverGroup(null);
-                }}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold lowercase tracking-wider transition-all duration-150 flex items-center gap-1 cursor-pointer ${
-                  isActive
-                    ? 'text-white bg-zinc-800 border border-zinc-700 shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'
-                }`}
+            return (
+              <div
+                key={group.label}
+                className="relative"
+                onMouseEnter={() => hasMultipleItems && setActiveDesktopGroup(group.label)}
               >
-                <span>{group.label}</span>
-                {hasMultipleItems && (
-                  <ChevronDown className={`w-3 h-3 text-zinc-500 transition-transform duration-200 ${
-                    activeHoverGroup === group.label ? 'rotate-180 text-white' : ''
-                  }`} />
+                <button
+                  onClick={() => {
+                    if (hasMultipleItems) {
+                      setActiveDesktopGroup(prev => prev === group.label ? null : group.label);
+                    } else {
+                      onLinkClick?.(group.defaultHref);
+                      setActiveDesktopGroup(null);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold lowercase tracking-wider transition-all duration-150 flex items-center gap-1 cursor-pointer ${
+                    isActive
+                      ? 'text-white bg-zinc-800 border border-zinc-700 shadow-sm'
+                      : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <span>{group.label}</span>
+                  {hasMultipleItems && (
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180 text-white' : 'text-zinc-500'
+                    }`} />
+                  )}
+                </button>
+
+                {/* Desktop Dropdown â€” site charcoal colors */}
+                {hasMultipleItems && isOpen && (
+                  <div className="absolute top-[calc(100%+6px)] left-1/2 -translate-x-1/2 min-w-[11rem] p-1.5 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] shadow-[0_16px_40px_rgba(0,0,0,0.25)] space-y-0.5 z-[1000] animate-in fade-in zoom-in-95 duration-150">
+                    {group.items.map((item) => {
+                      const ItemIcon = item.icon;
+                      const isItemActive = activeToolId === item.href;
+                      return (
+                        <button
+                          key={item.href}
+                          onClick={() => {
+                            onLinkClick?.(item.href);
+                            setActiveDesktopGroup(null);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-100 flex items-center gap-2 cursor-pointer ${
+                            isItemActive
+                              ? 'bg-[var(--surface-hover)] text-[var(--text-primary)] font-bold border border-[var(--border-color)]'
+                              : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          <ItemIcon className="w-3.5 h-3.5 shrink-0 opacity-60" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </button>
+              </div>
+            );
+          })}
+        </nav>
 
-              {/* Charcoal Gray Dropdown Popup */}
-              {hasMultipleItems && activeHoverGroup === group.label && (
-                <div className="absolute top-[36px] left-1/2 -translate-x-1/2 w-48 p-1.5 rounded-xl border border-zinc-800 bg-zinc-900 backdrop-blur-xl shadow-2xl space-y-0.5 z-[100] animate-in fade-in zoom-in-95 duration-150">
-                  {group.items.map((item) => {
-                    const ItemIcon = item.icon;
-                    const isItemActive = activeToolId === item.href;
-                    return (
-                      <button
-                        key={item.href}
-                        onClick={() => {
-                          onLinkClick?.(item.href);
-                          setActiveHoverGroup(null);
-                        }}
-                        className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 flex items-center gap-2 cursor-pointer ${
-                          isItemActive
-                            ? 'bg-zinc-800 text-white font-extrabold border border-zinc-700'
-                            : 'hover:bg-zinc-800/80 text-zinc-300 hover:text-white'
-                        }`}
-                      >
-                        <ItemIcon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span className="truncate">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Right Privacy Indicator Badge */}
-      <div className="hidden md:flex items-center gap-2">
-        <div className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono font-bold text-zinc-300 flex items-center gap-1.5 shadow-sm">
-          <span className="dot-glow-white shrink-0" />
-          <span>100% Client-Side</span>
+        {/* Right Privacy Badge */}
+        <div className="hidden md:flex items-center gap-2">
+          <div className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono font-bold text-zinc-300 flex items-center gap-1.5 shadow-sm">
+            <span className="dot-glow-white shrink-0" />
+            <span>100% Client-Side</span>
+          </div>
         </div>
+
+        {/* Mobile Hamburger â€” perfectly centered */}
+        <button
+          className="md:hidden w-8 h-8 rounded-lg hover:bg-zinc-800/70 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shrink-0"
+          onClick={() => menuOpen ? closeMenu() : openMenu()}
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        >
+          <div className={`transition-all duration-200 ${menuOpen ? 'rotate-90 scale-110' : 'rotate-0 scale-100'}`}>
+            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </div>
+        </button>
       </div>
 
-      {/* Mobile Hamburger (Perfect Centering) */}
-      <button
-        className="md:hidden w-8 h-8 rounded-lg hover:bg-zinc-800 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shrink-0"
-        onClick={() => setMenuOpen((v) => !v)}
-        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-      >
-        {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
-
-      {/* Mobile Dropdown Menu Sheet */}
-      {menuOpen && (
-        <div className="absolute top-[54px] left-0 right-0 max-h-[82vh] overflow-y-auto border border-zinc-800 bg-zinc-950/98 backdrop-blur-2xl p-4 flex flex-col gap-3 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[100] animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800">
-            <span className="text-xs font-mono font-bold text-zinc-300 uppercase tracking-wider">All Tools Navigation</span>
-            <div className="px-2.5 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-300 flex items-center gap-1.5">
+      {/* Mobile Sheet â€” portaled to body, with smooth open/close animation */}
+      {menuOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          id="simple-nav-sheet"
+          style={{
+            position: 'fixed',
+            top: sheetPos.top,
+            left: sheetPos.left,
+            width: sheetPos.width,
+            zIndex: 9998,
+            overscrollBehavior: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            // State-driven transition classes applied via inline for reliable triggering
+            opacity: menuState === 'open' ? 1 : 0,
+            transform: menuState === 'open'
+              ? 'translateY(0) scale(1)'
+              : menuState === 'closing'
+              ? 'translateY(-6px) scale(0.97)'
+              : 'translateY(-10px) scale(0.96)',
+            transition: 'opacity 220ms cubic-bezier(0.16,1,0.3,1), transform 220ms cubic-bezier(0.16,1,0.3,1)',
+          }}
+          className="max-h-[78vh] overflow-y-auto overscroll-contain rounded-3xl border border-zinc-800 bg-zinc-900/95 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+        >
+          {/* Header â€” sticky, same glass as pill */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 sticky top-0 bg-zinc-900/95 backdrop-blur-xl rounded-t-3xl">
+            <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
+              All Tools
+            </span>
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-zinc-800 bg-zinc-900 text-[10px] font-mono text-zinc-300">
               <span className="dot-glow-white shrink-0" />
-              <span>100% Client-Side</span>
+              <span>100% Private</span>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 pb-1">
+          {/* Accordion Groups */}
+          <div className="p-2 flex flex-col gap-1 pb-3">
             {NAV_GROUPS.map((group) => {
               const isExpanded = expandedGroup === group.label;
               return (
-                <div key={group.label} className="bg-zinc-900/60 rounded-2xl border border-zinc-800/80 overflow-hidden">
+                <div
+                  key={group.label}
+                  className="rounded-2xl border border-zinc-800/70 overflow-hidden bg-zinc-800/20"
+                >
                   <button
                     onClick={() => setExpandedGroup(isExpanded ? null : group.label)}
-                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider hover:bg-zinc-800/60 transition-colors cursor-pointer"
                   >
                     <span className="flex items-center gap-2">
                       <span>{group.label}</span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 font-bold">
+                      <span className="text-[10px] px-1.5 py-px rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 font-bold">
                         {group.items.length}
                       </span>
                     </span>
-                    <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
-                      isExpanded ? 'rotate-180 text-white' : ''
-                    }`} />
+                    <ChevronDown
+                      className={`w-4 h-4 text-zinc-500 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                        isExpanded ? 'rotate-180 text-zinc-200' : ''
+                      }`}
+                    />
                   </button>
 
-                  {isExpanded && (
-                    <div className="p-1.5 border-t border-zinc-800/60 space-y-0.5 animate-in fade-in duration-150">
-                      {group.items.map((item) => {
-                        const ItemIcon = item.icon;
-                        const isItemActive = activeToolId === item.href;
-                        return (
-                          <button
-                            key={item.href}
-                            onClick={() => {
-                              onLinkClick?.(item.href);
-                              setMenuOpen(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 cursor-pointer ${
-                              isItemActive
-                                ? 'bg-zinc-800 text-white font-black border border-zinc-700'
-                                : 'text-zinc-300 hover:text-white hover:bg-zinc-800/60'
-                            }`}
-                          >
-                            <ItemIcon className="w-4 h-4 text-zinc-400 shrink-0" />
-                            <span className="truncate">{item.label}</span>
-                          </button>
-                        );
-                      })}
+                  {/* CSS grid-rows trick: animates height without knowing exact px */}
+                  <div
+                    className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                      isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="px-1.5 pb-1.5 border-t border-zinc-800/60 space-y-0.5 pt-1">
+                        {group.items.map((item) => {
+                          const ItemIcon = item.icon;
+                          const isItemActive = activeToolId === item.href;
+                          return (
+                            <button
+                              key={item.href}
+                              onClick={() => {
+                                onLinkClick?.(item.href);
+                                closeMenu();
+                              }}
+                              className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
+                                isItemActive
+                                  ? 'bg-zinc-800 text-white font-bold border border-zinc-700'
+                                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/70'
+                              }`}
+                            >
+                              <ItemIcon className="w-4 h-4 shrink-0 text-zinc-500" />
+                              <span className="truncate">{item.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 };
 

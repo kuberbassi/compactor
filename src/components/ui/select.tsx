@@ -61,7 +61,7 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
@@ -82,13 +82,15 @@ function SelectContent({
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
           className={cn(
-            "relative z-[200] max-h-(--available-height) min-w-[var(--anchor-width)] origin-(--transform-origin) overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] p-1.5 shadow-2xl backdrop-blur-xl duration-150 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", 
+            "relative z-[200] max-h-[var(--available-height,300px)] max-h-[50vh] min-w-[var(--anchor-width)] origin-(--transform-origin) overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] p-1.5 shadow-2xl backdrop-blur-xl duration-150 flex flex-col data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", 
             className 
           )}
           {...props}
         >
           <SelectScrollUpButton />
-          <SelectPrimitive.List className="space-y-0.5">{children}</SelectPrimitive.List>
+          <SelectPrimitive.List className="space-y-0.5 overflow-y-auto max-h-[250px] max-h-[40vh] overscroll-contain touch-pan-y pr-1">
+            {children}
+          </SelectPrimitive.List>
           <SelectScrollDownButton />
         </SelectPrimitive.Popup>
       </SelectPrimitive.Positioner>

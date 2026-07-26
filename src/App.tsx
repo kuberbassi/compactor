@@ -22,16 +22,29 @@ function MainApp() {
   const [uploadCount, setUploadCount] = useState<number>(1489230);
 
   useEffect(() => {
-    // Load count asynchronously from dual storage (localStorage + IndexedDB)
-    getStoredUploadCount().then(setUploadCount);
+    let tickInterval: ReturnType<typeof setInterval> | null = null;
 
-    // Live organic background increment ticker (simulates global user activity)
-    const tickInterval = setInterval(() => {
-      if (Math.random() > 0.35) {
-        const amount = Math.floor(Math.random() * 3) + 1;
-        incrementStoredUploadCount(amount).then(setUploadCount);
-      }
-    }, Math.floor(Math.random() * 6000) + 7000);
+    // Defer non-critical IndexedDB storage query and background ticker to idle time
+    const startIdleTasks = () => {
+      getStoredUploadCount().then(setUploadCount);
+
+      // Live organic background increment ticker (simulates global user activity)
+      tickInterval = setInterval(() => {
+        if (Math.random() > 0.35) {
+          const amount = Math.floor(Math.random() * 3) + 1;
+          incrementStoredUploadCount(amount).then(setUploadCount);
+        }
+      }, Math.floor(Math.random() * 6000) + 7000);
+    };
+
+    let idleId: number | null = null;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    if ('requestIdleCallback' in window) {
+      idleId = (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(startIdleTasks, { timeout: 2000 });
+    } else {
+      timerId = setTimeout(startIdleTasks, 200);
+    }
 
     const handleHashChange = () => {
       setActiveToolId(window.location.hash.slice(1) || null);
@@ -46,7 +59,11 @@ function MainApp() {
     window.addEventListener('hashchange', handleHashChange);
     window.addEventListener('compactor:count-updated', handleCustomCountUpdate);
     return () => {
-      clearInterval(tickInterval);
+      if (idleId && 'cancelIdleCallback' in window) {
+        (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
+      }
+      if (timerId) clearTimeout(timerId);
+      if (tickInterval) clearInterval(tickInterval);
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('compactor:count-updated', handleCustomCountUpdate);
     };

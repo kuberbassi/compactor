@@ -5,10 +5,23 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     
-    <!-- Fonts -->
+    <!-- Fonts — Non-render-blocking asynchronous load -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" /></noscript>
+
+    <!-- Web App Manifest & Download / PWA Installation -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Compressor" />
+    <meta name="application-name" content="Compressor" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <link rel="mask-icon" href="/favicon.svg" color="#09090b" />
 
     <!-- SEO Meta Tags -->
     <title>Compactor — Compress Video, Audio, Images & Edit PDF Files | By Kuber Bassi</title>
@@ -19,6 +32,7 @@
     <link rel="canonical" href="https://compactor.kuberbassi.com" />
     
     <!-- LLM Agentic Browsing Metadata -->
+    <link rel="alternate" type="text/markdown" title="LLM Site Information" href="/llms.txt" />
     <meta name="llm-agent-support" content="enabled" />
     <meta name="ai-application" content="100% Client-Side Private Media Processing & Conversion Suite" />
     <meta name="creator" content="Kuber Bassi" />
@@ -64,7 +78,7 @@
     }
     </script>
     
-    <script src="/coi-serviceworker.js"></script>
+    <script src="/coi-serviceworker.js" defer></script>
   </head>
   <body>
     <div id="root"></div>

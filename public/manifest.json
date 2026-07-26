@@ -1,0 +1,86 @@
+{
+  "name": "Compressor — 100% Private Media & PDF Suite",
+  "short_name": "Compressor",
+  "description": "100% Client-Side Private Media Compressor, PDF Toolkit & 212+ Format Converter by Kuber Bassi.",
+  "start_url": "/",
+  "id": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui",
+    "browser"
+  ],
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "categories": [
+    "utilities",
+    "productivity",
+    "multimedia"
+  ],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "64x64 128x128 192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Compress Video",
+      "short_name": "Video",
+      "description": "Compress video files for Discord, WhatsApp, TikTok & Instagram",
+      "url": "/#video-compressor",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "PDF Studio",
+      "short_name": "PDF",
+      "description": "Organize, merge, split, crop and sign PDF documents",
+      "url": "/#pdf-organize",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Image Optimizer",
+      "short_name": "Image",
+      "description": "Compress, crop and edit images",
+      "url": "/#image-optimizer",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Universal Converter",
+      "short_name": "Convert",
+      "description": "Convert between 212+ file formats",
+      "url": "/#universal-converter",
+      "icons": [
+        {
+          "src": "/favicon.svg",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

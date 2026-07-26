@@ -1202,7 +1202,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                     {getToolTitle()}
                   </SelectValue>
                 </SelectTrigger>
-                <SelectContent className="max-h-72">
+                <SelectContent>
                   {TOOL_GROUPS.map((group) => (
                     <div key={group.title} className="py-1">
                       <div className="px-2 py-1 text-[9px] font-mono font-bold text-zinc-400 uppercase tracking-wider bg-zinc-900/50">

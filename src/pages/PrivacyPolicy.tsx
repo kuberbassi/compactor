@@ -24,7 +24,7 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onGoHome }) => {
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[var(--text-primary)]">Zero Server Uploads</h3>
+              <h2 className="text-lg font-bold text-[var(--text-primary)]">Zero Server Uploads</h2>
               <p className="text-xs text-[var(--text-secondary)] mt-0.5">Your files stay on your hardware at all times.</p>
             </div>
           </div>
@@ -53,14 +53,14 @@ export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onGoHome }) => {
             </div>
 
             <div className="pt-4 border-t border-[var(--border-color)] space-y-2">
-              <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Local Storage Usage</h4>
+              <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Local Storage Usage</h3>
               <p>
                 Compactor uses standard browser features (`localStorage` and `IndexedDB`) solely to persist non-sensitive user preferences and an aggregate file completion metric on your local device.
               </p>
             </div>
 
             <div className="pt-2 border-t border-[var(--border-color)] space-y-1">
-              <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Contact & Inquiries</h4>
+              <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Contact & Inquiries</h3>
               <p>
                 If you have any questions regarding this Privacy Policy, please visit{' '}
                 <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--text-primary)] hover:underline font-bold">

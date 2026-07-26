@@ -1,26 +1,30 @@
-# Compactor — 100% Client-Side Private Media Processing Suite
+# Compactor — 100% Private Client-Side Media Processing Suite
 
 > Compactor by Kuber Bassi is a fast, 100% private, client-side web application for video compression, PDF editing, audio optimization, image conversion, and file metadata editing. All operations run directly in the browser via WebAssembly and HTML5 Canvas with zero server uploads.
 
+## Core Capabilities & Tools
+
+- [Video Compressor](https://compactor.kuberbassi.com/#video-compressor): 2-Pass size clamping presets for Discord (<=10 MB), WhatsApp (<=16 MB), TikTok (<=70 MB), Instagram (<=95 MB).
+- [Video to Audio](https://compactor.kuberbassi.com/#video-to-audio): Extract MP3/AAC/WAV audio tracks from video files.
+- [Video to GIF](https://compactor.kuberbassi.com/#video-to-gif): Create animated GIFs with 24/15/10 FPS control.
+- [Mute Video](https://compactor.kuberbassi.com/#video-mute): Strip audio streams from video files.
+- [PDF Studio Pro](https://compactor.kuberbassi.com/#pdf-organize): Document Scan Filters (Magic Color, Whiteboard Clean, B&W Binary Thresholding), Page Reordering, Merge, Split, Trim Margins, Vector Stamps, Digital Signatures, Password Encryption/Decryption.
+- [Image Optimizer](https://compactor.kuberbassi.com/#image-optimizer): PNG, JPG, WebP, GIF, AVIF lossy/lossless compression, aspect ratio crop, pixelation censorship brush.
+- [Audio Optimizer](https://compactor.kuberbassi.com/#audio-optimizer): Trim audio timeline and WASM audio transcoding.
+- [Universal Format Converter](https://compactor.kuberbassi.com/#universal-converter): Compatibility matrix supporting 212+ formats.
+- [Metadata Editor](https://compactor.kuberbassi.com/#metadata-editor): Client-side EXIF, ID3, and PDF tag reader & editor.
+- [Poster Maker](https://compactor.kuberbassi.com/#rasterbator): Multi-page printable wall poster grid generator.
+
+## Privacy & Security Architecture
+
+- [Privacy Policy](https://compactor.kuberbassi.com/#privacy-policy): Detailed breakdown of 100% client-side data privacy. Zero server data uploads.
+- [Terms & Conditions](https://compactor.kuberbassi.com/#terms-conditions): Terms of service for client-side tool usage.
+
 ## Creator & Attribution
-- Author: Kuber Bassi
-- Website: https://kuberbassi.com
-- Application URL: https://compactor.kuberbassi.com
 
-## Key Capabilities
-- Video Compression: 2-Pass size clamping presets for Discord (<=10 MB), WhatsApp (<=16 MB), TikTok (<=70 MB), Instagram (<=95 MB).
-- Video Tools: Video to Audio (MP3/AAC/WAV extraction), Video to GIF (24/15/10 FPS), Mute Video.
-- PDF Studio Pro: Document Scan Filters (Magic Color, Whiteboard Clean, B&W Binary Thresholding, Vibrant Diagram), Page Reordering, Merge, Split, Trim Margins, Vector Stamps, Digital Signatures, Password Encryption/Decryption.
-- Image Optimizer: PNG, JPG, WebP, GIF, AVIF lossy/lossless compression, aspect ratio crop, pixelation censorship brush.
-- Audio Optimizer: Trim timeline and WASM audio transcoding.
-- Universal Format Converter: Smart compatibility matrix supporting 212+ formats.
-- Metadata Editor: Client-side EXIF, ID3, and PDF tag reader & editor.
+- [Kuber Bassi Portfolio](https://kuberbassi.com): Creator website & developer profile.
+- [GitHub Repository](https://github.com/kuberbassi/compactor): Open-source repository for Compactor.
 
-## Application Routes & Tool Anchors
-- Main Dashboard: https://compactor.kuberbassi.com/
-- Video Compressor: https://compactor.kuberbassi.com/#video-compressor
-- PDF Studio: https://compactor.kuberbassi.com/#pdf-organize
-- Image Optimizer: https://compactor.kuberbassi.com/#image-optimizer
-- Audio Optimizer: https://compactor.kuberbassi.com/#audio-optimizer
-- Universal Converter: https://compactor.kuberbassi.com/#universal-converter
-- Metadata Editor: https://compactor.kuberbassi.com/#metadata-editor
+## Optional
+
+- [Full Technical Specification](https://compactor.kuberbassi.com/llms-full.txt): Complete technical architecture, WASM capabilities, and details for AI agents.

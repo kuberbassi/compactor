@@ -29,7 +29,7 @@ export const ToolHeader: React.FC<ToolHeaderProps> = ({
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg sm:text-2xl font-black tracking-tight text-[var(--text-primary)] leading-tight">{title}</h2>
+            <h1 className="text-lg sm:text-2xl font-black tracking-tight text-[var(--text-primary)] leading-tight">{title}</h1>
             {badge && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700 uppercase tracking-wider shrink-0">
                 {badge}
