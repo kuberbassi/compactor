@@ -15,7 +15,7 @@ import { processPitchAndSpeed } from '../../utils/audioPitchSpeed';
 
 import { 
   Music, Download, RefreshCw, CheckCircle, 
-  Disc, Sliders, Layers, ArrowUp, ArrowDown, Trash2, Zap
+  Disc, Sliders, Layers, ArrowUp, ArrowDown, Trash2, Zap, Plus
 } from 'lucide-react';
 import { Switch } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
@@ -81,6 +81,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   } | null>(null);
 
   const logEndRef = useRef<HTMLDivElement>(null);
+  const addTracksInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!file) {
@@ -90,7 +91,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
 
-    // Calculate metadata audio duration
     const tempAudio = new Audio(url);
     tempAudio.onloadedmetadata = () => {
       setAudioDuration(tempAudio.duration);
@@ -260,7 +260,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   const currentToolInfo = getToolInfo();
 
   return (
-    <div className="tool-layout space-y-6">
+    <div className="tool-layout space-y-3">
       <ToolHeader 
         title={currentToolInfo.label} 
         description={currentToolInfo.desc} 
@@ -274,8 +274,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         }} 
       />
 
-      {/* Mode Selector Header Bar */}
-      <div className="w-full flex justify-center">
+      {/* Mode Selector Header Bar - Reduced bottom padding */}
+      <div className="w-full flex justify-center pb-1">
         <div className="flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm overflow-x-auto no-scrollbar max-w-full">
           {AUDIO_TOOLS_CONFIG.map((t) => {
             const IconComponent = t.icon;
@@ -303,15 +303,43 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── MODE 1: AUDIO JOINER SETUP ── */}
       {activeTool === 'audio-joiner' && !result && !processing && (
-        <div className="max-w-xl mx-auto space-y-4">
-          <FileUploader 
-            accept="audio/*"
-            label="Upload Audio Tracks to Merge"
-            subLabel="Drag & drop multiple audio tracks (MP3, WAV, AAC, M4A, FLAC)"
-            onFilesSelected={handleFilesSelected}
-            multiple={true}
-            maxSizeMB={Infinity}
-          />
+        <div className="max-w-xl mx-auto space-y-3">
+          {joinFiles.length === 0 ? (
+            <FileUploader 
+              accept="audio/*"
+              label="Upload Audio Tracks to Merge"
+              subLabel="Drag & drop multiple audio tracks (MP3, WAV, AAC, M4A, FLAC)"
+              onFilesSelected={handleFilesSelected}
+              multiple={true}
+              maxSizeMB={Infinity}
+            />
+          ) : (
+            /* Condensed Add Tracks Bar when files are already queued */
+            <div className="p-3 bg-zinc-950/60 border border-[var(--border-color)] rounded-xl flex items-center justify-between">
+              <span className="text-xs text-zinc-400 font-medium truncate pr-2">Add more audio files to queue...</span>
+              <input
+                ref={addTracksInputRef}
+                type="file"
+                accept="audio/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    handleFilesSelected(Array.from(e.target.files));
+                  }
+                }}
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => addTracksInputRef.current?.click()}
+                className="h-8 text-xs font-semibold shrink-0 border-[var(--border-color)]"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                <span>Add Tracks</span>
+              </Button>
+            </div>
+          )}
 
           {joinFiles.length > 0 && (
             <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-6 space-y-5 rounded-2xl shadow-sm">
@@ -319,7 +347,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                 <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
                   Audio Queue ({joinFiles.length} Tracks)
                 </span>
-                <Button variant="ghost" onClick={() => setJoinFiles([])} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2">
+                <Button variant="ghost" onClick={() => setJoinFiles([])} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold">
                   Clear All
                 </Button>
               </div>
@@ -395,7 +423,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── MODE 2, 3, 4 SINGLE FILE UPLOADER ── */}
       {activeTool !== 'audio-joiner' && !file && !result && (
-        <div className="max-w-xl mx-auto py-6">
+        <div className="max-w-xl mx-auto py-4">
           <FileUploader 
             accept="audio/*"
             label={`Upload Audio for ${currentToolInfo.label}`}
@@ -408,14 +436,14 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── MODE 3: KEY & BPM FINDER RESULT VIEW ── */}
       {activeTool === 'audio-bpm-finder' && file && !result && (
-        <div className="max-w-xl mx-auto space-y-4">
+        <div className="max-w-xl mx-auto space-y-3">
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-6 space-y-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
-              <div className="flex items-center gap-2 truncate">
-                <Disc className="w-4 h-4 text-zinc-400" />
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                <Disc className="w-4 h-4 text-zinc-400 shrink-0" />
                 <span className="text-xs font-bold text-[var(--text-primary)] truncate">{file.name}</span>
               </div>
-              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2">
+              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold shrink-0">
                 Analyze Another
               </Button>
             </div>
@@ -467,14 +495,14 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── MODE 4: PITCH & SPEED CONTROLS WITH LIVE PREVIEW ── */}
       {activeTool === 'audio-pitch-speed' && file && !result && !processing && (
-        <div className="max-w-xl mx-auto space-y-4">
+        <div className="max-w-xl mx-auto space-y-3">
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-6 space-y-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
-              <div className="flex items-center gap-2 truncate">
-                <Sliders className="w-4 h-4 text-zinc-400" />
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                <Sliders className="w-4 h-4 text-zinc-400 shrink-0" />
                 <span className="text-xs font-bold text-[var(--text-primary)] truncate">{file.name}</span>
               </div>
-              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2">
+              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold shrink-0">
                 Remove
               </Button>
             </div>
@@ -572,14 +600,14 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── MODE 1: COMPRESS AUDIO SETTINGS ── */}
       {activeTool === 'audio-optimizer' && file && !result && !processing && (
-        <div className="max-w-xl mx-auto space-y-4">
+        <div className="max-w-xl mx-auto space-y-3">
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-6 space-y-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
-              <div className="flex items-center gap-2 truncate">
-                <Music className="w-4 h-4 text-zinc-400" />
-                <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-sm">{file.name}</span>
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2 truncate min-w-0 flex-1">
+                <Music className="w-4 h-4 text-zinc-400 shrink-0" />
+                <span className="text-xs font-bold text-[var(--text-primary)] truncate">{file.name}</span>
               </div>
-              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 text-xs h-7 px-2">
+              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 text-xs h-7 px-2 font-semibold shrink-0">
                 Remove File
               </Button>
             </div>
@@ -674,7 +702,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── PROCESSING VIEW ── */}
       {processing && (
-        <div className="max-w-xl mx-auto py-10">
+        <div className="max-w-xl mx-auto py-8">
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-8 text-center space-y-6 rounded-2xl shadow-sm">
             <div className="space-y-2">
               <h3 className="text-base font-bold text-[var(--text-primary)]">{statusText || 'Processing Audio...'}</h3>
@@ -688,7 +716,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── RESULT DOWNLOAD VIEW ── */}
       {result && (
-        <div className="max-w-xl mx-auto py-6">
+        <div className="max-w-xl mx-auto py-4">
           <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-6 sm:p-8 text-center space-y-6 rounded-2xl shadow-sm">
             <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle className="w-6 h-6" />
