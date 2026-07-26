@@ -185,7 +185,7 @@ export const TOOLS: ToolItem[] = [
     subtitle: 'Reduce audio file size',
     description: 'Compress MP3, WAV, or FLAC audio files without losing sound quality.',
     category: 'AUDIO & CONVERT',
-    tags: ['MP3 / WAV / FLAC', 'Bitrate Control', 'Stereo to Mono'],
+    tags: ['MP3 / WAV / FLAC', 'Bitrate Control', 'Lossless Compression', 'Audio Trimming'],
     illustrationType: 'audio-compress'
   },
   {
@@ -230,7 +230,7 @@ export const TOOLS: ToolItem[] = [
     subtitle: 'Camera EXIF & music tags',
     description: 'Edit camera details, artist info, or strip private location metadata.',
     category: 'AUDIO & CONVERT',
-    tags: ['Camera EXIF', 'Music ID3 Tags', 'Privacy Stripper'],
+    tags: ['Album Artwork', 'Music ID3 Tags', 'Privacy Stripper'],
     illustrationType: 'metadata'
   }
 ];
