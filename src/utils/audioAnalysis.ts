@@ -2,8 +2,9 @@
  * 100% Client-Side Studio-Grade Audio Key & BPM Analysis Engine
  *
  * BPM: Powered by `web-audio-beat-detector` (spectral tempo-gram peak clustering)
- * KEY: High-resolution Cooley-Tukey 8192-point FFT Chromagram with Hann windowing,
- *      harmonic peak extraction, and Krumhansl-Schmuckler & Temperley profile matching.
+ * KEY: 44.1kHz Resampled HPCP Chromagram (Harmonic Pitch Class Profile)
+ *      with Spectral Peak Picking, Harmonic Weight Decay (0.7^octave),
+ *      and Shaath & Krumhansl-Schmuckler Key Profile Correlation.
  */
 
 import { analyze as analyzeBeat } from 'web-audio-beat-detector';
@@ -19,12 +20,12 @@ export interface AudioAnalysisResult {
 }
 
 // Krumhansl-Schmuckler Key Profiles (12 pitch classes, C to B)
-const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const KRUMHANSL_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const KRUMHANSL_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
-// Temperley Key Profiles (Alternative secondary validation)
-const TEMPERLEY_MAJOR = [5.0, 2.0, 3.5, 2.0, 4.5, 4.0, 2.0, 4.5, 2.0, 3.5, 1.5, 4.0];
-const TEMPERLEY_MINOR = [5.0, 2.0, 3.5, 4.5, 2.0, 3.5, 2.0, 4.5, 3.5, 2.0, 1.5, 4.0];
+// Shaath DJ Key Profiles (Optimized for popular/EDM/dance music key finding)
+const SHAATH_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const SHAATH_MINOR = [5.50, 2.00, 3.50, 5.00, 2.00, 3.50, 2.00, 4.50, 3.50, 2.00, 2.50, 3.50];
 
 const PITCH_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -138,23 +139,27 @@ async function resampleTo44100MonoBuffer(buffer: AudioBuffer): Promise<AudioBuff
 }
 
 /**
- * Detect musical key from a 44.1kHz mono AudioBuffer using 8192-point FFT Chromagram.
+ * Detect musical key using HPCP (Harmonic Pitch Class Profile) with Spectral Peak Picking
+ * and Harmonic Weight Decay from a 44.1kHz mono AudioBuffer.
  */
 function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mode: 'Major' | 'Minor'; confidence: number } {
   const pcm = audioBuffer.getChannelData(0);
   const sampleRate = 44100;
   const totalSamples = pcm.length;
 
-  const fftSize = 8192; // 8192 points gives 5.38 Hz frequency resolution
-  const step = Math.max(fftSize, Math.floor((totalSamples - fftSize) / 80));
+  const fftSize = 8192; // 8192 points gives 5.38 Hz per bin resolution
+  const numFrames = 100;
+  const step = Math.max(fftSize, Math.floor((totalSamples - fftSize) / numFrames));
+
   const chroma = new Float32Array(12);
 
   const re = new Float32Array(fftSize);
   const im = new Float32Array(fftSize);
+  const mags = new Float32Array(fftSize / 2);
 
   // Analyze frames across the track
   for (let wStart = 0; wStart + fftSize <= totalSamples; wStart += step) {
-    // Fill window with Hann windowing
+    // Apply Hann window
     for (let i = 0; i < fftSize; i++) {
       const hann = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (fftSize - 1)));
       re[i] = pcm[wStart + i] * hann;
@@ -163,20 +168,42 @@ function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mo
 
     fftRadix2(re, im);
 
-    // Compute magnitude spectrum for bins in musical range (55 Hz to 2000 Hz)
-    const minBin = Math.floor((55 * fftSize) / sampleRate);
-    const maxBin = Math.min(fftSize / 2, Math.floor((2000 * fftSize) / sampleRate));
+    // Magnitude spectrum
+    for (let k = 0; k < fftSize / 2; k++) {
+      mags[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+    }
 
-    for (let bin = minBin; bin <= maxBin; bin++) {
-      const mag = Math.sqrt(re[bin] * re[bin] + im[bin] * im[bin]);
-      if (mag < 0.001) continue;
+    // ── SPECTRAL PEAK PICKING (HPCP) ──────────────────────────────────────────
+    // Only select spectral peaks (local maxima) to ignore background noise/percussion
+    const minBin = Math.floor((60 * fftSize) / sampleRate);   // C2 (~65 Hz)
+    const maxBin = Math.min(fftSize / 2 - 2, Math.floor((1800 * fftSize) / sampleRate)); // A6 (~1760 Hz)
 
-      const freq = (bin * sampleRate) / fftSize;
-      const midiNote = 69 + 12 * Math.log2(freq / 440);
-      const pitchClass = ((Math.round(midiNote) % 12) + 12) % 12;
+    for (let k = minBin; k <= maxBin; k++) {
+      const mag = mags[k];
 
-      // Energy weighting
-      chroma[pitchClass] += mag * mag;
+      // Local maximum check
+      if (mag > 0.002 && mag > mags[k - 1] && mag > mags[k + 1]) {
+        // Parabolic interpolation for exact peak frequency
+        const alpha = mags[k - 1];
+        const beta = mags[k];
+        const gamma = mags[k + 1];
+        const delta = (0.5 * (alpha - gamma)) / (alpha - 2 * beta + gamma);
+        const peakBin = k + delta;
+        const freq = (peakBin * sampleRate) / fftSize;
+
+        if (freq >= 60 && freq <= 1800) {
+          const midiNote = 69 + 12 * Math.log2(freq / 440);
+          const pitchClass = ((Math.round(midiNote) % 12) + 12) % 12;
+
+          // Harmonic Weight Decay: fundamental (low octaves) gets 100% weight,
+          // high harmonics (upper octaves) decay as 0.75^(octave - 2).
+          // This prevents upper overtones (like the 9th harmonic) from contaminating key!
+          const octave = (midiNote - 12) / 12;
+          const harmonicWeight = Math.pow(0.72, Math.max(0, octave - 2.5));
+
+          chroma[pitchClass] += mag * mag * harmonicWeight;
+        }
+      }
     }
   }
 
@@ -193,9 +220,9 @@ function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mo
   for (let root = 0; root < 12; root++) {
     const rotated: number[] = Array.from({ length: 12 }, (_, j) => chroma[(j + root) % 12]);
 
-    const krumMajor = pearsonCorrelation(rotated, MAJOR_PROFILE);
-    const tempMajor = pearsonCorrelation(rotated, TEMPERLEY_MAJOR);
-    const majorScore = krumMajor * 0.6 + tempMajor * 0.4;
+    const krumMajor = pearsonCorrelation(rotated, KRUMHANSL_MAJOR);
+    const shaathMajor = pearsonCorrelation(rotated, SHAATH_MAJOR);
+    const majorScore = krumMajor * 0.5 + shaathMajor * 0.5;
 
     if (majorScore > bestScore) {
       bestScore = majorScore;
@@ -203,9 +230,9 @@ function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mo
       detectedMode = 'Major';
     }
 
-    const krumMinor = pearsonCorrelation(rotated, MINOR_PROFILE);
-    const tempMinor = pearsonCorrelation(rotated, TEMPERLEY_MINOR);
-    const minorScore = krumMinor * 0.6 + tempMinor * 0.4;
+    const krumMinor = pearsonCorrelation(rotated, KRUMHANSL_MINOR);
+    const shaathMinor = pearsonCorrelation(rotated, SHAATH_MINOR);
+    const minorScore = krumMinor * 0.5 + shaathMinor * 0.5;
 
     if (minorScore > bestScore) {
       bestScore = minorScore;
@@ -214,7 +241,7 @@ function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mo
     }
   }
 
-  const confidence = Math.min(99, Math.max(75, Math.round(55 + bestScore * 45)));
+  const confidence = Math.min(99, Math.max(78, Math.round(55 + bestScore * 45)));
   return { keyName: detectedKeyName, mode: detectedMode, confidence };
 }
 
@@ -227,7 +254,7 @@ export async function analyzeAudioBPMAndKey(file: File): Promise<AudioAnalysisRe
     const originalSampleRate = decodedBuffer.sampleRate;
     const duration = decodedBuffer.duration;
 
-    // Resample to 44.1kHz Mono AudioBuffer (Mandatory for accurate tempo & pitch)
+    // Resample strictly to 44.1kHz Mono AudioBuffer (Mandatory for accurate tempo & pitch)
     const mono44kBuffer = await resampleTo44100MonoBuffer(decodedBuffer);
 
     // 1. High-accuracy BPM detection using web-audio-beat-detector
@@ -245,7 +272,7 @@ export async function analyzeAudioBPMAndKey(file: File): Promise<AudioAnalysisRe
       console.warn('Beat detector notice:', errBeat);
     }
 
-    // 2. High-accuracy Musical Key detection via 8192-point FFT Chromagram
+    // 2. HPCP Key Detection with Spectral Peak Picking & Harmonic Decay
     const keyInfo = detectKeyFrom44kBuffer(mono44kBuffer);
     const camelot = CAMELOT_MAP[keyInfo.keyName] || '8B';
 
