@@ -1,6 +1,6 @@
 /**
- * 100% Client-Side Studio-Grade Audio Pitch & Speed Engine
- * Powered by Rubber Band Library (WASM) for highest quality artifact-free audio DSP.
+ * 100% Client-Side Audio Pitch & Speed Engine
+ * Driven natively by Rubber Band Library WebAssembly (C++ DSP Engine).
  */
 
 import rubberbandWasmUrl from 'rubberband-wasm/dist/rubberband.wasm?url';
@@ -94,82 +94,47 @@ export async function processPitchAndSpeed(
 
     onProgress?.(30);
 
-    let outputSamples: Float32Array;
-    let finalDuration = originalBuffer.duration / speedRatio;
+    // Rubber Band WASM Native C++ Engine
+    const rb = await getRubberBand();
+    const pitchScale = Math.pow(2, pitchSemitones / 12);
+    const timeRatio = 1 / speedRatio;
 
-    try {
-      // ── RUBBER BAND WASM HIGH QUALITY ENGINE ──
-      const rb = await getRubberBand();
-      const pitchScale = Math.pow(2, pitchSemitones / 12);
-      const timeRatio = 1 / speedRatio;
+    const rbOptions =
+      RubberBandOption.RubberBandOptionProcessOffline |
+      RubberBandOption.RubberBandOptionPitchHighQuality |
+      RubberBandOption.RubberBandOptionEngineFiner;
 
-      const rbOptions =
-        RubberBandOption.RubberBandOptionProcessOffline |
-        RubberBandOption.RubberBandOptionPitchHighQuality |
-        RubberBandOption.RubberBandOptionEngineFiner;
+    const state = rb.rubberband_new(sampleRate, numChannels, rbOptions, timeRatio, pitchScale);
+    const totalSamples = originalBuffer.length;
+    rb.rubberband_set_expected_input_duration(state, totalSamples);
 
-      const state = rb.rubberband_new(sampleRate, numChannels, rbOptions, timeRatio, pitchScale);
-      const totalSamples = originalBuffer.length;
-      rb.rubberband_set_expected_input_duration(state, totalSamples);
-
-      const inputPcm = new Float32Array(totalSamples * numChannels);
-      if (numChannels === 1) {
-        inputPcm.set(originalBuffer.getChannelData(0));
-      } else {
-        const ch0 = originalBuffer.getChannelData(0);
-        const ch1 = originalBuffer.getChannelData(1);
-        for (let i = 0; i < totalSamples; i++) {
-          inputPcm[i * 2] = ch0[i];
-          inputPcm[i * 2 + 1] = ch1[i];
-        }
+    const inputPcm = new Float32Array(totalSamples * numChannels);
+    if (numChannels === 1) {
+      inputPcm.set(originalBuffer.getChannelData(0));
+    } else {
+      const ch0 = originalBuffer.getChannelData(0);
+      const ch1 = originalBuffer.getChannelData(1);
+      for (let i = 0; i < totalSamples; i++) {
+        inputPcm[i * 2] = ch0[i];
+        inputPcm[i * 2 + 1] = ch1[i];
       }
-
-      const inPtr = rb.malloc(inputPcm.length * 4);
-      rb.memWrite(inPtr, inputPcm);
-
-      rb.rubberband_process(state, inPtr, totalSamples, 1);
-      onProgress?.(70);
-
-      const avail = rb.rubberband_available(state);
-      const outPtr = rb.malloc(avail * numChannels * 4);
-      const retrieved = rb.rubberband_retrieve(state, outPtr, avail);
-
-      outputSamples = rb.memReadF32(outPtr, retrieved * numChannels);
-      finalDuration = retrieved / sampleRate;
-
-      rb.free(inPtr);
-      rb.free(outPtr);
-      rb.rubberband_delete(state);
-    } catch (err) {
-      console.warn('Rubber Band WASM processing fallback to OfflineAudioContext:', err);
-
-      // Fallback: OfflineAudioContext Native DSP
-      const pitchFactor = Math.pow(2, pitchSemitones / 12);
-      const effectiveRate = pitchFactor * speedRatio;
-      const outputLength = Math.max(1, Math.floor(originalBuffer.length / speedRatio));
-
-      const offlineCtx = new OfflineAudioContext(numChannels, outputLength, sampleRate);
-      const source = offlineCtx.createBufferSource();
-      source.buffer = originalBuffer;
-      source.playbackRate.value = effectiveRate;
-      source.connect(offlineCtx.destination);
-      source.start(0);
-
-      const renderedBuffer = await offlineCtx.startRendering();
-      const left = renderedBuffer.getChannelData(0);
-      const right = numChannels > 1 ? renderedBuffer.getChannelData(1) : left;
-
-      outputSamples = new Float32Array(renderedBuffer.length * numChannels);
-      if (numChannels === 1) {
-        outputSamples.set(left);
-      } else {
-        for (let i = 0; i < renderedBuffer.length; i++) {
-          outputSamples[i * 2] = left[i];
-          outputSamples[i * 2 + 1] = right[i];
-        }
-      }
-      finalDuration = renderedBuffer.duration;
     }
+
+    const inPtr = rb.malloc(inputPcm.length * 4);
+    rb.memWrite(inPtr, inputPcm);
+
+    rb.rubberband_process(state, inPtr, totalSamples, 1);
+    onProgress?.(75);
+
+    const avail = rb.rubberband_available(state);
+    const outPtr = rb.malloc(avail * numChannels * 4);
+    const retrieved = rb.rubberband_retrieve(state, outPtr, avail);
+
+    const outputSamples = rb.memReadF32(outPtr, retrieved * numChannels);
+
+    rb.free(inPtr);
+    rb.free(outPtr);
+    rb.rubberband_delete(state);
 
     onProgress?.(90);
 
@@ -188,13 +153,14 @@ export async function processPitchAndSpeed(
 
     const wavBlob = encodeWAV(outputSamples, sampleRate, numChannels);
     const url = URL.createObjectURL(wavBlob);
+    const duration = retrieved / sampleRate;
 
     onProgress?.(100);
 
     return {
       url,
       blob: wavBlob,
-      duration: finalDuration,
+      duration,
     };
   } finally {
     await audioCtx.close();

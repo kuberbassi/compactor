@@ -102,7 +102,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   // Pitch & Speed State
   const [pitchSemitones, setPitchSemitones] = useState<number>(0);
   const [speedRatio, setSpeedRatio] = useState<number>(1.0);
-  const [useSemitonesMode, setUseSemitonesMode] = useState<boolean>(true);
 
   // Result State
   const [result, setResult] = useState<{
@@ -164,7 +163,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     setAnalysisResult(null);
     setPitchSemitones(0);
     setSpeedRatio(1.0);
-    setUseSemitonesMode(true);
   };
 
   // Mode Handlers
@@ -548,16 +546,16 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="text-zinc-400 font-bold uppercase tracking-wider">PITCH</span>
                     <span className="text-indigo-300 font-extrabold text-sm">
-                      {pitchSemitones > 0 ? `+${useSemitonesMode ? pitchSemitones : pitchSemitones.toFixed(2)}` : (useSemitonesMode ? pitchSemitones : pitchSemitones.toFixed(2))}
+                      {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones}
                     </span>
                   </div>
                   <input 
                     type="range" 
                     min="-12" 
                     max="12" 
-                    step={useSemitonesMode ? "1" : "0.01"}
+                    step="1"
                     value={pitchSemitones}
-                    onChange={(e) => setPitchSemitones(parseFloat(e.target.value))}
+                    onChange={(e) => setPitchSemitones(parseInt(e.target.value, 10))}
                     className="w-full accent-indigo-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
@@ -585,27 +583,11 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               {/* Dynamic KEY & BPM Info Cards Column */}
               <div className="md:col-span-4 space-y-3">
                 {/* KEY DISPLAY CARD */}
-                <div className="p-4 bg-zinc-950/90 border border-zinc-800/90 rounded-xl text-center space-y-2 flex flex-col items-center justify-center min-h-[110px]">
+                <div className="p-4 bg-zinc-950/90 border border-zinc-800/90 rounded-xl text-center space-y-1.5 flex flex-col items-center justify-center min-h-[105px]">
                   <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">KEY</span>
-                  <div className="flex flex-col items-center justify-center leading-none">
+                  <div className="flex flex-col items-center justify-center leading-none my-1">
                     <span className="text-3xl font-black text-white tracking-tight">{transposedKey.root}</span>
-                    <span className="text-xs font-semibold text-indigo-400 font-mono mt-1 uppercase tracking-wider">{transposedKey.mode}</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-1.5 pt-1.5 border-t border-zinc-900 w-full">
-                    <input 
-                      type="checkbox" 
-                      id="semitones-check"
-                      checked={useSemitonesMode} 
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setUseSemitonesMode(checked);
-                        if (checked) setPitchSemitones(Math.round(pitchSemitones));
-                      }}
-                      className="rounded accent-indigo-500 w-3.5 h-3.5 cursor-pointer"
-                    />
-                    <label htmlFor="semitones-check" className="text-[11px] font-mono text-zinc-400 cursor-pointer select-none">
-                      semitones
-                    </label>
+                    <span className="text-xs font-bold text-indigo-400 font-mono mt-1 uppercase tracking-wider">{transposedKey.mode}</span>
                   </div>
                 </div>
 
