@@ -35,6 +35,38 @@ const AUDIO_TOOLS_CONFIG = [
   { id: 'audio-pitch-speed', label: 'Pitch & Speed', desc: 'Transpose key pitch (-12 to +12) and adjust tempo (0.5x to 2.0x)', icon: Sliders },
 ];
 
+function transposeKeyDisplay(baseKey: string | null, semitones: number): { root: string; mode: string } {
+  if (!baseKey) {
+    const pitchNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+    const idx = ((0 + semitones) % 12 + 12) % 12;
+    return { root: pitchNames[idx], mode: 'major' };
+  }
+
+  const parts = baseKey.trim().split(/\s+/);
+  const rawRoot = parts[0] || 'C';
+  const modeStr = parts[1] || 'Major';
+
+  const pitchNames = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  const flatToIdx: Record<string, number> = {
+    'C': 0, 'C#': 1, 'Db': 1, 'D♭': 1,
+    'D': 2, 'D#': 3, 'Eb': 3, 'E♭': 3,
+    'E': 4,
+    'F': 5, 'F#': 6, 'Gb': 6, 'G♭': 6,
+    'G': 7, 'G#': 8, 'Ab': 8, 'A♭': 8,
+    'A': 9, 'A#': 10, 'Bb': 10, 'B♭': 10,
+    'B': 11
+  };
+
+  const baseIdx = flatToIdx[rawRoot] !== undefined ? flatToIdx[rawRoot] : 0;
+  const targetIdx = ((baseIdx + semitones) % 12 + 12) % 12;
+  const rootDisplay = pitchNames[targetIdx];
+
+  return {
+    root: rootDisplay,
+    mode: modeStr.toLowerCase(),
+  };
+}
+
 export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer', onGoHome, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(mode);
 
@@ -70,6 +102,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   // Pitch & Speed State
   const [pitchSemitones, setPitchSemitones] = useState<number>(0);
   const [speedRatio, setSpeedRatio] = useState<number>(1.0);
+  const [useSemitonesMode, setUseSemitonesMode] = useState<boolean>(true);
 
   // Result State
   const [result, setResult] = useState<{
@@ -131,6 +164,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     setAnalysisResult(null);
     setPitchSemitones(0);
     setSpeedRatio(1.0);
+    setUseSemitonesMode(true);
   };
 
   // Mode Handlers
@@ -143,7 +177,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
       setResult(null);
       setAnalysisResult(null);
 
-      if (activeTool === 'audio-bpm-finder') {
+      // Auto-analyze key & BPM for Pitch & Speed and Key Finder
+      if (activeTool === 'audio-bpm-finder' || activeTool === 'audio-pitch-speed') {
         runBPMAnalysis(files[0]);
       }
     }
@@ -159,7 +194,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
       onUploadSuccess();
     } catch (e: any) {
       console.error(e);
-      alert('Failed to analyze audio key and BPM.');
     } finally {
       setAnalyzingBpm(false);
     }
@@ -199,7 +233,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
       if (!file) return;
       setProcessing(true);
       setProgress(10);
-      setStatusText('Modifying pitch & speed client-side...');
+      setStatusText('Processing pitch & speed with SoundTouch engine...');
       try {
         const processed = await processPitchAndSpeed(
           file,
@@ -258,6 +292,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   };
 
   const currentToolInfo = getToolInfo();
+  const transposedKey = transposeKeyDisplay(analysisResult?.key || null, pitchSemitones);
+  const currentBpm = Math.round((analysisResult?.bpm || 120) * speedRatio);
 
   return (
     <div className="tool-layout space-y-3">
@@ -274,7 +310,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         }} 
       />
 
-      {/* Mode Selector Header Bar - Reduced bottom padding */}
+      {/* Mode Selector Header Bar */}
       <div className="w-full flex justify-center pb-1">
         <div className="flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm overflow-x-auto no-scrollbar max-w-full">
           {AUDIO_TOOLS_CONFIG.map((t) => {
@@ -314,7 +350,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               maxSizeMB={Infinity}
             />
           ) : (
-            /* Condensed Add Tracks Bar when files are already queued */
             <div className="p-3 bg-zinc-950/60 border border-[var(--border-color)] rounded-xl flex items-center justify-between">
               <span className="text-xs text-zinc-400 font-medium truncate pr-2">Add more audio files to queue...</span>
               <input
@@ -455,7 +490,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               </div>
             ) : analysisResult ? (
               <div className="space-y-5">
-                {/* Big Metric Display */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-4 rounded-xl bg-zinc-950/70 border border-[var(--border-color)] text-center space-y-1">
                     <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">TEMPO</span>
@@ -470,7 +504,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                   </div>
                 </div>
 
-                {/* Additional Technical Breakdown with Proper Spacing */}
                 <div className="p-3 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl flex flex-wrap items-center justify-around gap-2 text-xs font-mono text-zinc-400">
                   <span>Confidence: <strong className="text-white">{analysisResult.confidence}%</strong></span>
                   <span className="text-zinc-600 hidden sm:inline">&bull;</span>
@@ -479,7 +512,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                   <span>Scale: <strong className="text-white">{analysisResult.mode}</strong></span>
                 </div>
 
-                {/* Custom Audio Player */}
                 {previewUrl && (
                   <CustomAudioPlayer
                     src={previewUrl}
@@ -493,94 +525,101 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         </div>
       )}
 
-      {/* ── MODE 4: PITCH & SPEED CONTROLS WITH INSTANT 60FPS PREVIEW ── */}
+      {/* ── MODE 4: PITCH & SPEED CONTROLS WITH LIVE KEY/BPM DISPLAY ── */}
       {activeTool === 'audio-pitch-speed' && file && !result && !processing && (
-        <div className="max-w-xl mx-auto space-y-3">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-6 space-y-5 rounded-2xl shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+        <div className="max-w-2xl mx-auto space-y-3">
+          <Card className="border-zinc-800/80 bg-[#12121a] p-6 space-y-6 rounded-2xl shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-zinc-800/60 pb-3">
               <div className="flex items-center gap-2 truncate min-w-0 flex-1">
-                <Sliders className="w-4 h-4 text-zinc-400 shrink-0" />
-                <span className="text-xs font-bold text-[var(--text-primary)] truncate">{file.name}</span>
+                <Sliders className="w-4 h-4 text-indigo-400 shrink-0" />
+                <span className="text-xs font-bold text-white truncate">{file.name}</span>
               </div>
               <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold shrink-0">
                 Remove
               </Button>
             </div>
 
-            {/* Pitch Semitone Control */}
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between text-xs font-mono font-bold">
-                <span className="text-zinc-300">Pitch Transposition</span>
-                <span className="text-indigo-400">{pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} semitones</span>
-              </div>
-              <input 
-                type="range" 
-                min="-12" 
-                max="12" 
-                step="1"
-                value={pitchSemitones}
-                onChange={(e) => setPitchSemitones(parseInt(e.target.value, 10))}
-                className="w-full accent-white cursor-pointer"
-              />
-              <div className="flex gap-1.5 flex-wrap pt-0.5">
-                {[-12, -2, -1, 0, 1, 2, 7, 12].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => setPitchSemitones(s)}
-                    className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                      pitchSemitones === s 
-                        ? 'bg-white text-black font-extrabold shadow-sm' 
-                        : 'bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    {s > 0 ? `+${s}` : s}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* Pitch & Speed Control Section Matching Screenshot */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+              {/* Sliders Column */}
+              <div className="md:col-span-8 space-y-6">
+                {/* PITCH SLIDER */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-zinc-400 font-bold uppercase tracking-wider">PITCH</span>
+                    <span className="text-indigo-300 font-extrabold text-sm">
+                      {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones}
+                    </span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="-12" 
+                    max="12" 
+                    step="1"
+                    value={pitchSemitones}
+                    onChange={(e) => setPitchSemitones(parseInt(e.target.value, 10))}
+                    className="w-full accent-indigo-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
 
-            {/* Speed Multiplier Control */}
-            <div className="space-y-2.5 pt-3 border-t border-[var(--border-color)]">
-              <div className="flex items-center justify-between text-xs font-mono font-bold">
-                <span className="text-zinc-300">Playback Speed / Tempo</span>
-                <span className="text-emerald-400">{speedRatio}x</span>
+                {/* SPEED SLIDER */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-zinc-400 font-bold uppercase tracking-wider">SPEED</span>
+                    <span className="text-emerald-300 font-extrabold text-sm">
+                      {speedRatio.toFixed(2)}x
+                    </span>
+                  </div>
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="2.0" 
+                    step="0.05"
+                    value={speedRatio}
+                    onChange={(e) => setSpeedRatio(parseFloat(e.target.value))}
+                    className="w-full accent-emerald-500 h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                </div>
               </div>
-              <input 
-                type="range" 
-                min="0.5" 
-                max="2.0" 
-                step="0.05"
-                value={speedRatio}
-                onChange={(e) => setSpeedRatio(parseFloat(e.target.value))}
-                className="w-full accent-white cursor-pointer"
-              />
-              <div className="flex gap-1.5 flex-wrap pt-0.5">
-                {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setSpeedRatio(r)}
-                    className={`px-2 py-1 rounded-md text-[10px] font-mono font-bold transition-all cursor-pointer ${
-                      speedRatio === r 
-                        ? 'bg-white text-black font-extrabold shadow-sm' 
-                        : 'bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-900'
-                    }`}
-                  >
-                    {r}x
-                  </button>
-                ))}
+
+              {/* Dynamic KEY & BPM Info Cards Column */}
+              <div className="md:col-span-4 space-y-3">
+                {/* KEY DISPLAY CARD */}
+                <div className="p-3.5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl space-y-1 text-center">
+                  <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">KEY</span>
+                  <div className="text-2xl font-black text-white tracking-tight leading-none">
+                    {transposedKey.root} <span className="text-xs font-medium text-zinc-400 font-mono block">{transposedKey.mode}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-1.5 pt-1">
+                    <input 
+                      type="checkbox" 
+                      id="semitones-check"
+                      checked={useSemitonesMode} 
+                      onChange={(e) => setUseSemitonesMode(e.target.checked)}
+                      className="rounded accent-indigo-500 w-3 h-3 cursor-pointer"
+                    />
+                    <label htmlFor="semitones-check" className="text-[11px] font-mono text-zinc-400 cursor-pointer select-none">
+                      semitones
+                    </label>
+                  </div>
+                </div>
+
+                {/* BPM DISPLAY CARD */}
+                <div className="p-3.5 bg-zinc-950/80 border border-zinc-800/80 rounded-xl text-center space-y-0.5">
+                  <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">BPM</span>
+                  <span className="text-2xl font-black text-emerald-400 block font-mono">{currentBpm}</span>
+                </div>
               </div>
             </div>
 
             {/* Instant Audio Preview */}
             {previewUrl && (
-              <div className="space-y-1.5 pt-2 border-t border-[var(--border-color)]">
+              <div className="space-y-1.5 pt-3 border-t border-zinc-800/60">
                 <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Live Pitch & Speed Audio Preview</span>
                 <CustomAudioPlayer
                   src={previewUrl}
                   title={file.name}
-                  subtitle={`${pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones • ${speedRatio}x Speed`}
+                  subtitle={`${pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones • ${speedRatio.toFixed(2)}x Speed`}
                   pitchSemitones={pitchSemitones}
                   speedRatio={speedRatio}
                 />
@@ -589,7 +628,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
             <Button 
               onClick={startAudioProcessing} 
-              className="w-full h-11 bg-white text-black hover:bg-zinc-200 font-bold text-xs sm:text-sm rounded-xl shadow-sm cursor-pointer"
+              className="w-full h-11 bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md cursor-pointer transition-all"
             >
               <Zap className="w-4 h-4 mr-2 fill-current" />
               <span>Apply Pitch & Speed Changes</span>
