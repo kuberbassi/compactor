@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { analyzeAudioBPMAndKey } from '../utils/audioAnalysis';
 import { joinAudioFiles } from '../utils/audioJoiner';
-import { processPitchAndSpeed } from '../utils/audioPitchSpeed';
+import { processPitchAndSpeed, pitchShiftAndStretchChannel } from '../utils/audioPitchSpeed';
 
 describe('Audio Tools Utility Functions', () => {
   it('audioAnalysis exports analyzeAudioBPMAndKey function', () => {
@@ -14,5 +14,27 @@ describe('Audio Tools Utility Functions', () => {
 
   it('audioPitchSpeed exports processPitchAndSpeed function', () => {
     expect(typeof processPitchAndSpeed).toBe('function');
+  });
+
+  it('pitchShiftAndStretchChannel preserves exact length when pitchSemitones > 0 and speedRatio = 1.0', () => {
+    const sampleRate = 44100;
+    const input = new Float32Array(sampleRate * 2); // 2 seconds
+    for (let i = 0; i < input.length; i++) {
+      input[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate);
+    }
+
+    const output = pitchShiftAndStretchChannel(input, sampleRate, 2, 1.0);
+    expect(output.length).toBe(input.length);
+  });
+
+  it('pitchShiftAndStretchChannel scales length when speedRatio = 2.0', () => {
+    const sampleRate = 44100;
+    const input = new Float32Array(sampleRate * 2); // 2 seconds
+    for (let i = 0; i < input.length; i++) {
+      input[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate);
+    }
+
+    const output = pitchShiftAndStretchChannel(input, sampleRate, 0, 2.0);
+    expect(output.length).toBe(Math.floor(input.length / 2.0));
   });
 });

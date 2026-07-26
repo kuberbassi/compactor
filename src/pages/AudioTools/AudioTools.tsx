@@ -259,10 +259,6 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
   const currentToolInfo = getToolInfo();
 
-  // Effective live playback rate for Pitch & Speed live preview
-  const livePitchFactor = Math.pow(2, pitchSemitones / 12);
-  const livePlaybackRate = livePitchFactor * speedRatio;
-
   return (
     <div className="tool-layout space-y-6">
       <ToolHeader 
@@ -556,9 +552,9 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                 <CustomAudioPlayer
                   src={previewUrl}
                   title={file.name}
-                  subtitle={`${pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones • ${speedRatio}x Speed`}
-                  playbackRate={livePlaybackRate}
-                  preservesPitch={false}
+                  subtitle="Track Audio Preview"
+                  pitchSemitones={pitchSemitones}
+                  speedRatio={speedRatio}
                 />
               </div>
             )}

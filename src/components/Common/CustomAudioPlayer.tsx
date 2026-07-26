@@ -6,6 +6,8 @@ interface CustomAudioPlayerProps {
   src: string;
   title?: string;
   subtitle?: string;
+  pitchSemitones?: number;
+  speedRatio?: number;
   playbackRate?: number;
   preservesPitch?: boolean;
   className?: string;
@@ -15,8 +17,10 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   src,
   title,
   subtitle,
-  playbackRate = 1.0,
-  preservesPitch = true,
+  pitchSemitones = 0,
+  speedRatio = 1.0,
+  playbackRate,
+  preservesPitch,
   className = '',
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -26,15 +30,19 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
 
+  // Calculate rate and preservesPitch mode
+  const effectivePitchFactor = Math.pow(2, pitchSemitones / 12);
+  const effectiveRate = playbackRate !== undefined ? playbackRate : (effectivePitchFactor * speedRatio);
+  const effectivePreservesPitch = preservesPitch !== undefined ? preservesPitch : (pitchSemitones === 0);
+
   useEffect(() => {
     if (audioRef.current) {
-      // Apply pitch and speed live
-      (audioRef.current as any).preservesPitch = preservesPitch;
-      (audioRef.current as any).mozPreservesPitch = preservesPitch;
-      (audioRef.current as any).webkitPreservesPitch = preservesPitch;
-      audioRef.current.playbackRate = playbackRate;
+      (audioRef.current as any).preservesPitch = effectivePreservesPitch;
+      (audioRef.current as any).mozPreservesPitch = effectivePreservesPitch;
+      (audioRef.current as any).webkitPreservesPitch = effectivePreservesPitch;
+      audioRef.current.playbackRate = effectiveRate;
     }
-  }, [playbackRate, preservesPitch]);
+  }, [effectiveRate, effectivePreservesPitch]);
 
   const togglePlay = () => {
     if (!audioRef.current) return;
@@ -115,11 +123,19 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
               {subtitle && <span className="text-[10px] text-zinc-400 font-medium block truncate">{subtitle}</span>}
             </div>
           </div>
-          {playbackRate !== 1.0 && (
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-emerald-400">
-              {playbackRate.toFixed(2)}x
-            </span>
-          )}
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            {pitchSemitones !== 0 && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-950 border border-indigo-800 text-indigo-300">
+                {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones
+              </span>
+            )}
+            {speedRatio !== 1.0 && (
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-950 border border-emerald-800 text-emerald-300">
+                {speedRatio}x Speed
+              </span>
+            )}
+          </div>
         </div>
       )}
 
