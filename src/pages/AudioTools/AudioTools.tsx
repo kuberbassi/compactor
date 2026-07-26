@@ -115,23 +115,54 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   const logEndRef = useRef<HTMLDivElement>(null);
   const addTracksInputRef = useRef<HTMLInputElement>(null);
 
+  // Live Rubber Band Pitch & Speed Audio Preview Update
   useEffect(() => {
     if (!file) {
       setPreviewUrl('');
       return;
     }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
 
-    const tempAudio = new Audio(url);
-    tempAudio.onloadedmetadata = () => {
-      setAudioDuration(tempAudio.duration);
+    if (activeTool !== 'audio-pitch-speed') {
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+      const tempAudio = new Audio(url);
+      tempAudio.onloadedmetadata = () => setAudioDuration(tempAudio.duration);
+      return () => URL.revokeObjectURL(url);
+    }
+
+    // Live pitch & speed preview driven by Rubber Band WASM
+    let active = true;
+    let createdUrl = '';
+
+    const updateLivePreview = async () => {
+      try {
+        if (pitchSemitones === 0 && speedRatio === 1.0) {
+          const url = URL.createObjectURL(file);
+          if (active) {
+            createdUrl = url;
+            setPreviewUrl(url);
+          }
+          return;
+        }
+
+        const processed = await processPitchAndSpeed(file, { pitchSemitones, speedRatio });
+        if (active) {
+          createdUrl = processed.url;
+          setPreviewUrl(processed.url);
+        }
+      } catch (err) {
+        console.error('Live Rubber Band preview notice:', err);
+      }
     };
+
+    const timer = setTimeout(updateLivePreview, 180);
 
     return () => {
-      URL.revokeObjectURL(url);
+      active = false;
+      clearTimeout(timer);
+      if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [file]);
+  }, [file, activeTool, pitchSemitones, speedRatio]);
 
   useEffect(() => {
     return () => {

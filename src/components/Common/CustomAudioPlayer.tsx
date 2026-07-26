@@ -149,12 +149,6 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         </div>
       )}
 
-      {/* Pitch preview note */}
-      {hasPitchBadge && (
-        <p className="text-[10px] font-mono text-zinc-500 -mt-1 leading-tight">
-          ℹ️ Pitch preview not available — speed preview only. Export for full Rubber Band quality.
-        </p>
-      )}
 
       {/* Main Controls Row */}
       <div className="flex items-center gap-3">
