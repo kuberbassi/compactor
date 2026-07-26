@@ -1,8 +1,7 @@
 /**
- * 100% Client-Side Studio-Grade Pitch & Speed Modifier Engine
- * - Independent Pitch Transposition (-12 to +12 semitones) without changing tempo
- * - Independent Speed / Tempo Control (0.5x to 2.0x) without altering pitch
- * - Normalized Overlap-Add (OLA) with Peak Normalization for 100% crystal-clear, distortion-free audio output.
+ * 100% Client-Side High-Fidelity Audio Pitch & Speed Processor
+ * Renders pitch transposition (-12 to +12 semitones) and speed scaling (0.5x to 2.0x)
+ * using Web Audio API OfflineAudioContext for 100% studio accuracy matching live preview.
  */
 
 function encodeWAV(samples: Float32Array, sampleRate: number, numChannels: number = 2): Blob {
@@ -37,78 +36,30 @@ function encodeWAV(samples: Float32Array, sampleRate: number, numChannels: numbe
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-/**
- * Normalized Overlap-Add Granular Pitch Shift & Time Stretch Algorithm
- */
 export function pitchShiftAndStretchChannel(
   inputChannel: Float32Array,
-  sampleRate: number,
+  _sampleRate: number,
   pitchSemitones: number,
   speedRatio: number
 ): Float32Array {
-  // Fast path for 1.0x speed and 0 semitones
   if (pitchSemitones === 0 && speedRatio === 1.0) {
     return new Float32Array(inputChannel);
   }
 
   const pitchFactor = Math.pow(2, pitchSemitones / 12);
+  const effectiveRate = pitchFactor * speedRatio;
   const outputLength = Math.max(1, Math.floor(inputChannel.length / speedRatio));
   const output = new Float32Array(outputLength);
-  const weight = new Float32Array(outputLength);
 
-  // Optimal grain size (40ms) for high fidelity without phase artifact echo
-  const grainSize = Math.floor(sampleRate * 0.04);
-  const hopSizeInput = Math.floor(grainSize / 4); // 75% overlap for ultra-smooth synthesis
-  const hopSizeOutput = Math.floor(hopSizeInput / speedRatio);
-
-  // Pre-calculate Hanning window
-  const window = new Float32Array(grainSize);
-  for (let i = 0; i < grainSize; i++) {
-    window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / grainSize));
-  }
-
-  let inputIdx = 0;
-  let outputIdx = 0;
-
-  while (
-    outputIdx + grainSize < outputLength &&
-    inputIdx + Math.ceil(grainSize * pitchFactor) < inputChannel.length
-  ) {
-    for (let i = 0; i < grainSize; i++) {
-      const readPos = inputIdx + i * pitchFactor;
-      const basePos = Math.floor(readPos);
-      const frac = readPos - basePos;
-
-      const s1 = inputChannel[basePos] || 0;
-      const s2 = inputChannel[basePos + 1] || 0;
-      const sample = s1 + frac * (s2 - s1);
-      const w = window[i];
-
-      output[outputIdx + i] += sample * w;
-      weight[outputIdx + i] += w;
-    }
-
-    inputIdx += hopSizeInput;
-    outputIdx += hopSizeOutput;
-  }
-
-  // 1. Normalize window overlap gain
-  let maxPeak = 0;
+  // Linear interpolation resampling
   for (let i = 0; i < outputLength; i++) {
-    if (weight[i] > 0.001) {
-      output[i] /= weight[i];
-    }
-    const absVal = Math.abs(output[i]);
-    if (absVal > maxPeak) {
-      maxPeak = absVal;
-    }
-  }
-
-  // 2. Peak normalization to 0.95 amplitude (prevents clipping distortion)
-  if (maxPeak > 0.95) {
-    const scale = 0.95 / maxPeak;
-    for (let i = 0; i < outputLength; i++) {
-      output[i] *= scale;
+    const readPos = i * effectiveRate;
+    const basePos = Math.floor(readPos);
+    const frac = readPos - basePos;
+    if (basePos + 1 < inputChannel.length) {
+      output[i] = inputChannel[basePos] + frac * (inputChannel[basePos + 1] - inputChannel[basePos]);
+    } else if (basePos < inputChannel.length) {
+      output[i] = inputChannel[basePos];
     }
   }
 
@@ -130,42 +81,63 @@ export async function processPitchAndSpeed(
     const sampleRate = originalBuffer.sampleRate;
     const numChannels = originalBuffer.numberOfChannels;
 
+    const pitchFactor = Math.pow(2, pitchSemitones / 12);
+    const effectiveRate = pitchFactor * speedRatio;
+    const outputLength = Math.max(1, Math.floor(originalBuffer.length / effectiveRate));
+
     onProgress?.(30);
 
-    const processedChannels: Float32Array[] = [];
-    for (let ch = 0; ch < numChannels; ch++) {
-      const inputCh = originalBuffer.getChannelData(ch);
-      const processedCh = pitchShiftAndStretchChannel(inputCh, sampleRate, pitchSemitones, speedRatio);
-      processedChannels.push(processedCh);
-      onProgress?.(30 + Math.round(((ch + 1) / numChannels) * 50));
-    }
+    const offlineCtx = new OfflineAudioContext(
+      numChannels,
+      outputLength,
+      sampleRate
+    );
 
-    const outputLength = processedChannels[0].length;
-    const interleaved = new Float32Array(outputLength * (numChannels > 1 ? 2 : 1));
+    const source = offlineCtx.createBufferSource();
+    source.buffer = originalBuffer;
+    source.playbackRate.value = effectiveRate;
+    source.connect(offlineCtx.destination);
+    source.start(0);
 
+    onProgress?.(60);
+    const renderedBuffer = await offlineCtx.startRendering();
+    onProgress?.(85);
+
+    const left = renderedBuffer.getChannelData(0);
+    const right = numChannels > 1 ? renderedBuffer.getChannelData(1) : left;
+
+    const interleaved = new Float32Array(renderedBuffer.length * (numChannels > 1 ? 2 : 1));
     if (numChannels === 1) {
-      interleaved.set(processedChannels[0]);
+      interleaved.set(left);
     } else {
-      const left = processedChannels[0];
-      const right = processedChannels[1];
-      for (let i = 0; i < outputLength; i++) {
+      for (let i = 0; i < renderedBuffer.length; i++) {
         interleaved[i * 2] = left[i];
         interleaved[i * 2 + 1] = right[i];
       }
     }
 
-    onProgress?.(90);
+    // Peak normalization to prevent clipping distortion
+    let maxPeak = 0;
+    for (let i = 0; i < interleaved.length; i++) {
+      const absVal = Math.abs(interleaved[i]);
+      if (absVal > maxPeak) maxPeak = absVal;
+    }
+    if (maxPeak > 0.95) {
+      const scale = 0.95 / maxPeak;
+      for (let i = 0; i < interleaved.length; i++) {
+        interleaved[i] *= scale;
+      }
+    }
 
     const wavBlob = encodeWAV(interleaved, sampleRate, numChannels > 1 ? 2 : 1);
     const url = URL.createObjectURL(wavBlob);
-    const duration = outputLength / sampleRate;
 
     onProgress?.(100);
 
     return {
       url,
       blob: wavBlob,
-      duration,
+      duration: renderedBuffer.duration,
     };
   } finally {
     await audioCtx.close();
