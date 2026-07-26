@@ -46,8 +46,11 @@
 - Aspect ratio cropping (`1:1`, `16:9`, `4:3`, `9:16`), rotation, horizontal/vertical flipping.
 - Interactive pixelation censorship brush for obscuring sensitive document regions.
 
-### 🎵 Audio Optimizer & Converter
-- High-efficiency WASM audio compressor with trim range timeline and waveform previews.
+### 🎵 Audio Suite & Converter
+- **Compress Audio**: High-efficiency WASM audio compressor with trim range timeline & waveform previews.
+- **Audio Joiner**: Merge & concatenate multiple audio tracks into a single seamless audio file.
+- **Key & BPM Finder**: 100% in-browser Web Audio API detection of tempo (BPM), musical key & Camelot wheel code.
+- **Pitch & Speed Changer**: Transpose key pitch (-12 to +12 semitones) & adjust playback tempo (0.5x to 2.0x).
 - **Universal Format Converter**: Matrix supporting **212+ media & document formats** (Video, Audio, Images, Documents, E-books, Spreadsheets).
 - **Metadata Editor**: Inspect and edit EXIF, ID3, and PDF tags directly in-browser.
 - **Poster Maker**: Multi-page printable wall poster grid generator.

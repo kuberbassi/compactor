@@ -96,7 +96,10 @@ function MainApp() {
       case 'image-optimizer':
         return <ImageTools onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'audio-optimizer':
-        return <AudioTools onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
+      case 'audio-joiner':
+      case 'audio-bpm-finder':
+      case 'audio-pitch-speed':
+        return <AudioTools mode={activeToolId} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'universal-converter':
         return <UniversalConverter onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
       case 'rasterbator':
@@ -113,6 +116,9 @@ function MainApp() {
         }
         if (activeToolId && activeToolId.startsWith('video-')) {
           return <VideoCompressor mode={activeToolId.replace('video-', '') as any} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
+        }
+        if (activeToolId && activeToolId.startsWith('audio-')) {
+          return <AudioTools mode={activeToolId} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
         }
         return activeToolId ? <NotFound onGoHome={goHome} /> : <Dashboard onSelectTool={selectTool} uploadCount={uploadCount} />;
     }

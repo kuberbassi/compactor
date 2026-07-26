@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BrandMark } from '../Common/BrandMark';
 import { 
@@ -21,6 +21,7 @@ import {
   Key,
   FilePlus,
   Sliders,
+  Disc,
   ShieldOff,
   Menu,
   X
@@ -89,7 +90,10 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'audio',
     defaultHref: 'audio-optimizer',
     items: [
-      { label: 'Compress Audio', href: 'audio-optimizer', icon: Music }
+      { label: 'Compress Audio', href: 'audio-optimizer', icon: Music },
+      { label: 'Audio Joiner', href: 'audio-joiner', icon: Layers },
+      { label: 'Key & BPM Finder', href: 'audio-bpm-finder', icon: Disc },
+      { label: 'Pitch & Speed', href: 'audio-pitch-speed', icon: Sliders }
     ]
   },
   {

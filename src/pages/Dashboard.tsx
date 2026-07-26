@@ -236,6 +236,33 @@ const TOOLS: ToolItem[] = [
     illustrationType: 'audio-compress'
   },
   {
+    id: 'audio-joiner',
+    title: 'Audio Joiner',
+    subtitle: 'Merge multiple audio files',
+    description: 'Combine and merge multiple audio tracks sequentially into a single track.',
+    category: 'AUDIO & CONVERT',
+    tags: ['Merge Audio Tracks', 'Reorder Queue', 'WAV / MP3 Output'],
+    illustrationType: 'audio-compress'
+  },
+  {
+    id: 'audio-bpm-finder',
+    title: 'Key & BPM Finder',
+    subtitle: 'Detect Musical Key & Tempo',
+    description: 'Analyze tempo (BPM), musical key and Camelot wheel code 100% client-side.',
+    category: 'AUDIO & CONVERT',
+    tags: ['BPM Detector', 'Key Identification', 'Camelot Wheel'],
+    illustrationType: 'audio-audio'
+  },
+  {
+    id: 'audio-pitch-speed',
+    title: 'Pitch & Speed Changer',
+    subtitle: 'Transpose Pitch & Tempo',
+    description: 'Adjust pitch (-12 to +12 semitones) and playback speed (0.5x to 2.0x).',
+    category: 'AUDIO & CONVERT',
+    tags: ['Pitch Shift', 'Speed 0.5x-2.0x', 'Semitone Transpose'],
+    illustrationType: 'audio-compress'
+  },
+  {
     id: 'universal-converter',
     title: 'Convert a file',
     subtitle: 'Universal format converter',
