@@ -27,17 +27,17 @@ import { renderPdfThumbnails, renderPdfPagesToImages } from '../../utils/pdfRend
 import type { PageOrganizeSpec } from '../../utils/pdf';
 import { formatBytes } from '../../utils/image';
 import { 
-  PiFileTextLight as FileText, PiDownloadLight as Download, PiArrowsClockwiseLight as RefreshCw, 
-  PiCheckCircleLight as CheckCircle, PiTrashLight as TrashIcon, 
-  PiSplitVerticalLight as SplitIcon, PiStackLight as LayersIcon, PiImageLight as ImageIcon,
-  PiLockLight as LockIcon, PiSignatureLight as SignatureIcon, PiGearLight as SettingsIcon,
-  PiTextTLight as TextIcon, PiArrowLeftLight as ArrowLeft,
-  PiArrowRightLight as ArrowRight, PiCropLight as CropIcon,
-  PiShieldCheckLight as ShieldIcon, PiPencilSimpleLight as EditIcon,
-  PiMagnifyingGlassPlusLight as ZoomIcon, PiXLight as CloseIcon,
-  PiListLight as ListIcon, PiEyeLight as EyeIcon, PiEyeSlashLight as EyeSlashIcon,
-  PiSparkleLight as MagicIcon
-} from 'react-icons/pi';
+  FileText, Download, RefreshCw, 
+  CheckCircle, Trash2 as TrashIcon, 
+  Split as SplitIcon, Layers as LayersIcon, Image as ImageIcon,
+  Lock as LockIcon, Signature as SignatureIcon, Settings as SettingsIcon,
+  Type as TextIcon, ArrowLeft,
+  ArrowRight, Crop as CropIcon,
+  ShieldCheck as ShieldIcon, Pencil as EditIcon,
+  ZoomIn as ZoomIcon, X as CloseIcon,
+  List as ListIcon, Eye as EyeIcon, EyeOff as EyeSlashIcon,
+  Sparkles as MagicIcon
+} from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';

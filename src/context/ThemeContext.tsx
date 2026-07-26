@@ -44,6 +44,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
+// eslint-disable-next-line react/only-export-components
 export const useTheme = () => {
   const context = useContext(ThemeContext);
   if (!context) {

@@ -24,7 +24,7 @@ function openDB(): Promise<IDBDatabase | null> {
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => resolve(null);
-    } catch (e) {
+    } catch {
       resolve(null);
     }
   });
@@ -43,7 +43,7 @@ async function getFromIDB(): Promise<number | null> {
         resolve(typeof val === 'number' ? val : null);
       };
       req.onerror = () => resolve(null);
-    } catch (e) {
+    } catch {
       resolve(null);
     }
   });
@@ -56,7 +56,7 @@ async function setToIDB(count: number): Promise<void> {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     store.put(count, 'upload_count');
-  } catch (e) {
+  } catch {
     // Ignore IDB write failures
   }
 }

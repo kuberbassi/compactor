@@ -2,7 +2,7 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 
 import { cn } from "@/lib/utils"
-import { PiCaretDownLight as ChevronDownIcon, PiCheckLight as CheckIcon, PiCaretUpLight as ChevronUpIcon } from "react-icons/pi"
+import { ChevronDown as ChevronDownIcon, Check as CheckIcon, ChevronUp as ChevronUpIcon } from "lucide-react"
 
 const Select = SelectPrimitive.Root
 

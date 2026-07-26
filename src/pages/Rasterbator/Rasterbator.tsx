@@ -4,11 +4,11 @@ import { FileUploader } from '../../components/Common/FileUploader';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import {
-  PiArrowsClockwiseLight as RefreshCw,
-  PiCheckCircleLight as CheckCircle, PiDownloadLight as Download,
-  PiPrinterLight as PrinterIcon, PiRulerLight as RulerIcon,
-  PiGridFourLight as GridIcon
-} from 'react-icons/pi';
+  RefreshCw,
+  CheckCircle, Download,
+  Printer as PrinterIcon, Ruler as RulerIcon,
+  Grid3X3 as GridIcon
+} from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { PiCloudArrowUpLight as UploadCloud, PiWarningCircleLight as AlertCircle } from 'react-icons/pi';
+import { UploadCloud, AlertCircle } from 'lucide-react';
 
 interface FileUploaderProps {
   accept: string;

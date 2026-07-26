@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  PiScissorsLight as Scissors, 
-  PiTrashLight as Trash2, 
-  PiArrowCounterClockwiseLight as RotateCcw,
-  PiPlayFill as PlayIcon,
-  PiPauseFill as PauseIcon
-} from 'react-icons/pi';
+  Scissors, 
+  Trash2, 
+  RotateCcw,
+  Play as PlayIcon,
+  Pause as PauseIcon
+} from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 
@@ -60,7 +60,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         ]);
       }
     }
-  }, [duration]);
+  }, [duration, segments.length]);
 
   // Sync up to parent whenever range or multi-segment state changes
   useEffect(() => {
@@ -78,7 +78,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         onChange(segments, compileMode);
       }
     }
-  }, [editorTab, rangeStart, rangeEnd, segments, compileMode, duration]);
+  }, [editorTab, rangeStart, rangeEnd, segments, compileMode, duration, onChange]);
 
   // Range Handle Dragging
   const handleRangeMouseDown = (e: React.MouseEvent, type: 'start' | 'end') => {

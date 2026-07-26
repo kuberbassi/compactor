@@ -38,7 +38,7 @@ export const checkPdfEncryptionStatus = async (
     try {
       const pdfIgnore = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
       count = pdfIgnore.getPageCount();
-    } catch (_) {}
+    } catch {}
 
     return { isEncrypted, pageCount: count };
   }
@@ -926,7 +926,7 @@ export const markdownToPdf = async (markdownText: string, documentTitle?: string
     } else {
       checkNewPage(16);
       const isBold = trimmed.startsWith('**') || trimmed.startsWith('__');
-      const cleanText = trimmed.replace(/[\*_]{1,2}/g, '');
+      const cleanText = trimmed.replace(/[*_]{1,2}/g, '');
       currentPage.drawText(cleanText.substring(0, 85), {
         x: margin,
         y,

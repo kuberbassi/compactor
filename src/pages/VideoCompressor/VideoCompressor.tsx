@@ -8,11 +8,11 @@ import { compressVideo, getFFmpeg, terminateFFmpeg, remuxVideoBlob } from '../..
 import { compressVideoNative } from '../../utils/nativeCompressor';
 import { formatBytes } from '../../utils/image';
 import { 
-  PiDownloadLight as Download, PiArrowsClockwiseLight as RefreshCw, 
-  PiFileVideoLight as FileVideo, 
-  PiGearLight as Settings,
-  PiWarningLight as WarningIcon
-} from 'react-icons/pi';
+  Download, RefreshCw, 
+  Video as FileVideo, 
+  Settings,
+  AlertTriangle as WarningIcon
+} from 'lucide-react';
 import { Switch } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
 import { Slider } from '../../components/ui/slider';
@@ -26,6 +26,14 @@ interface VideoCompressorProps {
   onGoHome: () => void;
   onUploadSuccess: () => void;
 }
+
+const TARGET_PRESET_MAP: Record<string, { name: string; maxMB?: number; badge: string }> = {
+  general: { name: 'General / Custom Compression', maxMB: undefined, badge: 'Standard quality compression' },
+  whatsapp: { name: 'WhatsApp Video (≤16 MB)', maxMB: 15.2, badge: 'Guaranteed ≤15.5 MB for WhatsApp attachments' },
+  discord: { name: 'Discord Free (≤10 MB)', maxMB: 9.3, badge: 'Guaranteed ≤9.5 MB for Discord free upload limit' },
+  tiktok: { name: 'TikTok Upload (≤70 MB)', maxMB: 68.0, badge: 'Optimized for TikTok mobile feed' },
+  instagram: { name: 'Instagram Reels & Stories (≤95 MB)', maxMB: 92.0, badge: 'Optimized for Instagram Reels & Stories' },
+};
 
 export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome, onUploadSuccess }) => {
   const currentMode = mode === ('compressor' as any) ? 'compress' : mode;
@@ -169,14 +177,6 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
     setProcessing(false);
     setEnableTrim(false);
   }, [mode]);
-
-  const TARGET_PRESET_MAP: Record<string, { name: string; maxMB?: number; badge: string }> = {
-    general: { name: 'General / Custom Compression', maxMB: undefined, badge: 'Standard quality compression' },
-    whatsapp: { name: 'WhatsApp Video (≤16 MB)', maxMB: 15.2, badge: 'Guaranteed ≤15.5 MB for WhatsApp attachments' },
-    discord: { name: 'Discord Free (≤10 MB)', maxMB: 9.3, badge: 'Guaranteed ≤9.5 MB for Discord free upload limit' },
-    tiktok: { name: 'TikTok Upload (≤70 MB)', maxMB: 68.0, badge: 'Optimized for TikTok mobile feed' },
-    instagram: { name: 'Instagram Reels & Stories (≤95 MB)', maxMB: 92.0, badge: 'Optimized for Instagram Reels & Stories' },
-  };
 
   useEffect(() => {
     // Auto-calculate bitrate targets if platform target preset is selected

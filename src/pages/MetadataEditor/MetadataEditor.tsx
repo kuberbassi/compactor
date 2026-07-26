@@ -5,11 +5,11 @@ import { readMediaMetadata, writeMediaMetadata, stripMediaMetadata, terminateFFm
 import type { MetadataTags } from '../../utils/ffmpeg';
 import { formatBytes } from '../../utils/image';
 import { 
-  PiDownloadLight as Download, PiArrowsClockwiseLight as RefreshCw, 
-  PiCheckCircleLight as CheckCircle, PiTagLight as TagIcon,
-  PiImageLight as ImageIcon, PiArrowLeftLight as ArrowLeft,
-  PiShieldCheckLight as ShieldIcon
-} from 'react-icons/pi';
+  Download, RefreshCw, 
+  CheckCircle, Tag as TagIcon,
+  Image as ImageIcon, ArrowLeft,
+  ShieldCheck as ShieldIcon
+} from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';

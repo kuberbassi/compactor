@@ -23,15 +23,24 @@ REQUIRED_FILES.forEach(file => {
 // 2. Validate function signatures by scanning the file content
 const expectedFunctions = {
   'image.ts': ['loadImage', 'formatBytes', 'processImage'],
-  'pdf.ts': ['mergePdfs', 'extractPdfPages', 'rotatePdfPages', 'imagesToPdf', 'getPdfPageCount'],
-  'ffmpeg.ts': ['getFFmpeg', 'isFFmpegLoaded', 'compressVideo', 'compressAudio'],
+  'pdf.ts': ['mergePdfs', 'extractPdfPages', 'reorganizePdfPages', 'imagesToPdf', 'getPdfPageCount'],
+  'ffmpeg/index.ts': ['getFFmpeg', 'isFFmpegLoaded', 'compressVideo', 'compressAudio'],
   'nativeCompressor.ts': ['compressVideoNative']
 };
 
 Object.entries(expectedFunctions).forEach(([file, funcs]) => {
   const filePath = path.join(UTILS_DIR, file);
   if (!fs.existsSync(filePath)) return;
-  const content = fs.readFileSync(filePath, 'utf8');
+  
+  // Recursively read file or folder index
+  let content = fs.readFileSync(filePath, 'utf8');
+  if (file.startsWith('ffmpeg/')) {
+    const coreContent = fs.readFileSync(path.join(UTILS_DIR, 'ffmpeg/core.ts'), 'utf8');
+    const videoContent = fs.readFileSync(path.join(UTILS_DIR, 'ffmpeg/video.ts'), 'utf8');
+    const audioContent = fs.readFileSync(path.join(UTILS_DIR, 'ffmpeg/audio.ts'), 'utf8');
+    content = content + coreContent + videoContent + audioContent;
+  }
+
   funcs.forEach(func => {
     if (content.includes(`export const ${func}`) || content.includes(`function ${func}`)) {
       console.log(`[PASS] Export verified in ${file}: ${func}`);
@@ -44,7 +53,7 @@ Object.entries(expectedFunctions).forEach(([file, funcs]) => {
 
 // 3. Test formatBytes helper logic
 try {
-  const imageUtilsContent = fs.readFileSync(path.join(UTILS_DIR, 'image.ts'), 'utf8');
+  fs.readFileSync(path.join(UTILS_DIR, 'image.ts'), 'utf8');
   // Re-define formatBytes for testing
   const formatBytes = (bytes, decimals = 2) => {
     if (bytes === 0) return '0 Bytes';

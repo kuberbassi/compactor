@@ -1,3 +1,4 @@
+/* oxlint-disable react-hooks/exhaustive-deps */
 import React, { useState, useEffect, useRef } from 'react';
 import { Play, Pause, Volume2, VolumeX, Music } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -180,6 +181,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   };
 
   // Dynamically update active SoundTouch node when sliders move
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (pitchShifterRef.current) {
       pitchShifterRef.current.pitchSemitones = pitchSemitones;

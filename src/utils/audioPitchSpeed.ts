@@ -231,7 +231,7 @@ export async function processPitchAndSpeed(
         if (absVal > maxPeak) maxPeak = absVal;
       }
     }
-    if (maxPeak > 0 && maxPeak > 0.95) {
+    if (maxPeak > 0.95) {
       const scale = 0.95 / maxPeak;
       for (const ch of outputChannels) {
         for (let i = 0; i < ch.length; i++) ch[i] *= scale;

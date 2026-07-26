@@ -11,12 +11,12 @@ import {
   csvToJson, jsonToCsv, csvToHtmlTable, textToHtml
 } from '../../utils/universalConverters';
 import { 
-  PiFileLight as FileIcon, PiArrowsClockwiseLight as RefreshCw, 
-  PiCheckCircleLight as CheckCircle, PiDownloadLight as Download,
-  PiSparkleLight as MagicIcon, PiShieldCheckLight as ShieldIcon,
-  PiLightningLight as ZapIcon, PiCheckBold as CheckIcon,
-  PiProhibitLight as ProhibitIcon, PiLightbulbLight as BulbIcon
-} from 'react-icons/pi';
+  File as FileIcon, RefreshCw, 
+  CheckCircle, Download,
+  Sparkles as MagicIcon, ShieldCheck as ShieldIcon,
+  Zap as ZapIcon, Check as CheckIcon,
+  Ban as ProhibitIcon, Lightbulb as BulbIcon
+} from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';

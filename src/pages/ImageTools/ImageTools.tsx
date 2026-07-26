@@ -5,12 +5,12 @@ import { ToolHeader } from '../../components/Common/ToolHeader';
 import { processImage, formatBytes, loadImage } from '../../utils/image';
 import type { ImageProcessResult } from '../../utils/image';
 import { 
-  PiImageLight as ImageIcon, PiDownloadLight as Download, PiArrowsClockwiseLight as RefreshCw, 
-  PiCheckCircleLight as CheckCircle,
-  PiSlidersHorizontalLight as Sliders, PiEyeLight as Eye, PiPlusLight as PlusIcon,
-  PiCropLight as CropIcon, PiCornersOutLight as ResizeIcon, PiArrowsLeftRightLight as MirrorIcon,
-  PiPaletteLight as FilterIcon, PiFolderOpenLight as FormatIcon, PiArrowLeftLight as ArrowLeft
-} from 'react-icons/pi';
+  Image as ImageIcon, Download, RefreshCw, 
+  CheckCircle,
+  Sliders, Eye, Plus as PlusIcon,
+  Crop as CropIcon, Expand as ResizeIcon, ArrowLeftRight as MirrorIcon,
+  Palette as FilterIcon, FolderOpen as FormatIcon, ArrowLeft
+} from 'lucide-react';
 import { Slider } from '../../components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
 import { Input } from '../../components/ui/input';

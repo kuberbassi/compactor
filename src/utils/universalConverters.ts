@@ -259,7 +259,7 @@ export const jsonToCsv = (jsonText: string): string => {
     });
     
     return [headerRow, ...dataRows].join('\n');
-  } catch (e) {
+  } catch {
     return jsonText;
   }
 };

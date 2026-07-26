@@ -216,7 +216,7 @@ export const compressVideoNative = async (
               tracksToRecord.push(audioTrack);
               onLog("Isolated audio pipeline connected successfully.");
             }
-          } catch (audioErr) {
+          } catch {
             onLog("Warning: Could not isolate audio routing. Proceeding with silent video track capture.");
           }
         }
