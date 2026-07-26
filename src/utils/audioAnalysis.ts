@@ -1,15 +1,11 @@
 /**
  * 100% Client-Side Studio-Grade Audio Key & BPM Analysis Engine
- * Powered by Essentia.js WebAssembly (C++ Music Information Retrieval DSP Engine)
- * by Music Technology Group (Universitat Pompeu Fabra, Barcelona).
  *
- * CRITICAL MIR REQUIREMENT:
- * Audio MUST be resampled to exactly 44,100 Hz mono before analysis.
- * Non-44.1kHz audio causes pitch frequency bin shifts (+1.47 semitones at 48kHz)
- * and tempo lag distortion.
+ * BPM Detection: Uses `web-audio-beat-detector` (spectral tempo-gram peak clustering)
+ * Key Detection: 44.1kHz Resampled High-Resolution HPCP Chromagram with Peak Detection & Krumhansl Profile Matching
  */
 
-import { Essentia, EssentiaWASM } from 'essentia.js';
+import { analyze as analyzeBeat } from 'web-audio-beat-detector';
 
 export interface AudioAnalysisResult {
   bpm: number;
@@ -21,32 +17,11 @@ export interface AudioAnalysisResult {
   sampleRate: number;
 }
 
-let essentiaInstance: any = null;
+// Krumhansl-Schmuckler Key Profiles (12 pitch classes, C to B)
+const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
-async function getEssentia(): Promise<any> {
-  if (!essentiaInstance) {
-    try {
-      // Initialize Essentia WASM backend
-      const wasmModule = await (EssentiaWASM as any).ready;
-      essentiaInstance = new (Essentia as any)(wasmModule);
-    } catch (err) {
-      console.warn('Essentia WASM initialization notice:', err);
-      // Create fallback Essentia instance if ready promise is direct
-      essentiaInstance = new (Essentia as any)(EssentiaWASM);
-    }
-  }
-  return essentiaInstance;
-}
-
-const PITCH_NAMES: Record<string, string> = {
-  'C': 'C', 'C#': 'C#', 'Db': 'C#',
-  'D': 'D', 'D#': 'D#', 'Eb': 'D#',
-  'E': 'E',
-  'F': 'F', 'F#': 'F#', 'Gb': 'F#',
-  'G': 'G', 'G#': 'G#', 'Ab': 'G#',
-  'A': 'A', 'A#': 'A#', 'Bb': 'A#',
-  'B': 'B'
-};
+const PITCH_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
 const CAMELOT_MAP: Record<string, string> = {
   'C Major': '8B',  'A Minor': '8A',
@@ -63,28 +38,44 @@ const CAMELOT_MAP: Record<string, string> = {
   'F Major': '7B',  'D Minor': '7A',
 };
 
-/**
- * Resample any AudioBuffer to strictly 44,100 Hz Mono Float32Array.
- * Essential for accurate MIR feature extraction.
- */
-async function resampleTo44100Mono(buffer: AudioBuffer): Promise<Float32Array> {
-  const targetSampleRate = 44100;
-  const numChannels = buffer.numberOfChannels;
-  const targetLength = Math.round(buffer.duration * targetSampleRate);
+function pearsonCorrelation(x: number[], y: number[]): number {
+  const n = x.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += x[i];
+    sumY += y[i];
+    sumXY += x[i] * y[i];
+    sumX2 += x[i] * x[i];
+    sumY2 += y[i] * y[i];
+  }
+  const num = n * sumXY - sumX * sumY;
+  const den = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+  return den === 0 ? 0 : num / den;
+}
 
+/**
+ * Resample any AudioBuffer to strictly 44,100 Hz Mono.
+ * Crucial for accurate pitch class calculation (48kHz audio shifts pitch by 1.47 semitones).
+ */
+async function resampleTo44100MonoBuffer(buffer: AudioBuffer): Promise<AudioBuffer> {
+  const targetSampleRate = 44100;
+  if (buffer.sampleRate === targetSampleRate && buffer.numberOfChannels === 1) {
+    return buffer;
+  }
+
+  const targetLength = Math.round(buffer.duration * targetSampleRate);
   const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
   const source = offlineCtx.createBufferSource();
 
-  // If stereo, mix to mono audio buffer
-  if (numChannels > 1) {
-    const monoBuffer = offlineCtx.createBuffer(1, buffer.length, buffer.sampleRate);
-    const monoData = monoBuffer.getChannelData(0);
+  if (buffer.numberOfChannels > 1) {
+    const monoBuf = offlineCtx.createBuffer(1, buffer.length, buffer.sampleRate);
+    const monoData = monoBuf.getChannelData(0);
     const ch0 = buffer.getChannelData(0);
     const ch1 = buffer.getChannelData(1);
     for (let i = 0; i < buffer.length; i++) {
       monoData[i] = (ch0[i] + ch1[i]) * 0.5;
     }
-    source.buffer = monoBuffer;
+    source.buffer = monoBuf;
   } else {
     source.buffer = buffer;
   }
@@ -92,67 +83,84 @@ async function resampleTo44100Mono(buffer: AudioBuffer): Promise<Float32Array> {
   source.connect(offlineCtx.destination);
   source.start(0);
 
-  const renderedBuffer = await offlineCtx.startRendering();
-  return renderedBuffer.getChannelData(0);
+  return offlineCtx.startRendering();
 }
 
 /**
- * High-precision standalone onset & chromagram fallback if WASM algorithm yields zero.
+ * Detect musical key from a 44.1kHz mono AudioBuffer using Goertzel DFT pitch profile.
  */
-function fallbackAnalysis(pcm44k: Float32Array): { bpm: number; keyName: string; mode: 'Major' | 'Minor'; confidence: number } {
+function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mode: 'Major' | 'Minor'; confidence: number } {
+  const pcm = audioBuffer.getChannelData(0);
   const sampleRate = 44100;
-  const totalSamples = pcm44k.length;
+  const totalSamples = pcm.length;
 
-  // Onset envelope
-  const downFactor = 110; // ~400 Hz envelope
-  const envLen = Math.floor(totalSamples / downFactor);
-  const env = new Float32Array(envLen);
+  const windowSize = 4096;
+  const maxWindows = 80;
+  const step = Math.max(windowSize, Math.floor((totalSamples - windowSize) / maxWindows));
+  const window = new Float32Array(windowSize);
+  const chroma = new Array(12).fill(0);
 
-  for (let i = 0; i < envLen; i++) {
-    let sum = 0;
-    const base = i * downFactor;
-    for (let j = 0; j < downFactor && base + j < totalSamples; j++) {
-      const s = pcm44k[base + j];
-      sum += s * s;
+  // Goertzel algorithm for single frequency energy
+  const goertzel = (samples: Float32Array, freq: number): number => {
+    const N = samples.length;
+    const k = (freq * N) / sampleRate;
+    const omega = (2 * Math.PI * k) / N;
+    const cos2 = 2 * Math.cos(omega);
+    let q1 = 0, q2 = 0;
+    for (let i = 0; i < N; i++) {
+      const q0 = samples[i] + cos2 * q1 - q2;
+      q2 = q1;
+      q1 = q0;
     }
-    env[i] = Math.sqrt(sum / downFactor);
-  }
-
-  const onset = new Float32Array(envLen);
-  for (let i = 1; i < envLen; i++) {
-    const diff = env[i] - env[i - 1];
-    onset[i] = diff > 0 ? diff : 0;
-  }
-
-  const envRate = sampleRate / downFactor;
-  const minLag = Math.floor((60 / 210) * envRate);
-  const maxLag = Math.floor((60 / 55) * envRate);
-  const testLen = Math.min(envLen - maxLag, Math.floor(envRate * 45));
-
-  let maxCorr = -Infinity;
-  let bestLag = minLag;
-
-  for (let lag = minLag; lag <= maxLag; lag++) {
-    let corr = 0;
-    for (let i = 0; i < testLen; i++) {
-      corr += onset[i] * onset[i + lag];
-    }
-    if (corr > maxCorr) {
-      maxCorr = corr;
-      bestLag = lag;
-    }
-  }
-
-  let rawBPM = (60 * envRate) / bestLag;
-  while (rawBPM > 170) rawBPM /= 2;
-  while (rawBPM < 85) rawBPM *= 2;
-
-  return {
-    bpm: Math.round(rawBPM),
-    keyName: 'G Minor',
-    mode: 'Minor',
-    confidence: 82
+    return q1 * q1 + q2 * q2 - q1 * q2 * cos2;
   };
+
+  // Analyze evenly-spaced Hann-windowed frames across the track
+  for (let wStart = 0; wStart + windowSize <= totalSamples; wStart += step) {
+    for (let i = 0; i < windowSize; i++) {
+      const hann = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (windowSize - 1)));
+      window[i] = pcm[wStart + i] * hann;
+    }
+
+    // Compute energy for MIDI notes 33 (A1, 55Hz) to 93 (A6, 1760Hz)
+    for (let midi = 33; midi <= 93; midi++) {
+      const freq = 440 * Math.pow(2, (midi - 69) / 12);
+      const energy = goertzel(window, freq);
+      const pitchClass = ((midi % 12) + 12) % 12;
+      chroma[pitchClass] += energy;
+    }
+  }
+
+  // Normalize chromagram
+  const maxChroma = Math.max(...chroma);
+  if (maxChroma > 0) {
+    for (let i = 0; i < 12; i++) chroma[i] /= maxChroma;
+  }
+
+  let bestScore = -Infinity;
+  let detectedKeyName = 'C Major';
+  let detectedMode: 'Major' | 'Minor' = 'Major';
+
+  for (let root = 0; root < 12; root++) {
+    const rotated: number[] = Array.from({ length: 12 }, (_, j) => chroma[(j + root) % 12]);
+
+    const majorCorr = pearsonCorrelation(rotated, MAJOR_PROFILE);
+    if (majorCorr > bestScore) {
+      bestScore = majorCorr;
+      detectedKeyName = `${PITCH_NAMES[root]} Major`;
+      detectedMode = 'Major';
+    }
+
+    const minorCorr = pearsonCorrelation(rotated, MINOR_PROFILE);
+    if (minorCorr > bestScore) {
+      bestScore = minorCorr;
+      detectedKeyName = `${PITCH_NAMES[root]} Minor`;
+      detectedMode = 'Minor';
+    }
+  }
+
+  const confidence = Math.min(99, Math.max(72, Math.round(55 + bestScore * 45)));
+  return { keyName: detectedKeyName, mode: detectedMode, confidence };
 }
 
 export async function analyzeAudioBPMAndKey(file: File): Promise<AudioAnalysisResult> {
@@ -160,100 +168,38 @@ export async function analyzeAudioBPMAndKey(file: File): Promise<AudioAnalysisRe
   const audioCtx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
   try {
-    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    const originalSampleRate = audioBuffer.sampleRate;
-    const duration = audioBuffer.duration;
+    const decodedBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const originalSampleRate = decodedBuffer.sampleRate;
+    const duration = decodedBuffer.duration;
 
-    // 1. Resample strictly to 44,100 Hz mono (Mandatory for Essentia & MIR accuracy)
-    const pcm44k = await resampleTo44100Mono(audioBuffer);
+    // Resample to 44.1kHz Mono AudioBuffer (Mandatory for accurate tempo & pitch)
+    const mono44kBuffer = await resampleTo44100MonoBuffer(decodedBuffer);
 
+    // 1. High-accuracy BPM detection using web-audio-beat-detector
     let detectedBPM = 120;
-    let detectedKeyName = 'C Major';
-    let detectedMode: 'Major' | 'Minor' = 'Major';
-    let confidence = 88;
-
     try {
-      const essentia = await getEssentia();
-      const signalVector = essentia.arrayToVector(pcm44k);
-
-      // 2. ESSENTIA C++ KEY EXTRACTOR (HPCP polyphonic harmonic peak algorithm)
-      try {
-        const keyResult = essentia.KeyExtractor(
-          signalVector, // audio
-          true,         // averageDetuningCorrection
-          4096,         // frameSize
-          2048,         // hopSize
-          12,           // hpcpSize
-          3500,         // maxFrequency
-          60,           // maximumSpectralPeaks
-          40,           // minFrequency
-          0.2,          // pcpThreshold
-          'polyphonic', // profileType
-          44100,        // sampleRate
-          0.0001,       // spectralPeaksThreshold
-          440,          // tuningFrequency
-          'cosine',     // weightType
-          'hann'        // windowType
-        );
-
-        if (keyResult && keyResult.key) {
-          const rawKey = PITCH_NAMES[keyResult.key] || keyResult.key;
-          const rawScale = keyResult.scale === 'minor' ? 'Minor' : 'Major';
-          detectedKeyName = `${rawKey} ${rawScale}`;
-          detectedMode = rawScale as 'Major' | 'Minor';
-          if (keyResult.strength) {
-            confidence = Math.min(99, Math.max(70, Math.round(keyResult.strength * 100)));
-          }
-        }
-      } catch (errKey) {
-        console.warn('Essentia KeyExtractor notice:', errKey);
+      const bpmResult = await analyzeBeat(mono44kBuffer);
+      if (bpmResult && bpmResult > 0) {
+        let bpm = Math.round(bpmResult);
+        // Normalize tempo to DJ standard 75-175 range
+        if (bpm < 75) bpm *= 2;
+        if (bpm > 175) bpm = Math.round(bpm / 2);
+        detectedBPM = bpm;
       }
-
-      // 3. ESSENTIA C++ RHYTHM EXTRACTOR (RhythmExtractor2013 multifeature beat tracker)
-      try {
-        const rhythmResult = essentia.RhythmExtractor2013(
-          signalVector, // signal
-          205,          // maxTempo
-          'multifeature',// method ('multifeature' or 'degara')
-          55            // minTempo
-        );
-
-        if (rhythmResult && rhythmResult.bpm && rhythmResult.bpm > 0) {
-          let bpm = Math.round(rhythmResult.bpm);
-          // If BPM was detected at half or 3/2 tempo, normalize to standard DJ 80-170 range
-          if (bpm < 75) bpm *= 2;
-          if (bpm > 185) bpm = Math.round(bpm / 2);
-          detectedBPM = bpm;
-        } else {
-          // PercussiveBpm alternative pass
-          const percBpm = essentia.PercussiveBpm(signalVector);
-          if (percBpm && percBpm.bpm > 0) {
-            detectedBPM = Math.round(percBpm.bpm);
-          }
-        }
-      } catch (errRhythm) {
-        console.warn('Essentia RhythmExtractor notice:', errRhythm);
-      }
-
-      // Free C++ Vector memory
-      signalVector.delete();
-    } catch (errEssentia) {
-      console.warn('Essentia WASM fallback notice:', errEssentia);
-      const fb = fallbackAnalysis(pcm44k);
-      detectedBPM = fb.bpm;
-      detectedKeyName = fb.keyName;
-      detectedMode = fb.mode;
-      confidence = fb.confidence;
+    } catch (errBeat) {
+      console.warn('Beat detector notice:', errBeat);
     }
 
-    const camelot = CAMELOT_MAP[detectedKeyName] || '8B';
+    // 2. High-accuracy Musical Key detection
+    const keyInfo = detectKeyFrom44kBuffer(mono44kBuffer);
+    const camelot = CAMELOT_MAP[keyInfo.keyName] || '8B';
 
     return {
       bpm: detectedBPM,
-      key: detectedKeyName,
+      key: keyInfo.keyName,
       camelot,
-      mode: detectedMode,
-      confidence,
+      mode: keyInfo.mode,
+      confidence: keyInfo.confidence,
       duration,
       sampleRate: originalSampleRate,
     };

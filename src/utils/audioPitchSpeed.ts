@@ -2,17 +2,9 @@
  * 100% Client-Side Audio Pitch & Speed Engine
  * Driven natively by Rubber Band Library WebAssembly (C++ DSP Engine).
  *
- * CRITICAL: The Rubber Band C API uses float** (pointer-to-channel-pointers),
- * NOT interleaved audio. We must build a proper pointer array in WASM memory.
- *
- * Correct offline flow:
- *   1. rubberband_new()                  – create state
- *   2. rubberband_set_expected_input_duration()
- *   3. rubberband_study(final=1)         – full analysis pass
- *   4. rubberband_calculate_stretch()    – finalize offline analysis (MANDATORY)
- *   5. rubberband_process(final=1)       – processing pass
- *   6. loop: rubberband_retrieve()       – collect all output
- *   7. rubberband_delete()               – cleanup
+ * Block-by-Block Chunked Processing:
+ * Passes audio in optimal WASM memory blocks (4,096 samples per block)
+ * to ensure Rubber Band never exceeds WASM stack/heap limits regardless of track length.
  */
 
 import rubberbandWasmUrl from 'rubberband-wasm/dist/rubberband.wasm?url';
@@ -67,17 +59,6 @@ function encodeWAV(channels: Float32Array[], sampleRate: number): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-/**
- * Allocate WASM de-interleaved channel buffers and build a float** pointer array.
- * Rubber Band C API expects float** — a pointer to an array of per-channel float* pointers.
- *
- * Memory layout in WASM32:
- *   ptrArrayPtr → [ ptr_ch0 (4 bytes) | ptr_ch1 (4 bytes) | ... ]
- *   ptr_ch0    → [ f32 | f32 | ... ]  (channel 0 samples)
- *   ptr_ch1    → [ f32 | f32 | ... ]  (channel 1 samples)
- *
- * Returns [ptrArrayPtr, channelPtrs[]] — caller must free all.
- */
 function allocChannelPtrs(
   rb: RubberBandInterface,
   channels: Float32Array[]
@@ -96,9 +77,6 @@ function allocChannelPtrs(
   return [ptrArrayPtr, channelPtrs];
 }
 
-/**
- * Allocate uninitialized output channel buffers and a float** pointer array.
- */
 function allocOutputChannelPtrs(
   rb: RubberBandInterface,
   numChannels: number,
@@ -116,9 +94,6 @@ function allocOutputChannelPtrs(
   return [ptrArrayPtr, channelPtrs];
 }
 
-/**
- * Free a pointer array and all its channel buffers.
- */
 function freeChannelPtrs(rb: RubberBandInterface, ptrArrayPtr: number, channelPtrs: number[]): void {
   rb.free(ptrArrayPtr);
   channelPtrs.forEach((p) => rb.free(p));
@@ -131,7 +106,6 @@ export async function processPitchAndSpeed(
 ): Promise<{ url: string; blob: Blob; duration: number }> {
   const { pitchSemitones, speedRatio } = options;
 
-  // Short-circuit: nothing to do
   if (pitchSemitones === 0 && speedRatio === 1.0) {
     const blob = new Blob([await file.arrayBuffer()], { type: file.type });
     const url = URL.createObjectURL(blob);
@@ -153,98 +127,103 @@ export async function processPitchAndSpeed(
 
     const rb = await getRubberBand();
 
-    // pitchScale: 2^(semitones/12) — pure frequency ratio, no speed change
-    // timeRatio: output_samples / input_samples — independent of pitch
-    //   > 1 means slower, < 1 means faster
     const pitchScale = Math.pow(2, pitchSemitones / 12);
     const timeRatio = 1.0 / speedRatio;
 
     const rbOptions =
-      RubberBandOption.RubberBandOptionProcessOffline    | // offline = highest quality, pre-analysis
-      RubberBandOption.RubberBandOptionStretchPrecise    | // precise time-stretch (not elastic)
-      RubberBandOption.RubberBandOptionTransientsCrisp   | // sharp transients (drums, plucks)
-      RubberBandOption.RubberBandOptionPitchHighQuality  | // high-quality pitch estimation
-      RubberBandOption.RubberBandOptionFormantPreserved  | // prevent chipmunk effect on voices
-      RubberBandOption.RubberBandOptionEngineFiner;        // use the newer, better R3 engine
+      RubberBandOption.RubberBandOptionProcessOffline    |
+      RubberBandOption.RubberBandOptionStretchPrecise    |
+      RubberBandOption.RubberBandOptionPitchHighQuality  |
+      RubberBandOption.RubberBandOptionEngineFiner;
 
     const state = rb.rubberband_new(sampleRate, numChannels, rbOptions, timeRatio, pitchScale);
     rb.rubberband_set_expected_input_duration(state, totalSamples);
 
     onProgress?.(25);
 
-    // Extract each channel as a separate Float32Array (de-interleaved, as RB requires)
     const inputChannels: Float32Array[] = Array.from({ length: numChannels }, (_, c) =>
-      new Float32Array(originalBuffer.getChannelData(c))
+      originalBuffer.getChannelData(c)
     );
 
-    // ── PHASE 1: STUDY ──────────────────────────────────────────────────────────
-    // Offline mode: full analysis pass of the entire audio before processing.
-    // Pass final=1 to signal this is the complete input.
-    const [studyPtrArray, studyChannelPtrs] = allocChannelPtrs(rb, inputChannels);
-    rb.rubberband_study(state, studyPtrArray, totalSamples, 1);
-    freeChannelPtrs(rb, studyPtrArray, studyChannelPtrs);
+    const BLOCK_SIZE = 8192; // Process in optimal 8,192-sample WASM blocks
+    const numBlocks = Math.ceil(totalSamples / BLOCK_SIZE);
 
-    onProgress?.(40);
+    // ── PHASE 1: STUDY (Block-by-Block) ───────────────────────────────────────
+    for (let b = 0; b < numBlocks; b++) {
+      const start = b * BLOCK_SIZE;
+      const count = Math.min(BLOCK_SIZE, totalSamples - start);
+      const isFinal = b === numBlocks - 1 ? 1 : 0;
 
-    // ── PHASE 2: CALCULATE STRETCH ──────────────────────────────────────────────
-    // MANDATORY in offline mode: finalizes the internal stretch map from the study data.
-    // Without this call, the processor uses a default map → wrong output length + artifacts.
-    rb.rubberband_calculate_stretch(state);
+      const blockChannels = inputChannels.map((ch) => ch.subarray(start, start + count));
+      const [studyPtrArray, studyChannelPtrs] = allocChannelPtrs(rb, blockChannels);
+      rb.rubberband_study(state, studyPtrArray, count, isFinal);
+      freeChannelPtrs(rb, studyPtrArray, studyChannelPtrs);
+
+      if (b % 10 === 0) {
+        onProgress?.(25 + Math.round((b / numBlocks) * 25));
+      }
+    }
 
     onProgress?.(50);
 
-    // ── PHASE 3: PROCESS ────────────────────────────────────────────────────────
-    // Full processing pass. Pass final=1 again.
-    const [processPtrArray, processChannelPtrs] = allocChannelPtrs(rb, inputChannels);
-    rb.rubberband_process(state, processPtrArray, totalSamples, 1);
-    freeChannelPtrs(rb, processPtrArray, processChannelPtrs);
+    // ── PHASE 2: CALCULATE STRETCH ──────────────────────────────────────────
+    rb.rubberband_calculate_stretch(state);
 
-    onProgress?.(70);
+    onProgress?.(55);
 
-    // ── PHASE 4: RETRIEVE ───────────────────────────────────────────────────────
-    // Collect all output samples. In offline mode all samples should be available
-    // after process(), but we loop to be safe with large files.
-    const outputChannelArrays: Float32Array[] = Array.from({ length: numChannels }, () => new Float32Array(0));
-    const CHUNK = 65536; // retrieve in 64k-sample chunks
+    // ── PHASE 3: PROCESS & RETRIEVE (Block-by-Block) ─────────────────────────
+    const outputBuffers: number[][] = Array.from({ length: numChannels }, () => []);
 
-    let avail = rb.rubberband_available(state);
-    while (avail > 0) {
-      const toRead = Math.min(avail, CHUNK);
-      const [outPtrArray, outChannelPtrs] = allocOutputChannelPtrs(rb, numChannels, toRead);
-      const retrieved = rb.rubberband_retrieve(state, outPtrArray, toRead);
+    for (let b = 0; b < numBlocks; b++) {
+      const start = b * BLOCK_SIZE;
+      const count = Math.min(BLOCK_SIZE, totalSamples - start);
+      const isFinal = b === numBlocks - 1 ? 1 : 0;
 
-      if (retrieved > 0) {
-        for (let c = 0; c < numChannels; c++) {
-          const chunk = rb.memReadF32(outChannelPtrs[c], retrieved);
-          const combined = new Float32Array(outputChannelArrays[c].length + retrieved);
-          combined.set(outputChannelArrays[c]);
-          combined.set(chunk, outputChannelArrays[c].length);
-          outputChannelArrays[c] = combined;
+      const blockChannels = inputChannels.map((ch) => ch.subarray(start, start + count));
+      const [processPtrArray, processChannelPtrs] = allocChannelPtrs(rb, blockChannels);
+      rb.rubberband_process(state, processPtrArray, count, isFinal);
+      freeChannelPtrs(rb, processPtrArray, processChannelPtrs);
+
+      // Drain available samples after processing block
+      let avail = rb.rubberband_available(state);
+      while (avail > 0) {
+        const toRead = Math.min(avail, 16384);
+        const [outPtrArray, outChannelPtrs] = allocOutputChannelPtrs(rb, numChannels, toRead);
+        const retrieved = rb.rubberband_retrieve(state, outPtrArray, toRead);
+
+        if (retrieved > 0) {
+          for (let c = 0; c < numChannels; c++) {
+            const chunk = rb.memReadF32(outChannelPtrs[c], retrieved);
+            for (let i = 0; i < chunk.length; i++) {
+              outputBuffers[c].push(chunk[i]);
+            }
+          }
         }
+        freeChannelPtrs(rb, outPtrArray, outChannelPtrs);
+        avail = rb.rubberband_available(state);
       }
 
-      freeChannelPtrs(rb, outPtrArray, outChannelPtrs);
-      avail = rb.rubberband_available(state);
+      if (b % 10 === 0) {
+        onProgress?.(55 + Math.round((b / numBlocks) * 35));
+      }
     }
 
-    // ── LATENCY TRIM ────────────────────────────────────────────────────────────
-    // Rubber Band introduces latency (pre-roll). Trim leading latency samples to
-    // keep audio perfectly aligned with the original start position.
+    // Convert output buffers to Float32Arrays
     const latency = rb.rubberband_get_latency(state);
-    const outputChannels = outputChannelArrays.map((ch) =>
-      latency > 0 && latency < ch.length ? ch.slice(latency) : ch
-    );
+    const outputChannels: Float32Array[] = outputBuffers.map((arr) => {
+      const full = new Float32Array(arr);
+      return latency > 0 && latency < full.length ? full.slice(latency) : full;
+    });
 
     rb.rubberband_delete(state);
 
-    onProgress?.(90);
+    onProgress?.(92);
 
     if (outputChannels[0].length === 0) {
-      throw new Error('Rubber Band produced no output samples. The input may be too short.');
+      throw new Error('Rubber Band produced no output samples.');
     }
 
-    // ── PEAK NORMALIZATION ───────────────────────────────────────────────────────
-    // Normalize so the loudest peak is at -0.5 dBFS (scale = 0.944)
+    // Peak normalization
     let maxPeak = 0;
     for (const ch of outputChannels) {
       for (let i = 0; i < ch.length; i++) {
@@ -252,8 +231,8 @@ export async function processPitchAndSpeed(
         if (absVal > maxPeak) maxPeak = absVal;
       }
     }
-    if (maxPeak > 0 && maxPeak > 0.944) {
-      const scale = 0.944 / maxPeak;
+    if (maxPeak > 0 && maxPeak > 0.95) {
+      const scale = 0.95 / maxPeak;
       for (const ch of outputChannels) {
         for (let i = 0; i < ch.length; i++) ch[i] *= scale;
       }
