@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { Footer } from './components/Common/Footer';
+import { EmbedWatermark } from './components/Common/EmbedWatermark';
 import { Dashboard } from './pages/Dashboard';
 import SimpleNav from './components/ui/SimpleNav';
 
@@ -150,6 +151,7 @@ function MainApp() {
         </Suspense>
       </main>
       <Footer onNavigate={selectTool} />
+      <EmbedWatermark />
     </div>
   );
 }
