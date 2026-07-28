@@ -205,74 +205,236 @@ export const processImage = async (
   }
 
   const outputFormat = finalFormat;
+  const isLossy = outputFormat === 'image/jpeg' || outputFormat === 'image/webp';
 
-  const getBlob = (fmt: string, q: number): Promise<Blob | null> => {
+  const createScaledCanvas = (scaleFactor: number) => {
+    const cvs = document.createElement('canvas');
+    const cCtx = cvs.getContext('2d');
+    if (!cCtx) throw new Error('Could not get 2D context from canvas');
+
+    const scaledW = Math.max(1, Math.round(width * scaleFactor));
+    const scaledH = Math.max(1, Math.round(height * scaleFactor));
+
+    if (isRotated90or270) {
+      cvs.width = scaledH;
+      cvs.height = scaledW;
+    } else {
+      cvs.width = scaledW;
+      cvs.height = scaledH;
+    }
+
+    cCtx.save();
+
+    if (isRotated90or270) {
+      cCtx.translate(scaledH / 2, scaledW / 2);
+    } else {
+      cCtx.translate(scaledW / 2, scaledH / 2);
+    }
+
+    if (rotation !== 0) {
+      cCtx.rotate((rotation * Math.PI) / 180);
+    }
+
+    cCtx.scale(scaleX, scaleY);
+
+    if (options.grayscale) {
+      cCtx.filter = 'grayscale(100%)';
+    }
+
+    cCtx.drawImage(
+      img,
+      cropX, cropY, cropW, cropH,
+      -scaledW / 2, -scaledH / 2, scaledW, scaledH
+    );
+
+    cCtx.restore();
+
+    if (options.pixelateBox && options.pixelateBox.widthPct > 0 && options.pixelateBox.heightPct > 0) {
+      const pxSize = options.pixelateBox.pixelSize || 14;
+      const pxLeft = (options.pixelateBox.leftPct / 100) * cvs.width;
+      const pxTop = (options.pixelateBox.topPct / 100) * cvs.height;
+      const pxWidth = (options.pixelateBox.widthPct / 100) * cvs.width;
+      const pxHeight = (options.pixelateBox.heightPct / 100) * cvs.height;
+
+      for (let x = pxLeft; x < pxLeft + pxWidth; x += pxSize) {
+        for (let y = pxTop; y < pxTop + pxHeight; y += pxSize) {
+          const w = Math.min(pxSize, pxLeft + pxWidth - x);
+          const h = Math.min(pxSize, pxTop + pxHeight - y);
+          const data = cCtx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
+          cCtx.fillStyle = `rgb(${data[0]}, ${data[1]}, ${data[2]})`;
+          cCtx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(w), Math.ceil(h));
+        }
+      }
+    }
+
+    return { cvs, scaledW, scaledH };
+  };
+
+  const getBlobFromCanvas = (cvs: HTMLCanvasElement, fmt: string, q: number): Promise<Blob | null> => {
     return new Promise((resolve) => {
-      canvas.toBlob((b) => resolve(b), fmt, q);
+      cvs.toBlob((b) => resolve(b), fmt, q);
     });
   };
 
-  let finalBlob = await getBlob(outputFormat, options.quality);
+  let finalWidth = width;
+  let finalHeight = height;
+  let finalBlob: Blob | null = null;
 
-  if (options.targetSizeKB && options.targetSizeKB > 0) {
-    const targetBytes = options.targetSizeKB * 1024;
-    
-    if (finalBlob && finalBlob.size > targetBytes) {
-      let minQ = 0.05;
-      let maxQ = options.quality;
-      let bestBlob = finalBlob;
-      
-      for (let i = 0; i < 6; i++) {
-        const midQ = (minQ + maxQ) / 2;
-        const testBlob = await getBlob(outputFormat, midQ);
-        if (testBlob) {
-          if (testBlob.size <= targetBytes) {
-            bestBlob = testBlob;
+  const isTargetSizeSet = !!(options.targetSizeKB && options.targetSizeKB > 0);
+
+  if (isTargetSizeSet) {
+    const targetBytes = options.targetSizeKB! * 1024;
+    const initialCanvasObj = createScaledCanvas(1.0);
+    const initialBlob = await getBlobFromCanvas(initialCanvasObj.cvs, outputFormat, options.quality);
+
+    if (initialBlob && initialBlob.size <= targetBytes) {
+      finalBlob = initialBlob;
+      if (isLossy && initialBlob.size < targetBytes) {
+        // Try increasing quality up to 1.0 to get optimal visual fidelity within target limit
+        let minQ = options.quality;
+        let maxQ = 1.0;
+        for (let i = 0; i < 5; i++) {
+          const midQ = (minQ + maxQ) / 2;
+          const testBlob = await getBlobFromCanvas(initialCanvasObj.cvs, outputFormat, midQ);
+          if (testBlob && testBlob.size <= targetBytes) {
+            finalBlob = testBlob;
             minQ = midQ;
           } else {
             maxQ = midQ;
           }
         }
       }
-      finalBlob = bestBlob;
+    } else {
+      // Step 1: If lossy, binary search quality first at 1.0 scale
+      if (isLossy) {
+        let minQ = 0.05;
+        let maxQ = options.quality;
+        let bestQBlob: Blob | null = null;
+
+        for (let i = 0; i < 7; i++) {
+          const midQ = (minQ + maxQ) / 2;
+          const testBlob = await getBlobFromCanvas(initialCanvasObj.cvs, outputFormat, midQ);
+          if (testBlob) {
+            if (testBlob.size <= targetBytes) {
+              bestQBlob = testBlob;
+              minQ = midQ;
+            } else {
+              maxQ = midQ;
+            }
+          }
+        }
+        if (bestQBlob) {
+          finalBlob = bestQBlob;
+        }
+      }
+
+      // Step 2: If quality search was insufficient or format is PNG (quality ignored), binary search scale factor
+      if (!finalBlob) {
+        let minScale = 0.05;
+        let maxScale = 1.0;
+        let bestScaleBlob: Blob | null = null;
+        let bestScaleW = width;
+        let bestScaleH = height;
+
+        for (let i = 0; i < 8; i++) {
+          const midScale = (minScale + maxScale) / 2;
+          const { cvs: candidateCvs, scaledW: candidateW, scaledH: candidateH } = createScaledCanvas(midScale);
+          const candidateQ = isLossy ? Math.min(options.quality, 0.75) : options.quality;
+          const candidateBlob = await getBlobFromCanvas(candidateCvs, outputFormat, candidateQ);
+
+          if (candidateBlob) {
+            if (candidateBlob.size <= targetBytes) {
+              bestScaleBlob = candidateBlob;
+              bestScaleW = candidateW;
+              bestScaleH = candidateH;
+              minScale = midScale;
+            } else {
+              maxScale = midScale;
+            }
+          }
+        }
+
+        if (bestScaleBlob) {
+          finalBlob = bestScaleBlob;
+          finalWidth = bestScaleW;
+          finalHeight = bestScaleH;
+        } else {
+          // Fallback: render at minimum scale (0.05) if target size is extremely small
+          const { cvs: minCvs, scaledW: minW, scaledH: minH } = createScaledCanvas(0.05);
+          finalBlob = await getBlobFromCanvas(minCvs, outputFormat, 0.1);
+          finalWidth = minW;
+          finalHeight = minH;
+        }
+      }
+    }
+  } else {
+    // Automatic Compression Mode
+    let initialScale = 1.0;
+    if (outputFormat === 'image/png' && options.quality < 0.99) {
+      initialScale = Math.min(1.0, Math.sqrt(options.quality));
+    }
+
+    const { cvs: autoCvs, scaledW: autoW, scaledH: autoH } = createScaledCanvas(initialScale);
+    finalWidth = autoW;
+    finalHeight = autoH;
+    finalBlob = await getBlobFromCanvas(autoCvs, outputFormat, options.quality);
+
+    const hasVisualMods = 
+      (options.maxWidth && img.naturalWidth > options.maxWidth) ||
+      (options.maxHeight && img.naturalHeight > options.maxHeight) ||
+      (options.rotation && options.rotation !== 0) ||
+      (options.flipH) ||
+      (options.flipV) ||
+      (options.cropLeftPct !== undefined && options.cropLeftPct > 0) ||
+      (options.cropTopPct !== undefined && options.cropTopPct > 0) ||
+      (options.cropWidthPct !== undefined && options.cropWidthPct < 100) ||
+      (options.cropHeightPct !== undefined && options.cropHeightPct < 100) ||
+      (options.cropAspect && options.cropAspect !== 'none') ||
+      (options.grayscale) ||
+      (options.pixelateBox && options.pixelateBox.widthPct > 0);
+
+    // If result is >= original file size, force compression by stepping down quality / scale
+    if (finalBlob && finalBlob.size >= file.size) {
+      let reducedBlob: Blob | null = null;
+
+      if (isLossy) {
+        const stepQualities = [options.quality * 0.85, options.quality * 0.7, 0.5, 0.35, 0.2];
+        for (const q of stepQualities) {
+          const lowerBlob = await getBlobFromCanvas(autoCvs, outputFormat, q);
+          if (lowerBlob && lowerBlob.size < file.size) {
+            reducedBlob = lowerBlob;
+            break;
+          }
+        }
+      }
+
+      if (!reducedBlob) {
+        const stepScales = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4];
+        for (const s of stepScales) {
+          const { cvs: stepCvs, scaledW: stepW, scaledH: stepH } = createScaledCanvas(s * initialScale);
+          const stepBlob = await getBlobFromCanvas(stepCvs, outputFormat, isLossy ? options.quality * 0.8 : options.quality);
+          if (stepBlob && stepBlob.size < file.size) {
+            reducedBlob = stepBlob;
+            finalWidth = stepW;
+            finalHeight = stepH;
+            break;
+          }
+        }
+      }
+
+      if (reducedBlob) {
+        finalBlob = reducedBlob;
+      } else if (!hasVisualMods) {
+        finalBlob = file;
+        finalFormat = file.type;
+        finalWidth = img.naturalWidth;
+        finalHeight = img.naturalHeight;
+      }
     }
   }
 
   if (!finalBlob) {
     throw new Error('Canvas serialization failed');
-  }
-
-  const isTargetSizeSet = !!(options.targetSizeKB && options.targetSizeKB > 0);
-  const hasVisualMods = 
-    (options.maxWidth && img.naturalWidth > options.maxWidth) ||
-    (options.maxHeight && img.naturalHeight > options.maxHeight) ||
-    (options.rotation && options.rotation !== 0) ||
-    (options.flipH) ||
-    (options.flipV) ||
-    (options.cropLeftPct !== undefined && options.cropLeftPct > 0) ||
-    (options.cropTopPct !== undefined && options.cropTopPct > 0) ||
-    (options.cropWidthPct !== undefined && options.cropWidthPct < 100) ||
-    (options.cropHeightPct !== undefined && options.cropHeightPct < 100) ||
-    (options.cropAspect && options.cropAspect !== 'none') ||
-    (options.grayscale) ||
-    (options.pixelateBox && options.pixelateBox.widthPct > 0);
-
-  if (!hasVisualMods && finalBlob.size >= file.size) {
-    if (!isTargetSizeSet) {
-      const stepQualities = [0.72, 0.64, 0.54, 0.45, 0.35];
-      for (const q of stepQualities) {
-        const lowerBlob = await getBlob(outputFormat, q);
-        if (lowerBlob && lowerBlob.size < file.size) {
-          finalBlob = lowerBlob;
-          break;
-        }
-      }
-    }
-  }
-
-  if (!hasVisualMods && finalBlob.size >= file.size) {
-    finalBlob = file;
-    finalFormat = file.type;
   }
 
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
@@ -286,7 +448,7 @@ export const processImage = async (
     name: newName,
     originalSize: file.size,
     newSize: finalBlob.size,
-    width,
-    height
+    width: finalWidth,
+    height: finalHeight
   };
 };

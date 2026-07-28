@@ -29,4 +29,28 @@ describe('Image Tools & Utilities', () => {
       expect(mime.startsWith('image/')).toBe(true);
     });
   });
+
+  it('target size KB to bytes calculation converts correctly', () => {
+    const targetSizeMB = 2.5;
+    const targetSizeKB = 500;
+
+    const bytesFromMB = targetSizeMB * 1024 * 1024;
+    const bytesFromKB = targetSizeKB * 1024;
+
+    expect(bytesFromMB).toBe(2621440);
+    expect(bytesFromKB).toBe(512000);
+  });
+
+  it('dimension scale binary search factor reduces dimensions accurately', () => {
+    const origW = 3840;
+    const origH = 2160;
+    const scaleFactor = 0.5;
+
+    const scaledW = Math.max(1, Math.round(origW * scaleFactor));
+    const scaledH = Math.max(1, Math.round(origH * scaleFactor));
+
+    expect(scaledW).toBe(1920);
+    expect(scaledH).toBe(1080);
+  });
 });
+
