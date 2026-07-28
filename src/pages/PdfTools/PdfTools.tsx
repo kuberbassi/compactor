@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { FileUploader } from '../../components/Common/FileUploader';
+import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { 
@@ -26,6 +27,8 @@ import {
 import { renderPdfThumbnails, renderPdfPagesToImages } from '../../utils/pdfRenderer';
 import type { PageOrganizeSpec } from '../../utils/pdf';
 import { formatBytes } from '../../utils/image';
+import { downloadAll, isEditableShortcutTarget, loadSetting, saveSetting, shareResult } from '../../utils/batch';
+import type { CompressionPreset } from '../../utils/batch';
 import { 
   FileText, Download, RefreshCw, 
   CheckCircle, Trash2 as TrashIcon, 
@@ -52,7 +55,7 @@ import {
 interface PdfToolsProps {
   toolId: string;
   onGoHome: () => void;
-  onUploadSuccess: () => void;
+  onUploadSuccess: (amount?: number) => void;
 }
 
 interface PdfFileInfo {
@@ -65,6 +68,15 @@ interface PageItem {
   originalIndex: number;
   rotation: number; // 0, 90, 180, 270
   thumbnailUrl?: string;
+}
+
+interface CompressionResult {
+  sourceName: string;
+  sourceSize: number;
+  outputName: string;
+  outputSize: number;
+  url?: string;
+  error?: string;
 }
 
 const TOOL_GROUPS = [
@@ -512,11 +524,6 @@ const LivePdfPreview: React.FC<{
 export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(toolId || 'pdf-organize');
 
-  useEffect(() => {
-    if (toolId) setActiveTool(toolId);
-    reset();
-  }, [toolId]);
-
   // Global execution states
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -524,11 +531,23 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultName, setResultName] = useState('');
   const [resultSize, setResultSize] = useState<number>(0);
+  const [compressionResults, setCompressionResults] = useState<CompressionResult[]>([]);
+  const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
+    loadSetting('compactor_pdf_compression_preset', 'balanced')
+  );
+  const [removeCompressionMetadata, setRemoveCompressionMetadata] = useState(() =>
+    loadSetting('compactor_pdf_remove_metadata', true)
+  );
 
   // File states
   const [multipleFiles, setMultipleFiles] = useState<PdfFileInfo[]>([]);
   const [singleFile, setSingleFile] = useState<PdfFileInfo | null>(null);
   const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    saveSetting('compactor_pdf_compression_preset', compressionPreset);
+    saveSetting('compactor_pdf_remove_metadata', removeCompressionMetadata);
+  }, [compressionPreset, removeCompressionMetadata]);
 
   // Page Organizer state
   const [pagesList, setPagesList] = useState<PageItem[]>([]);
@@ -603,6 +622,10 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   }, [peekPageIndex]);
 
   const reset = () => {
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
+    compressionResults.forEach(result => {
+      if (result.url) URL.revokeObjectURL(result.url);
+    });
     setResultUrl(null);
     setResultName('');
     setResultSize(0);
@@ -617,7 +640,15 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     setSecurityPassword('');
     setProgress(0);
     setProcessing(false);
+    setCompressionResults([]);
   };
+
+  useEffect(() => {
+    if (toolId) setActiveTool(toolId);
+    reset();
+    // Reset intentionally runs only when navigation selects another PDF tool.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolId]);
 
   const handleMultipleFilesSelected = async (selectedFiles: File[]) => {
     setProcessing(true);
@@ -629,6 +660,31 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     }
     setMultipleFiles((prev) => [...prev, ...loaded]);
     setProcessing(false);
+  };
+
+  const handleCompressionFilesSelected = async (selectedFiles: File[]) => {
+    setProcessing(true);
+    setStatusText('Validating PDF documents...');
+    const existing = new Set(
+      multipleFiles.map(({ file }) => `${file.name}:${file.size}:${file.lastModified}`)
+    );
+    const loaded: PdfFileInfo[] = [];
+
+    for (const file of selectedFiles) {
+      const key = `${file.name}:${file.size}:${file.lastModified}`;
+      if (existing.has(key)) continue;
+      try {
+        const pageCount = await getPdfPageCount(file);
+        loaded.push({ file, pageCount });
+        existing.add(key);
+      } catch (error) {
+        console.error(`Could not read ${file.name}`, error);
+      }
+    }
+
+    setMultipleFiles(prev => [...prev, ...loaded]);
+    setProcessing(false);
+    setProgress(0);
   };
 
   const handleSingleFileSelected = async (selectedFiles: File[]) => {
@@ -846,21 +902,80 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   };
 
   const runCompress = async () => {
-    if (!singleFile) return;
-    setProcessing(true); setProgress(40);
-    setStatusText('Compressing PDF stream objects & font data...');
-    try {
-      const blob = await compressPdf(singleFile.file);
-      setProgress(90);
-      setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_compressed.pdf`);
-      onUploadSuccess();
-    } catch (e) {
-      console.error(e);
-      alert('Compression failed.');
+    if (multipleFiles.length === 0) return;
+    compressionResults.forEach(result => {
+      if (result.url) URL.revokeObjectURL(result.url);
+    });
+    setCompressionResults([]);
+    setProcessing(true);
+
+    const results: CompressionResult[] = [];
+    for (let index = 0; index < multipleFiles.length; index++) {
+      const { file } = multipleFiles[index];
+      setProgress(Math.round((index / multipleFiles.length) * 100));
+      setStatusText(`Optimizing ${index + 1} of ${multipleFiles.length}: ${file.name}`);
+      const outputName = `${file.name.replace(/\.pdf$/i, '')}_compressed.pdf`;
+      try {
+        const blob = await compressPdf(file, {
+          preset: compressionPreset,
+          removeMetadata: removeCompressionMetadata,
+        });
+        results.push({
+          sourceName: file.name,
+          sourceSize: file.size,
+          outputName,
+          outputSize: blob.size,
+          url: URL.createObjectURL(blob),
+        });
+      } catch (error) {
+        console.error(`Compression failed for ${file.name}`, error);
+        results.push({
+          sourceName: file.name,
+          sourceSize: file.size,
+          outputName,
+          outputSize: 0,
+          error: error instanceof Error ? error.message : 'Unable to optimize this PDF',
+        });
+      }
     }
-    setProgress(100); setProcessing(false);
+    setCompressionResults(results);
+    setProgress(100);
+    setProcessing(false);
+    const successfulCount = results.filter(result => result.url).length;
+    if (successfulCount > 0) onUploadSuccess(successfulCount);
+  };
+
+  const retryCompressionResult = async (resultIndex: number) => {
+    const failed = compressionResults[resultIndex];
+    const source = multipleFiles.find(item =>
+      item.file.name === failed.sourceName && item.file.size === failed.sourceSize
+    )?.file;
+    if (!source) return;
+    setProcessing(true);
+    setProgress(35);
+    setStatusText(`Retrying ${source.name}...`);
+    try {
+      const blob = await compressPdf(source, {
+        preset: compressionPreset,
+        removeMetadata: removeCompressionMetadata,
+      });
+      const replacement: CompressionResult = {
+        ...failed,
+        outputSize: blob.size,
+        url: URL.createObjectURL(blob),
+        error: undefined,
+      };
+      setCompressionResults(prev => prev.map((item, index) => index === resultIndex ? replacement : item));
+      setProgress(100);
+      onUploadSuccess();
+    } catch (error) {
+      setCompressionResults(prev => prev.map((item, index) => index === resultIndex ? {
+        ...item,
+        error: error instanceof Error ? error.message : 'Unable to optimize this PDF',
+      } : item));
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const runImagesToPdf = async () => {
@@ -1136,6 +1251,21 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     return 'Comprehensive PDF toolkit for page organization, digital signatures, watermarks, encryption, and conversions.';
   };
 
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && activeTool === 'pdf-compress' && multipleFiles.length > 0 && !processing) {
+        event.preventDefault();
+        runCompress();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && compressionResults.some(result => result.url)) {
+        event.preventDefault();
+        downloadAll(compressionResults.flatMap(result => result.url ? [{ url: result.url, name: result.outputName }] : []));
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  });
+
   return (
     <div className="tool-layout pdf-tool-layout">
       <ToolHeader 
@@ -1143,7 +1273,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         description={getToolDesc()} 
         icon={FileText} 
         onGoHome={() => {
-          if (singleFile || multipleFiles.length > 0 || resultUrl || extractedImages.length > 0 || processing) {
+          if (singleFile || multipleFiles.length > 0 || resultUrl || compressionResults.length > 0 || extractedImages.length > 0 || processing) {
             reset();
           } else {
             onGoHome();
@@ -1157,7 +1287,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         </div>
       )}
 
-      {!processing && !resultUrl && extractedImages.length === 0 && (
+      {!processing && !resultUrl && compressionResults.length === 0 && extractedImages.length === 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* Adobe Acrobat Style Category Sidebar (Desktop Only) */}
@@ -1726,8 +1856,101 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
               </div>
             )}
 
+            {/* BULK PDF COMPRESSION WORKSPACE */}
+            {activeTool === 'pdf-compress' && (
+              <div className="space-y-5">
+                <FileUploader
+                  accept=".pdf,application/pdf"
+                  multiple
+                  label={multipleFiles.length === 0 ? 'Bulk import PDF documents' : 'Add more PDF documents'}
+                  subLabel="Select or drop multiple PDFs. Files are optimized one at a time to keep memory usage stable."
+                  onFilesSelected={handleCompressionFilesSelected}
+                  maxSizeMB={200}
+                  compact={multipleFiles.length > 0}
+                />
+
+                {multipleFiles.length > 0 && (
+                  <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
+                    <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+                      <div>
+                        <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider block">
+                          Compression queue ({multipleFiles.length})
+                        </span>
+                        <span className="text-[10px] text-[var(--text-secondary)]">
+                          {formatBytes(multipleFiles.reduce((total, item) => total + item.file.size, 0))} total
+                        </span>
+                      </div>
+                      <Button variant="ghost" onClick={reset} className="text-rose-500 hover:text-rose-600 text-xs h-8 px-2">
+                        Clear all
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                      {multipleFiles.map((item, index) => (
+                        <div
+                          key={`${item.file.name}:${item.file.size}:${item.file.lastModified}`}
+                          draggable
+                          onDragStart={() => setDraggedQueueIndex(index)}
+                          onDragOver={event => event.preventDefault()}
+                          onDrop={() => {
+                            if (draggedQueueIndex !== null && draggedQueueIndex !== index) {
+                              moveQueueItem(draggedQueueIndex, index);
+                            }
+                            setDraggedQueueIndex(null);
+                          }}
+                          onDragEnd={() => setDraggedQueueIndex(null)}
+                          className="flex items-center gap-3 p-3 bg-zinc-950/40 border border-[var(--border-color)] rounded-xl cursor-grab active:cursor-grabbing"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 font-bold text-[10px] shrink-0">
+                            PDF
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="block text-xs font-bold truncate text-[var(--text-primary)]">{item.file.name}</span>
+                            <span className="text-[10px] text-[var(--text-secondary)]">
+                              {item.pageCount} {item.pageCount === 1 ? 'page' : 'pages'} &bull; {formatBytes(item.file.size)}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${item.file.name}`}
+                            onClick={() => setMultipleFiles(prev => prev.filter((_, itemIndex) => itemIndex !== index))}
+                            className="p-2 rounded-lg text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <CompressionPresetSelector value={compressionPreset} onChange={setCompressionPreset} />
+
+                    <label className="compression-privacy-toggle">
+                      <span>
+                        <span className="block text-xs font-bold text-[var(--text-primary)]">Remove private metadata</span>
+                        <span className="block text-[10px] text-[var(--text-secondary)] mt-0.5">Clears author, title, subject, keywords, creator, and producer details.</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={removeCompressionMetadata}
+                        onChange={event => setRemoveCompressionMetadata(event.target.checked)}
+                        className="w-4 h-4 accent-white shrink-0"
+                      />
+                    </label>
+
+                    <Button
+                      onClick={runCompress}
+                      className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs cursor-pointer shadow-sm"
+                    >
+                      <MagicIcon className="w-4 h-4 mr-1.5" />
+                      Optimize {multipleFiles.length} {multipleFiles.length === 1 ? 'PDF' : 'PDFs'}
+                    </Button>
+                  </Card>
+                )}
+              </div>
+            )}
+
             {/* 4. SINGLE FILE TOOL CONFIGURATOR WORKSPACE WITH REAL-TIME PREVIEW */}
-            {['pdf-split', 'pdf-compress', 'pdf-watermark', 'pdf-page-numbers', 'pdf-protect', 'pdf-unlock', 'pdf-sign', 'pdf-to-word', 'pdf-crop-tool', 'pdf-stamps', 'pdf-flatten', 'pdf-redact', 'pdf-to-image'].includes(activeTool) && (
+            {['pdf-split', 'pdf-watermark', 'pdf-page-numbers', 'pdf-protect', 'pdf-unlock', 'pdf-sign', 'pdf-to-word', 'pdf-crop-tool', 'pdf-stamps', 'pdf-flatten', 'pdf-redact', 'pdf-to-image'].includes(activeTool) && (
               <div className="space-y-6">
                 {!singleFile ? (
                   <FileUploader 
@@ -2249,7 +2472,6 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                       <Button 
                         onClick={() => {
                           if (activeTool === 'pdf-split') runSplit();
-                          else if (activeTool === 'pdf-compress') runCompress();
                           else if (activeTool === 'pdf-watermark') runWatermark();
                           else if (activeTool === 'pdf-page-numbers') runPageNumbers();
                           else if (activeTool === 'pdf-protect') runProtect();
@@ -2295,6 +2517,97 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
             )}
           </div>
         </div>
+      )}
+
+      {/* BULK COMPRESSION RESULTS */}
+      {compressionResults.length > 0 && !processing && (
+        <Card className="max-w-3xl mx-auto border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-5">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
+            <div>
+              <CardTitle className="text-lg font-black text-[var(--text-primary)]">PDF optimization complete</CardTitle>
+              <CardDescription className="text-xs text-[var(--text-secondary)] mt-1">
+                {compressionResults.filter(result => result.url).length} of {compressionResults.length} documents ready
+              </CardDescription>
+              {compressionResults.some(result => result.url) && (
+                <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
+                  {formatBytes(compressionResults.reduce((total, result) => total + result.sourceSize, 0))} original
+                  {' → '}
+                  {formatBytes(compressionResults.reduce((total, result) => total + (result.url ? result.outputSize : result.sourceSize), 0))} after optimization
+                  {' · saved '}
+                  {formatBytes(compressionResults.reduce((total, result) => total + (result.url ? Math.max(0, result.sourceSize - result.outputSize) : 0), 0))}
+                </span>
+              )}
+            </div>
+            <Button variant="outline" onClick={reset} className="rounded-full h-9 text-xs border-[var(--border-color)]">
+              <RefreshCw className="w-3.5 h-3.5 mr-1" /> New batch
+            </Button>
+          </div>
+
+          <div className="space-y-2">
+            {compressionResults.map((result, index) => {
+              const savedBytes = result.sourceSize - result.outputSize;
+              const savedPercent = result.sourceSize > 0
+                ? Math.max(0, Math.round((savedBytes / result.sourceSize) * 100))
+                : 0;
+              return (
+                <div key={`${result.sourceName}:${result.sourceSize}:${index}`} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-zinc-950/40 border border-[var(--border-color)] rounded-xl">
+                  <div className="min-w-0 flex-1 text-left">
+                    <span className="block text-xs font-bold truncate text-[var(--text-primary)]">{result.outputName}</span>
+                    {result.url ? (
+                      <span className="text-[10px] text-[var(--text-secondary)] mt-0.5 block">
+                        {formatBytes(result.sourceSize)} &rarr; {formatBytes(result.outputSize)}
+                        {savedPercent > 0 ? ` • ${savedPercent}% smaller` : ' • already fully optimized'}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-[10px] text-rose-400 mt-0.5 block truncate" title={result.error}>
+                          Failed: {result.error}
+                        </span>
+                        <button type="button" onClick={() => retryCompressionResult(index)} className="text-[10px] text-white underline mt-1">
+                          Retry this file
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {result.url && (
+                    <div className="batch-result-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const source = multipleFiles.find(item => item.file.name === result.sourceName)?.file;
+                          if (!source || !result.url) return;
+                          fetch(result.url).then(response => response.blob()).then(blob =>
+                            shareResult({ url: result.url!, name: result.outputName, blob })
+                          ).catch(console.error);
+                        }}
+                        className="batch-action batch-action--secondary"
+                      >
+                        Share
+                      </button>
+                      <a
+                        href={result.url}
+                        download={result.outputName}
+                        className="batch-action batch-action--primary"
+                      >
+                        <Download className="w-3.5 h-3.5" /> Download
+                      </a>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {compressionResults.some(result => result.url) && (
+            <Button
+              onClick={() => downloadAll(compressionResults.flatMap(result =>
+                result.url ? [{ url: result.url, name: result.outputName }] : []
+              ))}
+              className="w-full rounded-full h-11 text-xs font-bold"
+            >
+              <Download className="w-4 h-4 mr-2" /> Download all completed PDFs
+            </Button>
+          )}
+        </Card>
       )}
 
       {/* EXTRACTED IMAGES GRID RESULT */}

@@ -8,6 +8,8 @@ interface FileUploaderProps {
   label: string;
   subLabel?: string;
   maxSizeMB?: number;
+  enableClipboard?: boolean;
+  compact?: boolean;
 }
 
 export const FileUploader: React.FC<FileUploaderProps> = ({
@@ -16,7 +18,9 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   onFilesSelected,
   label,
   subLabel = "Select or drag files here",
-  maxSizeMB = 500
+  maxSizeMB = 500,
+  enableClipboard = true,
+  compact = false
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -109,6 +113,26 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     fileInputRef.current?.click();
   };
 
+  React.useEffect(() => {
+    if (!enableClipboard) return;
+    const handlePaste = (event: ClipboardEvent) => {
+      const pastedFiles = Array.from(event.clipboardData?.files || []);
+      if (pastedFiles.length > 0) processFiles(pastedFiles);
+    };
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'o') {
+        event.preventDefault();
+        fileInputRef.current?.click();
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    window.addEventListener('keydown', handleShortcut);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+      window.removeEventListener('keydown', handleShortcut);
+    };
+  });
+
   return (
     <div className="w-full">
       {error && (
@@ -119,7 +143,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
       )}
       
       <div 
-        className={`upload-dropzone ${
+        className={`upload-dropzone ${compact ? 'upload-dropzone--compact' : ''} ${
           dragActive 
             ? 'upload-dropzone--active' : ''
         }`}
@@ -146,6 +170,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         <div className="space-y-1.5">
           <h3>{label}</h3>
           <p>{subLabel}</p>
+          {enableClipboard && <p className="upload-dropzone__hint">Tip: press Ctrl/Cmd + V to paste files</p>}
         </div>
         
         <button type="button" className="button" onClick={onButtonClick}>

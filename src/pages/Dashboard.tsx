@@ -3,13 +3,14 @@ import type { CategoryType } from './Dashboard/types';
 import { CATEGORIES } from './Dashboard/types';
 import { TOOLS } from './Dashboard/data';
 import { ToolCard } from './Dashboard/ToolCard';
+import type { ProcessedCountSnapshot } from '../utils/counterStorage';
 
 export function Dashboard({ 
   onSelectTool, 
-  uploadCount 
+  processedCount
 }: { 
   onSelectTool: (toolId: string) => void; 
-  uploadCount: number;
+  processedCount: ProcessedCountSnapshot;
 }) {
   const [selectedCat, setSelectedCat] = useState<CategoryType>('ALL');
 
@@ -42,7 +43,9 @@ export function Dashboard({
         <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-mono text-zinc-400 pt-0.5 max-w-full px-1">
           <div className="px-2 xs:px-2.5 sm:px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 font-medium text-zinc-200 flex items-center gap-1.5 max-w-[240px] xs:max-w-[260px] sm:max-w-full truncate">
             <span className="dot-glow-white shrink-0" />
-            <span className="truncate text-[9.5px] xs:text-[10px] sm:text-xs">{uploadCount.toLocaleString()} files finished</span>
+            <span className="truncate text-[9.5px] xs:text-[10px] sm:text-xs">
+              {processedCount.count.toLocaleString()} files finished {processedCount.scope === 'global' ? 'globally' : 'on this device'}
+            </span>
           </div>
           <span className="text-zinc-600 font-bold hidden sm:inline">&bull;</span>
           <div className="px-2.5 sm:px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800 text-zinc-400 text-[10px] sm:text-xs truncate hidden xs:block">

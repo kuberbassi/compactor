@@ -9,6 +9,7 @@ export interface AudioCompressOptions {
   segments?: TrimSegment[];
   compileMode?: 'keep-selected' | 'cut-selected';
   duration?: number;  // Optional preloaded duration to skip metadata dry-run
+  removeMetadata?: boolean;
 }
 
 export interface MetadataTags {
@@ -115,6 +116,7 @@ export const compressAudio = async (
   if (options.format !== 'wav' && options.format !== 'flac') {
     args.push('-ab', options.bitrate);
   }
+  if (options.removeMetadata) args.push('-map_metadata', '-1');
 
   args.push(outputName);
 

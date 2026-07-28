@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
+import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { processImage, formatBytes, loadImage } from '../../utils/image';
 import type { ImageProcessResult } from '../../utils/image';
+import { appendUniqueFiles, downloadAll, getSizeSummary, isEditableShortcutTarget, loadSetting, saveSetting, shareResult } from '../../utils/batch';
+import type { CompressionPreset } from '../../utils/batch';
 import { 
   Image as ImageIcon, Download, RefreshCw, 
   CheckCircle,
@@ -150,6 +153,12 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   const [fileSettingsList, setFileSettingsList] = useState<FileSettings[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [sameForAll, setSameForAll] = useState(true);
+  const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
+    loadSetting('compactor_image_compression_preset', 'balanced')
+  );
+  const [removeMetadata, setRemoveMetadata] = useState(() =>
+    loadSetting('compactor_image_remove_metadata', true)
+  );
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     const saved = localStorage.getItem('compactor_img_active_tab');
     return (saved as TabId) || 'compress';
@@ -162,6 +171,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<ImageProcessResult[]>([]);
+  const [failedFileIndexes, setFailedFileIndexes] = useState<number[]>([]);
   const [selectedForCompare, setSelectedForCompare] = useState<ImageProcessResult | null>(null);
   const cancellationRef = useRef<boolean>(false);
 
@@ -220,6 +230,19 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   const [cropApplied, setCropApplied] = useState<boolean>(false);
 
   const [displayGrid, setDisplayGrid] = useState(true);
+  const [draggedFileIndex, setDraggedFileIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    saveSetting('compactor_image_compression_preset', compressionPreset);
+    saveSetting('compactor_image_remove_metadata', removeMetadata);
+  }, [compressionPreset, removeMetadata]);
+
+  const applyCompressionPreset = (preset: CompressionPreset) => {
+    setCompressionPreset(preset);
+    const presetQuality = preset === 'light' ? 90 : preset === 'balanced' ? 80 : 55;
+    updateSetting('quality', presetQuality);
+    updateSetting('compressMethod', 'auto');
+  };
 
   // Preview URLs managed with cleanup
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -508,8 +531,10 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
   const handleFilesSelected = async (selectedFiles: File[]) => {
     setResults([]);
+    const uniqueFiles = appendUniqueFiles(files, selectedFiles).slice(files.length);
+    if (uniqueFiles.length === 0) return;
     const newSettings: FileSettings[] = [];
-    for (const file of selectedFiles) {
+    for (const file of uniqueFiles) {
       let ow = 0, oh = 0;
       try { const img = await loadImage(file); ow = img.naturalWidth; oh = img.naturalHeight; } catch {}
       newSettings.push({
@@ -519,9 +544,9 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
         grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false
       });
     }
-    setFiles(prev => [...prev, ...selectedFiles]);
+    setFiles(prev => [...prev, ...uniqueFiles]);
     setFileSettingsList(prev => [...prev, ...newSettings]);
-    if (activeIndex === null && selectedFiles.length > 0) {
+    if (activeIndex === null && uniqueFiles.length > 0) {
       setActiveIndex(0);
       const f = newSettings[0];
       setQuality(f.quality); setFormat(f.format); setMaxWidth(f.maxWidth); setMaxHeight(f.maxHeight);
@@ -537,16 +562,21 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     else if (activeIndex !== null && activeIndex > index) setActiveIndex(activeIndex - 1);
   };
 
-  const clearQueue = () => { setFiles([]); setFileSettingsList([]); setActiveIndex(null); setResults([]); setSelectedForCompare(null); };
+  const clearQueue = () => { setFiles([]); setFileSettingsList([]); setActiveIndex(null); setResults([]); setFailedFileIndexes([]); setSelectedForCompare(null); };
 
-  const startBatchCompression = async () => {
+  const startBatchCompression = async (retryIndexes?: number[]) => {
     if (files.length === 0) return;
-    setProcessing(true); setResults([]); setSelectedForCompare(null);
+    const indexes = retryIndexes ?? files.map((_, index) => index);
+    setProcessing(true);
+    if (!retryIndexes) setResults([]);
+    setSelectedForCompare(null);
     cancellationRef.current = false;
     const processedResults: ImageProcessResult[] = [];
+    const failedIndexes: number[] = [];
     
-    for (let i = 0; i < files.length; i++) {
+    for (let position = 0; position < indexes.length; position++) {
       if (cancellationRef.current) break;
+      const i = indexes[position];
       setCurrentFileIndex(i); setProgress(0);
       const file = files[i];
       const s = fileSettingsList[i] || { 
@@ -579,20 +609,36 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
           cropHeightPct: s.cropApplied ? s.cropHeightPct : undefined,
         });
         processedResults.push(result); onUploadSuccess();
-        setProgress(((i + 1) / files.length) * 100);
-      } catch (err) { console.error(`Failed: ${file.name}`, err); }
+        setProgress(((position + 1) / indexes.length) * 100);
+      } catch (err) {
+        failedIndexes.push(i);
+        console.error(`Failed: ${file.name}`, err);
+      }
     }
     
-    if (!cancellationRef.current) {
-      setResults(processedResults);
-    } else {
-      processedResults.forEach(r => URL.revokeObjectURL(r.url));
-    }
+    setResults(prev => retryIndexes ? [...prev, ...processedResults] : processedResults);
+    setFailedFileIndexes(failedIndexes);
     setProcessing(false);
   };
 
   const getSavings = (orig: number, opt: number) => { const d = orig - opt; return d <= 0 ? 0 : Math.round((d / orig) * 100); };
   const totalSavings = () => { const o = results.reduce((a,r) => a + r.originalSize, 0); const n = results.reduce((a,r) => a + r.newSize, 0); return getSavings(o, n); };
+  const sizeSummary = getSizeSummary(results);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && files.length > 0 && !processing) {
+        event.preventDefault();
+        startBatchCompression();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && results.length > 0) {
+        event.preventDefault();
+        downloadAll(results);
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  });
 
   // ── Active image info ──────────────────────────────────────────────────────
   const activeFile = activeIndex !== null ? files[activeIndex] : null;
@@ -615,6 +661,14 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     <div className="space-y-5">
       {activeTab === 'compress' && (
         <div className="space-y-4">
+          <CompressionPresetSelector value={compressionPreset} onChange={applyCompressionPreset} />
+          <label className="compression-privacy-toggle">
+            <span>
+              <span className="block text-xs font-bold text-zinc-200">Remove private metadata</span>
+              <span className="block text-[10px] text-zinc-500 mt-0.5">Recommended. Canvas export removes EXIF and location data.</span>
+            </span>
+            <input type="checkbox" checked={removeMetadata} onChange={event => setRemoveMetadata(event.target.checked)} className="w-4 h-4 accent-white" />
+          </label>
           <div className="space-y-2">
             <label className="text-xs font-semibold text-zinc-400">Method</label>
             <Select value={compressMethod} onValueChange={v => updateSetting('compressMethod', v as 'auto' | 'target')}>
@@ -1027,7 +1081,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                   <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer shrink-0">
                     <input type="checkbox" checked={sameForAll} onChange={e => toggleSameForAll(e.target.checked)}
                       className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
-                    All
+                    Copy settings to all
                   </label>
                 </div>
 
@@ -1054,7 +1108,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
                 {/* Optimize CTA */}
                 <div className="p-3 border-t border-zinc-900">
-                  <button onClick={startBatchCompression} disabled={files.length === 0}
+                  <button onClick={() => startBatchCompression()} disabled={files.length === 0}
                     className="w-full bg-zinc-50 hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-black py-3 rounded-xl text-sm transition-colors shadow-sm cursor-pointer">
                     Optimize {files.length} {files.length === 1 ? 'Image' : 'Images'} →
                   </button>
@@ -1238,7 +1292,31 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             <div className="h-[88px] border-t border-[var(--border-color)] bg-[var(--surface-color)] flex items-center gap-2 px-4 overflow-x-auto shrink-0"
               style={{ scrollbarWidth: 'none' }}>
               {files.map((file, idx) => (
-                <div key={idx} className="relative flex-shrink-0 group">
+                <div
+                  key={`${file.name}:${file.size}:${file.lastModified}`}
+                  draggable
+                  onDragStart={() => setDraggedFileIndex(idx)}
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedFileIndex === null || draggedFileIndex === idx) return;
+                    setFiles(prev => {
+                      const copy = [...prev];
+                      const [moved] = copy.splice(draggedFileIndex, 1);
+                      copy.splice(idx, 0, moved);
+                      return copy;
+                    });
+                    setFileSettingsList(prev => {
+                      const copy = [...prev];
+                      const [moved] = copy.splice(draggedFileIndex, 1);
+                      copy.splice(idx, 0, moved);
+                      return copy;
+                    });
+                    setActiveIndex(idx);
+                    setDraggedFileIndex(null);
+                  }}
+                  onDragEnd={() => setDraggedFileIndex(null)}
+                  className="relative flex-shrink-0 group cursor-grab"
+                >
                   <button onClick={() => selectActiveFile(idx)}
                     className={`h-[60px] w-[60px] rounded-lg overflow-hidden border-2 transition-all block ${
                       activeIndex === idx
@@ -1321,13 +1399,37 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             </div>
 
             {/* Download all */}
-            <div className="flex items-center justify-center gap-3">
-              {results.map((res, idx) => idx === 0 && (
-                <a key={idx} href={res.url} download={res.name}
-                  className="inline-flex items-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 hover:text-zinc-950 font-bold px-6 py-2.5 rounded-lg text-sm transition-colors cursor-pointer">
+            <div className="flex flex-col items-center justify-center gap-3">
+              <p className="text-xs text-zinc-400">
+                {formatBytes(sizeSummary.originalSize)} → {formatBytes(sizeSummary.newSize)} · saved {formatBytes(sizeSummary.savedSize)} ({sizeSummary.savedPercent}%)
+              </p>
+              <div className="flex flex-wrap justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => downloadAll(results)}
+                  className="inline-flex items-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-2.5 rounded-lg text-sm transition-colors"
+                >
                   <Download className="w-4 h-4" /> Download All
-                </a>
-              ))}
+                </button>
+                {results.length === 1 && (
+                  <button
+                    type="button"
+                    onClick={() => shareResult(results[0]).catch(console.error)}
+                    className="batch-action batch-action--secondary"
+                  >
+                    Share
+                  </button>
+                )}
+                {failedFileIndexes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => startBatchCompression(failedFileIndexes)}
+                    className="inline-flex items-center gap-2 border border-rose-800 text-rose-300 font-bold px-6 py-2.5 rounded-lg text-sm"
+                  >
+                    Retry {failedFileIndexes.length} failed
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Side-by-side compare */}

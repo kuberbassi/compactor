@@ -15,6 +15,7 @@ export interface VideoCompressOptions {
   frameRate?: number;
   duration?: number;  // Optional preloaded duration to skip metadata dry-run
   targetMaxMB?: number; // Strict platform size limit e.g. 9.5 for Discord, 15.5 for WhatsApp
+  removeMetadata?: boolean;
 }
 
 export interface VideoCompressResult {
@@ -261,6 +262,7 @@ export const compressVideo = async (
     }
   }
 
+  if (options.removeMetadata) args.push('-map_metadata', '-1');
   args.push(outputName);
   
   onLog(`Executing FFmpeg: ffmpeg ${args.join(' ')}`);

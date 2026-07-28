@@ -5,7 +5,8 @@ import { EmbedWatermark } from './components/Common/EmbedWatermark';
 import { Dashboard } from './pages/Dashboard';
 import SimpleNav from './components/ui/SimpleNav';
 
-import { getStoredUploadCount, incrementStoredUploadCount } from './utils/counterStorage';
+import { getProcessedCount, recordProcessedFiles } from './utils/counterStorage';
+import type { ProcessedCountSnapshot } from './utils/counterStorage';
 
 const VideoCompressor = lazy(() => import('./pages/VideoCompressor/VideoCompressor').then(m => ({ default: m.VideoCompressor })));
 const ImageTools = lazy(() => import('./pages/ImageTools/ImageTools').then(m => ({ default: m.ImageTools })));
@@ -20,22 +21,12 @@ const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.N
 
 function MainApp() {
   const [activeToolId, setActiveToolId] = useState<string | null>(() => window.location.hash.slice(1) || null);
-  const [uploadCount, setUploadCount] = useState<number>(1489230);
+  const [processedCount, setProcessedCount] = useState<ProcessedCountSnapshot>({ count: 0, scope: 'device' });
 
   useEffect(() => {
-    let tickInterval: ReturnType<typeof setInterval> | null = null;
-
-    // Defer non-critical IndexedDB storage query and background ticker to idle time
+    // Defer the non-critical metric request so it never delays the app.
     const startIdleTasks = () => {
-      getStoredUploadCount().then(setUploadCount);
-
-      // Live organic background increment ticker (simulates global user activity)
-      tickInterval = setInterval(() => {
-        if (Math.random() > 0.35) {
-          const amount = Math.floor(Math.random() * 3) + 1;
-          incrementStoredUploadCount(amount).then(setUploadCount);
-        }
-      }, Math.floor(Math.random() * 6000) + 7000);
+      getProcessedCount().then(setProcessedCount);
     };
 
     let idleId: number | null = null;
@@ -51,9 +42,9 @@ function MainApp() {
       setActiveToolId(window.location.hash.slice(1) || null);
     };
     const handleCustomCountUpdate = (e: Event) => {
-      const customEv = e as CustomEvent<number>;
-      if (typeof customEv.detail === 'number') {
-        setUploadCount(customEv.detail);
+      const customEv = e as CustomEvent<ProcessedCountSnapshot>;
+      if (customEv.detail && typeof customEv.detail.count === 'number') {
+        setProcessedCount(customEv.detail);
       }
     };
 
@@ -64,14 +55,13 @@ function MainApp() {
         (window as unknown as { cancelIdleCallback: (id: number) => void }).cancelIdleCallback(idleId);
       }
       if (timerId) clearTimeout(timerId);
-      if (tickInterval) clearInterval(tickInterval);
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('compactor:count-updated', handleCustomCountUpdate);
     };
   }, []);
 
-  const incrementUploadCount = () => {
-    incrementStoredUploadCount().then(setUploadCount);
+  const incrementUploadCount = (amount: number = 1) => {
+    recordProcessedFiles(amount).then(setProcessedCount);
   };
 
   const goHome = () => {
@@ -121,7 +111,7 @@ function MainApp() {
         if (activeToolId && activeToolId.startsWith('audio-')) {
           return <AudioTools mode={activeToolId} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
         }
-        return activeToolId ? <NotFound onGoHome={goHome} /> : <Dashboard onSelectTool={selectTool} uploadCount={uploadCount} />;
+        return activeToolId ? <NotFound onGoHome={goHome} /> : <Dashboard onSelectTool={selectTool} processedCount={processedCount} />;
     }
   };
 

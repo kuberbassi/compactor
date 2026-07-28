@@ -330,11 +330,35 @@ export const imagesToPdf = async (
 /**
  * Compress PDF by re-saving with object streams enabled
  */
-export const compressPdf = async (file: File): Promise<Blob> => {
+export const compressPdf = async (
+  file: File,
+  options: {
+    preset?: 'light' | 'balanced' | 'maximum';
+    removeMetadata?: boolean;
+  } = {}
+): Promise<Blob> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await PDFDocument.load(arrayBuffer);
-  const pdfBytes = await pdf.save({ useObjectStreams: true });
-  return new Blob([pdfBytes as any], { type: 'application/pdf' });
+  if (options.removeMetadata) {
+    pdf.setTitle('');
+    pdf.setAuthor('');
+    pdf.setSubject('');
+    pdf.setKeywords([]);
+    pdf.setProducer('Compactor');
+    pdf.setCreator('Compactor');
+  }
+  const pdfBytes = await pdf.save({
+    useObjectStreams: options.preset !== 'light',
+    addDefaultPage: false,
+    updateFieldAppearances: false,
+  });
+  const optimized = new Blob([pdfBytes as any], { type: 'application/pdf' });
+
+  // Re-encoding an already optimized PDF can occasionally add a few bytes.
+  // Never make a user's document larger while calling the operation compression.
+  return optimized.size < file.size
+    ? optimized
+    : file.slice(0, file.size, 'application/pdf');
 };
 
 /**

@@ -72,7 +72,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets/|favicon|manifest|robots|sitemap|llms|coi-|compactor-embed|og-image).*)",
+      "source": "/((?!api/|assets/|favicon|manifest|robots|sitemap|llms|coi-|compactor-embed|og-image).*)",
       "destination": "/index.html"
     }
   ]

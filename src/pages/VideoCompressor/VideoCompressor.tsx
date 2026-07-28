@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
+import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { TrimTimeline } from '../../components/Common/TrimTimeline';
@@ -7,6 +8,8 @@ import type { TrimSegment } from '../../components/Common/TrimTimeline';
 import { compressVideo, getFFmpeg, terminateFFmpeg, remuxVideoBlob } from '../../utils/ffmpeg';
 import { compressVideoNative } from '../../utils/nativeCompressor';
 import { formatBytes } from '../../utils/image';
+import { isEditableShortcutTarget, loadSetting, saveSetting, shareResult } from '../../utils/batch';
+import type { CompressionPreset } from '../../utils/batch';
 import { 
   Download, RefreshCw, 
   Video as FileVideo, 
@@ -117,6 +120,12 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
   } | null>(null);
 
   // WASM Engine Settings
+  const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
+    loadSetting('compactor_video_compression_preset', 'balanced')
+  );
+  const [removeMetadata, setRemoveMetadata] = useState(() =>
+    loadSetting('compactor_video_remove_metadata', true)
+  );
   const [crf, setCrf] = useState(28);
   const [scale, setScale] = useState('no-scale');
   const [preset, setPreset] = useState('fast');
@@ -131,6 +140,22 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
   const [format, setFormat] = useState<string>('mp4');
   const [nativeBitrate, setNativeBitrate] = useState<number>(3000);
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
+
+  useEffect(() => {
+    saveSetting('compactor_video_compression_preset', compressionPreset);
+    saveSetting('compactor_video_remove_metadata', removeMetadata);
+  }, [compressionPreset, removeMetadata]);
+
+  const applyCompressionPreset = (value: CompressionPreset) => {
+    setCompressionPreset(value);
+    if (value === 'light') {
+      setCrf(22); setNativeBitrate(5000); setPreset('fast');
+    } else if (value === 'balanced') {
+      setCrf(28); setNativeBitrate(3000); setPreset('medium');
+    } else {
+      setCrf(32); setNativeBitrate(1500); setPreset('slow');
+    }
+  };
 
   useEffect(() => {
     if (['whatsapp', 'discord', 'tiktok', 'instagram'].includes(currentMode)) {
@@ -278,7 +303,8 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
       audioBitrate: currentMode === 'to-audio' ? audioBitrate : targetAudioBitrate,
       frameRate: currentMode === 'gif' ? gifFps : undefined,
       duration: videoDuration,
-      targetMaxMB: targetMB
+      targetMaxMB: targetMB,
+      removeMetadata,
     };
 
     return await compressVideo(file, config, handleLog, setProgress);
@@ -376,6 +402,24 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
     if (diff <= 0) return 0;
     return Math.round((diff / result.originalSize) * 100);
   };
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && file && !processing && !result) {
+        event.preventDefault();
+        startCompression();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && result) {
+        event.preventDefault();
+        const anchor = document.createElement('a');
+        anchor.href = result.url;
+        anchor.download = result.name;
+        anchor.click();
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  });
 
   const getToolTitle = () => {
     if (mode === 'gif') return 'Video to GIF';
@@ -520,6 +564,18 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
 
             {/* Settings & Configurations Tailored Per Sub-Tool */}
             <div className="border-t border-[var(--border-color)]/40 pt-4 space-y-4">
+              {!['gif', 'to-audio', 'mute'].includes(currentMode) && (
+                <>
+                  <CompressionPresetSelector value={compressionPreset} onChange={applyCompressionPreset} />
+                  <label className="compression-privacy-toggle">
+                    <span>
+                      <span className="block text-xs font-bold text-[var(--text-primary)]">Remove private metadata</span>
+                      <span className="block text-[10px] text-[var(--text-secondary)]">Clears title, author, comments, location, and device tags.</span>
+                    </span>
+                    <input type="checkbox" checked={removeMetadata} onChange={event => setRemoveMetadata(event.target.checked)} className="w-4 h-4 accent-white" />
+                  </label>
+                </>
+              )}
               {mode === 'to-audio' ? (
                 /* Video to Audio Controls */
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -724,6 +780,16 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                       <span className="text-[9px] font-mono font-black uppercase bg-blue-950 px-2.5 py-0.5 rounded border border-blue-800 text-blue-200 shadow">
                         Guaranteed
                       </span>
+                    </div>
+                  )}
+
+                  {engine === 'native' && videoDuration > 0 && targetPreset === 'general' && (
+                    <div className="p-3 rounded-xl border border-[var(--border-color)] bg-zinc-950/40 text-center">
+                      <span className="block text-[10px] font-bold text-[var(--text-secondary)] uppercase">Estimated output size</span>
+                      <span className="block text-sm font-bold text-[var(--text-primary)] mt-1">
+                        About {formatBytes(Math.round(videoDuration * ((nativeBitrate + (removeAudio ? 0 : 96)) * 1000) / 8))}
+                      </span>
+                      <span className="text-[9px] text-[var(--text-secondary)]">Based on duration and target bitrates; browser encoder overhead may vary.</span>
                     </div>
                   )}
                 </div>
@@ -1026,6 +1092,13 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                   <Download className="w-4 h-4" /> 
                   {mode === 'to-audio' ? 'Download Audio Track' : mode === 'gif' ? 'Download GIF' : mode === 'mute' ? 'Download Muted Video' : 'Download Compressed Video'}
                 </a>
+                <Button
+                  variant="outline"
+                  onClick={() => shareResult(result).catch(console.error)}
+                  className="batch-action batch-action--secondary h-11"
+                >
+                  Share
+                </Button>
               </div>
             </div>
           </Card>

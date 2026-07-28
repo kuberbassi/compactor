@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
+import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { TrimTimeline } from '../../components/Common/TrimTimeline';
@@ -8,6 +9,8 @@ import { CustomAudioPlayer } from '../../components/Common/CustomAudioPlayer';
 
 import { compressAudio, getFFmpeg, terminateFFmpeg } from '../../utils/ffmpeg';
 import { formatBytes } from '../../utils/image';
+import { isEditableShortcutTarget, loadSetting, saveSetting, shareResult } from '../../utils/batch';
+import type { CompressionPreset } from '../../utils/batch';
 import { analyzeAudioBPMAndKey } from '../../utils/audioAnalysis';
 import type { AudioAnalysisResult } from '../../utils/audioAnalysis';
 import { joinAudioFiles } from '../../utils/audioJoiner';
@@ -97,6 +100,12 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   const [trimCompileMode, setTrimCompileMode] = useState<'keep-selected' | 'cut-selected'>('keep-selected');
   const [bitrate, setBitrate] = useState('128k');
   const [format, setFormat] = useState('mp3');
+  const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
+    loadSetting('compactor_audio_compression_preset', 'balanced')
+  );
+  const [removeMetadata, setRemoveMetadata] = useState(() =>
+    loadSetting('compactor_audio_remove_metadata', true)
+  );
   const [audioDuration, setAudioDuration] = useState(0);
 
   // Key & BPM Finder State
@@ -118,6 +127,17 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
   const logEndRef = useRef<HTMLDivElement>(null);
   const addTracksInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    saveSetting('compactor_audio_compression_preset', compressionPreset);
+    saveSetting('compactor_audio_remove_metadata', removeMetadata);
+  }, [compressionPreset, removeMetadata]);
+
+  const applyCompressionPreset = (value: CompressionPreset) => {
+    setCompressionPreset(value);
+    setBitrate(value === 'light' ? '192k' : value === 'balanced' ? '128k' : '64k');
+    if (format === 'wav' || format === 'flac') setFormat('mp3');
+  };
 
   // Set Preview URL for loaded track
   useEffect(() => {
@@ -171,7 +191,15 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   const handleFilesSelected = (files: File[]) => {
     if (files.length === 0) return;
     if (activeTool === 'audio-joiner') {
-      setJoinFiles((prev) => [...prev, ...files]);
+      setJoinFiles(prev => {
+        const seen = new Set(prev.map(item => `${item.name}:${item.size}:${item.lastModified}`));
+        return [...prev, ...files.filter(item => {
+          const key = `${item.name}:${item.size}:${item.lastModified}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })];
+      });
     } else {
       setFile(files[0]);
       setResult(null);
@@ -281,7 +309,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         format,
         segments: enableTrim ? trimSegments : undefined,
         compileMode: enableTrim ? trimCompileMode : undefined,
-        duration: audioDuration
+        duration: audioDuration,
+        removeMetadata,
       };
 
       const compressResult = await compressAudio(file, config, handleLog, setProgress);
@@ -303,6 +332,24 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   const currentToolInfo = getToolInfo();
   const transposedKey = transposeKeyDisplay(analysisResult?.key || null, pitchSemitones);
   const currentBpm = analysisResult ? Math.round(analysisResult.bpm * speedRatio) : null;
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (isEditableShortcutTarget(event.target)) return;
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && file && !processing && !result) {
+        event.preventDefault();
+        startAudioProcessing();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && result) {
+        event.preventDefault();
+        const anchor = document.createElement('a');
+        anchor.href = result.url;
+        anchor.download = result.name;
+        anchor.click();
+      }
+    };
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  });
 
   return (
     <div className="w-full tool-layout space-y-4 sm:space-y-6">
@@ -833,6 +880,16 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
             </div>
 
             {/* Config Selectors */}
+            <CompressionPresetSelector value={compressionPreset} onChange={applyCompressionPreset} />
+
+            <label className="compression-privacy-toggle">
+              <span>
+                <span className="block text-xs font-bold text-[var(--text-primary)]">Remove private metadata</span>
+                <span className="block text-[10px] text-zinc-400">Clears embedded title, artist, album, comments, and other tags.</span>
+              </span>
+              <input type="checkbox" checked={removeMetadata} onChange={event => setRemoveMetadata(event.target.checked)} className="w-4 h-4 accent-white" />
+            </label>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-2 border-t border-[var(--border-color)]">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Target Bitrate</label>
@@ -867,6 +924,16 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                 </Select>
               </div>
             </div>
+
+            {audioDuration > 0 && !['wav', 'flac'].includes(format) && (
+              <div className="p-3 rounded-xl border border-[var(--border-color)] bg-zinc-950/40 text-center">
+                <span className="block text-[10px] font-bold text-zinc-400 uppercase">Estimated output size</span>
+                <span className="block text-sm font-bold text-[var(--text-primary)] mt-1">
+                  About {formatBytes(Math.round(audioDuration * parseInt(bitrate, 10) * 1000 / 8))}
+                </span>
+                <span className="text-[9px] text-zinc-500">Calculated from duration and selected bitrate; container overhead may vary slightly.</span>
+              </div>
+            )}
 
             <Button 
               onClick={startAudioProcessing} 
@@ -937,6 +1004,13 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                 <Download className="w-4 h-4" />
                 Download Audio
               </a>
+              <Button
+                variant="outline"
+                onClick={() => shareResult(result).catch(console.error)}
+                className="batch-action batch-action--secondary flex-1 h-10"
+              >
+                Share
+              </Button>
             </div>
           </Card>
         </div>
