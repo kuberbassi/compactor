@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-54%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-55%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
@@ -49,6 +49,7 @@
 - **Crop Margins** — Interactive trim percentage control for clean printable layouts.
 - **Sign & Stamp** — Vector approval stamps (`APPROVED`, `CONFIDENTIAL`, `FINAL DRAFT`) and digital signatures.
 - **Security** — AES-128/256 password encryption and password removal.
+- **Scanned PDF OCR** — Render image-only PDF pages locally and recognize English text in-browser before creating editable DOCX or TXT output.
 
 ### 🖼️ Image Optimizer
 - Multi-format lossy and lossless compression (PNG, JPG, WebP, GIF, AVIF).
@@ -74,8 +75,8 @@
 | **Core** | React 19, TypeScript 5, Vite 8 |
 | **Styling & UI** | TailwindCSS v4, Base UI, Custom Glassmorphism Design Tokens |
 | **Icons** | Lucide React |
-| **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, ImageTracerJS, HTML5 Canvas 2D |
-| **Testing** | Vitest + Testing Library + JSDOM (54 tests, 13 test files) |
+| **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, Tesseract.js OCR, ImageTracerJS, HTML5 Canvas 2D |
+| **Testing** | Vitest + Testing Library + JSDOM (55 tests, 14 test files) |
 | **Deployment** | Vercel with COOP/COEP security headers & immutable asset caching |
 
 ### Module Architecture

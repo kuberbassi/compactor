@@ -1,7 +1,10 @@
 import { Document, Packer, Paragraph, PageBreak, TextRun } from 'docx';
 import mammoth from 'mammoth/mammoth.browser';
+import type { Worker as TesseractWorker } from 'tesseract.js';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 type PdfTextItem = { str: string; transform: number[]; width: number; height: number };
+export type ConversionProgress = (percent: number, status: string) => void;
 
 const assertSignature = async (file: File, expected: 'pdf' | 'zip') => {
   const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
@@ -48,24 +51,94 @@ const linesFromPdfItems = (items: PdfTextItem[]) => {
     }));
 };
 
-export const pdfToDocx = async (file: File): Promise<Blob> => {
+const extractPdfPages = async (file: File, onProgress?: ConversionProgress) => {
   await assertSignature(file, 'pdf');
-  const [pdfjsLib, pdfWorkerModule] = await Promise.all([
-    import('pdfjs-dist'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-  ]);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerModule.default;
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
   const source = new Uint8Array(await file.arrayBuffer());
   const pdf = await pdfjsLib.getDocument({ data: source }).promise;
+  const pages: Array<Array<{ text: string; height: number }>> = [];
+  let ocrWorker: TesseractWorker | null = null;
+  let activePage = 1;
+
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      activePage = pageNumber;
+      onProgress?.(
+        Math.round(((pageNumber - 1) / pdf.numPages) * 100),
+        `Reading page ${pageNumber} of ${pdf.numPages}...`,
+      );
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      let lines = linesFromPdfItems(content.items as PdfTextItem[]);
+      const textCharacters = lines.reduce((total, line) => total + line.text.trim().length, 0);
+
+      if (textCharacters < 3) {
+        const { createWorker } = await import('tesseract.js');
+        if (!ocrWorker) {
+          onProgress?.(
+            Math.round(((pageNumber - 1) / pdf.numPages) * 100),
+            'Loading the private OCR language model...',
+          );
+          ocrWorker = await createWorker('eng', undefined, {
+            logger: message => {
+              if (message.status !== 'recognizing text') return;
+              const pageBase = (activePage - 1) / pdf.numPages;
+              const pageShare = message.progress / pdf.numPages;
+              onProgress?.(
+                Math.min(99, Math.round((pageBase + pageShare) * 100)),
+                `OCR scanning page ${activePage} of ${pdf.numPages}...`,
+              );
+            },
+          });
+          await ocrWorker.setParameters({ preserve_interword_spaces: '1', user_defined_dpi: '220' });
+        }
+
+        const baseViewport = page.getViewport({ scale: 1 });
+        const maximumPixels = 6_000_000;
+        const renderScale = Math.min(2.75, Math.sqrt(maximumPixels / (baseViewport.width * baseViewport.height)));
+        const viewport = page.getViewport({ scale: Math.max(1.5, renderScale) });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.floor(viewport.width));
+        canvas.height = Math.max(1, Math.floor(viewport.height));
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context) throw new Error(`Could not prepare page ${pageNumber} for OCR.`);
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: context, viewport } as never).promise;
+
+        const recognition = await ocrWorker.recognize(canvas);
+        lines = recognition.data.text
+          .split(/\r?\n/)
+          .map(text => ({ text: text.trim(), height: 11 }))
+          .filter(line => line.text.length > 0);
+        canvas.width = 1;
+        canvas.height = 1;
+      }
+
+      if (lines.length === 0) {
+        throw new Error(`No readable text could be detected on page ${pageNumber}, even after OCR.`);
+      }
+      pages.push(lines);
+      onProgress?.(
+        Math.round((pageNumber / pdf.numPages) * 100),
+        `Finished page ${pageNumber} of ${pdf.numPages}.`,
+      );
+      page.cleanup();
+    }
+  } finally {
+    if (ocrWorker) await ocrWorker.terminate();
+    pdf.cleanup();
+  }
+
+  return pages;
+};
+
+export const pdfToDocx = async (file: File, onProgress?: ConversionProgress): Promise<Blob> => {
+  const pages = await extractPdfPages(file, onProgress);
   const children: Paragraph[] = [];
-  let extractedCharacters = 0;
 
-  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-    const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const lines = linesFromPdfItems(content.items as PdfTextItem[]);
-    extractedCharacters += lines.reduce((total, line) => total + line.text.length, 0);
-
+  pages.forEach((lines, pageIndex) => {
     for (const line of lines) {
       children.push(new Paragraph({
         spacing: { after: line.text ? 80 : 140 },
@@ -76,12 +149,8 @@ export const pdfToDocx = async (file: File): Promise<Blob> => {
         })],
       }));
     }
-    if (pageNumber < pdf.numPages) children.push(new Paragraph({ children: [new PageBreak()] }));
-  }
-
-  if (extractedCharacters === 0) {
-    throw new Error('This PDF has no readable text layer. Scanned PDFs need OCR, which is not available in the private browser converter yet.');
-  }
+    if (pageIndex < pages.length - 1) children.push(new Paragraph({ children: [new PageBreak()] }));
+  });
 
   const document = new Document({
     creator: 'Compactor',
@@ -89,6 +158,11 @@ export const pdfToDocx = async (file: File): Promise<Blob> => {
     sections: [{ properties: {}, children }],
   });
   return Packer.toBlob(document);
+};
+
+export const pdfToText = async (file: File, onProgress?: ConversionProgress): Promise<string> => {
+  const pages = await extractPdfPages(file, onProgress);
+  return pages.map(lines => lines.map(line => line.text).join('\n')).join('\n\n');
 };
 
 export const textToDocx = async (text: string, title: string): Promise<Blob> => {

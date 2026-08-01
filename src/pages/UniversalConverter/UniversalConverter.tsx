@@ -10,7 +10,7 @@ import {
   canvasToBmp, canvasToIco, audioFileToWav,
   csvToJson, jsonToCsv, csvToHtmlTable, textToHtml
 } from '../../utils/universalConverters';
-import { docxToHtml, docxToPdf, docxToText, pdfToDocx, textToDocx } from '../../utils/documentConverters';
+import { docxToHtml, docxToPdf, docxToText, pdfToDocx, pdfToText, textToDocx } from '../../utils/documentConverters';
 import { getSupportedTargets, isSupportedSourceFormat, SUPPORTED_SOURCE_FORMATS } from '../../utils/conversionCapabilities';
 import { 
   File as FileIcon, RefreshCw, 
@@ -53,6 +53,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultName, setResultName] = useState('');
@@ -67,10 +68,11 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
     const f = selectedFiles[0];
     const ext = f.name.split('.').pop()?.toLowerCase() || '';
     if (!isSupportedSourceFormat(ext)) {
-      alert(`.${ext || 'unknown'} files are not shown because Compactor has no reliable conversion engine for them.`);
+      setErrorMessage(`.${ext || 'unknown'} files are not shown because Compactor has no reliable conversion engine for them.`);
       return;
     }
     setFile(f);
+    setErrorMessage('');
     setInputExt(ext);
     
     // Find category
@@ -109,11 +111,13 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
     setResultSize(0);
     setProgress(0);
     setProcessing(false);
+    setErrorMessage('');
   };
 
   const startConversion = async () => {
     if (!file) return;
     setProcessing(true);
+    setErrorMessage('');
     setProgress(10);
     setStatusText('Analyzing file format headers...');
     
@@ -200,7 +204,10 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       else if (ext === 'pdf' && target === 'docx') {
         setStatusText('Reading PDF text layout and building a valid editable Word document...');
         setProgress(25);
-        const blob = await pdfToDocx(file);
+        const blob = await pdfToDocx(file, (percent, status) => {
+          setProgress(20 + Math.round(percent * 0.7));
+          setStatusText(status);
+        });
         setProgress(95);
         setResultSize(blob.size);
         setResultUrl(URL.createObjectURL(blob));
@@ -238,8 +245,10 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       }
       else if (ext === 'pdf' && target === 'txt') {
         setStatusText('Extracting readable text from the PDF...');
-        const docxBlob = await pdfToDocx(file);
-        const text = await docxToText(new File([docxBlob], 'converted.docx', { type: docxBlob.type }));
+        const text = await pdfToText(file, (percent, status) => {
+          setProgress(20 + Math.round(percent * 0.7));
+          setStatusText(status);
+        });
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
         setProgress(95);
         setResultSize(blob.size);
@@ -322,7 +331,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       }
     } catch (e: any) {
       console.error(e);
-      alert('Format conversion failed: ' + (e.message || e));
+      setErrorMessage(e.message || String(e));
     }
     
     setProgress(100);
@@ -361,6 +370,17 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Main workspace */}
           <div className="lg:col-span-8 space-y-6">
+            {errorMessage && (
+              <Card role="alert" className="border-red-500/40 bg-red-950/20 p-4">
+                <div className="flex items-start gap-3">
+                  <ProhibitIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-red-100">Conversion could not be completed</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-red-200/80">{errorMessage}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
             {!file ? (
               <FileUploader 
                 accept={SUPPORTED_SOURCE_FORMATS.map(ext => `.${ext}`).join(',')}

@@ -29,6 +29,7 @@ Compactor is a privacy-first, client-side media processing suite built with Reac
 - pdfjs-dist
 - docx
 - Mammoth.js
+- Tesseract.js OCR
 - ImageTracerJS
 - HTML5 Canvas API
 - IndexedDB
@@ -381,7 +382,7 @@ Features
 - Browser-based conversion
 - Zero uploads
 - Invalid PDF and DOCX signatures are rejected
-- Scanned PDFs without a text layer are rejected with an OCR-specific explanation
+- Scanned PDF pages without a text layer automatically use private in-browser English OCR
 - Unsupported targets remain visible only where useful and are dimmed and disabled
 
 Supported source formats
@@ -394,7 +395,7 @@ Supported source formats
 
 Document conversion paths
 
-- PDF to editable DOCX or TXT for PDFs containing a readable text layer
+- PDF to editable DOCX or TXT using embedded text where available and OCR for scanned pages
 - DOCX to PDF, TXT, or HTML
 - TXT and Markdown to PDF, DOCX, or HTML
 
@@ -403,7 +404,7 @@ Reliability policy
 - A format is not listed as a supported source unless at least one implemented conversion path exists.
 - A target is enabled only when an installed engine handles that exact source-target pair.
 - Compactor never creates a result by merely changing the source extension or MIME type.
-- Complex Word/PDF layout fidelity and scanned-document OCR are not claimed by the private browser engine.
+- OCR output is editable text and may require proofreading for handwriting, unusual fonts, low-resolution scans, complex tables, or languages other than English.
 
 ---
 
