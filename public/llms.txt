@@ -29,7 +29,7 @@
 
 ### Image Tools
 
-- [Image Optimizer](https://compactor.kuberbassi.com/#image-optimizer): Resize, compress, crop, blur, and optimize PNG, JPG, WebP, GIF, and AVIF images.
+- [Image Optimizer](https://compactor.kuberbassi.com/#image-optimizer): Resize, compress, crop, blur, and optimize PNG, JPG, WebP, GIF, and AVIF images; convert supported raster images into real multi-color SVG paths using deterministic color quantization and curve fitting.
 - [Poster Maker (Rasterbator)](https://compactor.kuberbassi.com/#rasterbator): Create printable multi-page wall posters.
 
 ### Audio Tools
@@ -41,7 +41,7 @@
 
 ### File Utilities
 
-- [Universal Format Converter](https://compactor.kuberbassi.com/#universal-converter): Convert between 212+ supported file formats.
+- [Verified File Converter](https://compactor.kuberbassi.com/#universal-converter): Engine-backed conversion for supported PDF, DOCX, text, CSV, JSON, raster image, SVG, audio, and video pairs. Unsupported combinations are disabled instead of returning renamed or corrupt files.
 - [Metadata Editor](https://compactor.kuberbassi.com/#metadata-editor): Read, edit, or remove EXIF, ID3, and document metadata.
 
 ## Privacy & Security

@@ -10,6 +10,8 @@ import {
   canvasToBmp, canvasToIco, audioFileToWav,
   csvToJson, jsonToCsv, csvToHtmlTable, textToHtml
 } from '../../utils/universalConverters';
+import { docxToHtml, docxToPdf, docxToText, pdfToDocx, textToDocx } from '../../utils/documentConverters';
+import { getSupportedTargets, isSupportedSourceFormat, SUPPORTED_SOURCE_FORMATS } from '../../utils/conversionCapabilities';
 import { 
   File as FileIcon, RefreshCw, 
   CheckCircle, Download,
@@ -21,79 +23,19 @@ import { Button } from '../../components/ui/button';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 
-// 212 Formats grouped by Categories matching CloudConvert Catalog
+// The catalog can show familiar formats, but only engine-backed pairs are enabled.
 const FORMAT_CATEGORIES = {
-  document: ['pdf', 'docx', 'doc', 'txt', 'rtf', 'html', 'md', 'abw', 'dot', 'dotx', 'docm', 'dotm', 'hwp', 'hwpx', 'odt', 'pages', 'rst', 'wps', 'wpd', 'sdw', 'tex', 'zabw'],
-  image: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'heic', 'heif', 'bmp', 'tiff', 'tif', 'ico', 'svg', 'eps', 'dng', 'cr2', 'cr3', 'arw', 'nef', 'orf', 'raw', 'psd', 'psb', 'xcf', 'icns', 'jfif', 'ppm', 'tga', 'mos', 'mrw', 'pef', 'raf', 'rw2', 'x3f', 'xps', '3fr', 'dcr', 'erf', 'odd', 'odg', 'pub'],
-  video: ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv', 'wmv', '3gp', '3g2', '3gpp', 'mpeg', 'mpg', 'm4v', 'ts', 'mts', 'm2ts', 'mxf', 'vob', 'ogg', 'ogv', 'swf', 'rm', 'rmvb', 'dv', 'dvr', 'wtv', 'mod', 'cavs'],
-  audio: ['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'opus', 'wma', 'amr', 'aif', 'aiff', 'aifc', 'caf', 'dss', 'voc', 'weba', 'sf2', 'sfark', 'ac3', 'au', 'oga'],
-  spreadsheet: ['csv', 'xlsx', 'xls', 'ods', 'numbers', 'xlsm', 'xlsb', 'et', 'sdc', 'json'],
-  presentation: ['pptx', 'ppt', 'pdf', 'key', 'odp', 'pot', 'potx', 'pps', 'ppsx', 'pptm', 'dps', 'sda'],
-  ebook: ['epub', 'mobi', 'azw', 'azw3', 'azw4', 'pdf', 'cbr', 'cbz', 'chm', 'lit', 'lrf', 'fb2', 'pdb', 'prc', 'tcr', 'cbc', 'htmlz', 'txtz', 'oeb', 'pml', 'rb', 'snb'],
-  archive: ['zip', 'rar', '7z', 'tar', 'gz', 'tar.gz', 'tgz', 'bz2', 'tar.bz2', 'xz', 'tar.xz', 'cpio', 'iso', 'jar', 'deb', 'rpm', 'dmg', 'cab', 'ace', 'alz', 'arc', 'arj', 'bz', 'eml', 'img', 'lha', 'lz', 'lzma', 'lzo', 'rz', 'tar.7z', 'tar.bz', 'tar.lzo', 'tar.z', 'tbz', 'tbz2', 'tz', 'tzo', 'z'],
-  vector: ['svg', 'ai', 'eps', 'cdr', 'pdf', 'emf', 'wmf', 'svgz', 'sk', 'sk1', 'vsd'],
-  cad: ['dwg', 'dxf', 'dwf'],
-  font: ['ttf', 'otf', 'woff', 'woff2', 'eot']
+  document: ['pdf', 'docx', 'txt', 'md', 'html'],
+  image: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'bmp', 'ico', 'svg'],
+  video: ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv'],
+  audio: ['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'opus', 'weba'],
+  data: ['csv', 'json'],
 };
 
 /**
  * Smart Compatibility Matrix Helper
  * Derives valid conversion target formats for any input extension
  */
-const getSupportedTargets = (ext: string): Set<string> => {
-  const e = ext.toLowerCase();
-  const set = new Set<string>();
-
-  const isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'heic', 'heif', 'bmp', 'tiff', 'tif', 'ico', 'svg', 'eps', 'dng', 'cr2', 'cr3', 'arw', 'nef', 'raw', 'psd'].includes(e);
-  const isPdf = e === 'pdf';
-  const isDoc = ['doc', 'docx', 'txt', 'rtf', 'html', 'md', 'abw', 'odt', 'pages', 'rst', 'wps', 'tex'].includes(e);
-  const isAudio = ['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'opus', 'wma', 'amr', 'aif', 'aiff', 'caf', 'weba'].includes(e);
-  const isVideo = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv', 'wmv', '3gp', '3g2', 'mpeg', 'mpg', 'm4v', 'ts', 'ogv'].includes(e);
-  const isSpreadsheet = ['csv', 'xlsx', 'xls', 'ods', 'numbers', 'xlsm', 'json'].includes(e);
-  const isPresentation = ['pptx', 'ppt', 'key', 'odp', 'pot'].includes(e);
-  const isEbook = ['epub', 'mobi', 'azw', 'azw3', 'cbr', 'cbz', 'fb2'].includes(e);
-  const isArchive = ['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'iso'].includes(e);
-  const isVector = ['svg', 'ai', 'eps', 'cdr', 'emf', 'wmf'].includes(e);
-  const isCad = ['dwg', 'dxf', 'dwf'].includes(e);
-  const isFont = ['ttf', 'otf', 'woff', 'woff2', 'eot'].includes(e);
-
-  if (isImage) {
-    ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'gif', 'avif', 'tiff', 'svg', 'pdf', 'html', 'txt', 'eps'].forEach(t => set.add(t));
-  } else if (isPdf) {
-    ['docx', 'doc', 'txt', 'html', 'md', 'rtf', 'epub', 'png', 'jpg', 'jpeg', 'webp', 'svg'].forEach(t => set.add(t));
-  } else if (isDoc) {
-    ['pdf', 'docx', 'doc', 'txt', 'html', 'md', 'rtf', 'epub', 'pages', 'odt'].forEach(t => set.add(t));
-  } else if (isAudio) {
-    ['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'opus', 'wma', 'aif', 'amr'].forEach(t => set.add(t));
-  } else if (isVideo) {
-    ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv', 'wmv', '3gp', 'gif', 'mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg'].forEach(t => set.add(t));
-  } else if (isSpreadsheet) {
-    ['csv', 'json', 'xlsx', 'xls', 'ods', 'html', 'txt', 'pdf'].forEach(t => set.add(t));
-  } else if (isPresentation) {
-    ['pdf', 'pptx', 'ppt', 'html', 'png', 'jpg', 'key'].forEach(t => set.add(t));
-  } else if (isEbook) {
-    ['epub', 'mobi', 'pdf', 'txt', 'html', 'azw3', 'fb2'].forEach(t => set.add(t));
-  } else if (isArchive) {
-    ['zip', 'tar', 'gz', '7z', 'rar', 'iso'].forEach(t => set.add(t));
-  } else if (isVector) {
-    ['svg', 'png', 'jpg', 'jpeg', 'webp', 'pdf', 'bmp', 'ico', 'eps', 'ai'].forEach(t => set.add(t));
-  } else if (isCad) {
-    ['dxf', 'svg', 'pdf', 'png', 'dwg'].forEach(t => set.add(t));
-  } else if (isFont) {
-    ['ttf', 'otf', 'woff', 'woff2', 'eot'].forEach(t => set.add(t));
-  } else {
-    // Universal fallbacks
-    ['pdf', 'txt', 'zip', 'html', 'docx'].forEach(t => set.add(t));
-  }
-
-  // Remove exact self extension from targets if set has other options
-  if (set.size > 1 && set.has(e)) {
-    set.delete(e);
-  }
-
-  return set;
-};
-
 interface UniversalConverterProps {
   onGoHome: () => void;
   onUploadSuccess: () => void;
@@ -123,9 +65,12 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
   const handleFileSelected = (selectedFiles: File[]) => {
     if (selectedFiles.length === 0) return;
     const f = selectedFiles[0];
-    setFile(f);
-    
     const ext = f.name.split('.').pop()?.toLowerCase() || '';
+    if (!isSupportedSourceFormat(ext)) {
+      alert(`.${ext || 'unknown'} files are not shown because Compactor has no reliable conversion engine for them.`);
+      return;
+    }
+    setFile(f);
     setInputExt(ext);
     
     // Find category
@@ -149,7 +94,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
     if (ext === 'pdf') { bestCat = 'document'; bestFormat = 'docx'; }
     else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) { bestCat = 'image'; bestFormat = ext === 'png' ? 'webp' : 'png'; }
     else if (['mp4', 'mov', 'webm'].includes(ext)) { bestCat = 'video'; bestFormat = 'mp3'; }
-    else if (['csv', 'json'].includes(ext)) { bestCat = 'spreadsheet'; bestFormat = ext === 'csv' ? 'json' : 'csv'; }
+    else if (['csv', 'json'].includes(ext)) { bestCat = 'data'; bestFormat = ext === 'csv' ? 'json' : 'csv'; }
 
     setTargetCategory(bestCat);
     setTargetFormat(bestFormat);
@@ -251,7 +196,58 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         setResultName(file.name.replace(/\.[^/.]+$/, "") + '.pdf');
         onUploadSuccess();
       }
-      // 4. TEXT / MD / HTML / CSV TO PDF
+      // 4. REAL DOCUMENT CONVERSIONS
+      else if (ext === 'pdf' && target === 'docx') {
+        setStatusText('Reading PDF text layout and building a valid editable Word document...');
+        setProgress(25);
+        const blob = await pdfToDocx(file);
+        setProgress(95);
+        setResultSize(blob.size);
+        setResultUrl(URL.createObjectURL(blob));
+        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.docx');
+        onUploadSuccess();
+      }
+      else if (ext === 'docx' && target === 'pdf') {
+        setStatusText('Parsing the Word document and typesetting a valid PDF...');
+        setProgress(30);
+        const blob = await docxToPdf(file);
+        setProgress(95);
+        setResultSize(blob.size);
+        setResultUrl(URL.createObjectURL(blob));
+        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.pdf');
+        onUploadSuccess();
+      }
+      else if (ext === 'docx' && (target === 'txt' || target === 'html')) {
+        setStatusText(`Parsing Word content into ${target.toUpperCase()}...`);
+        const content = target === 'txt' ? await docxToText(file) : await docxToHtml(file);
+        const blob = new Blob([content], { type: target === 'txt' ? 'text/plain;charset=utf-8' : 'text/html;charset=utf-8' });
+        setProgress(95);
+        setResultSize(blob.size);
+        setResultUrl(URL.createObjectURL(blob));
+        setResultName(file.name.replace(/\.[^/.]+$/, '') + `.${target}`);
+        onUploadSuccess();
+      }
+      else if (target === 'docx' && ['txt', 'md'].includes(ext)) {
+        setStatusText('Building a valid editable Word document package...');
+        const blob = await textToDocx(await file.text(), file.name);
+        setProgress(95);
+        setResultSize(blob.size);
+        setResultUrl(URL.createObjectURL(blob));
+        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.docx');
+        onUploadSuccess();
+      }
+      else if (ext === 'pdf' && target === 'txt') {
+        setStatusText('Extracting readable text from the PDF...');
+        const docxBlob = await pdfToDocx(file);
+        const text = await docxToText(new File([docxBlob], 'converted.docx', { type: docxBlob.type }));
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        setProgress(95);
+        setResultSize(blob.size);
+        setResultUrl(URL.createObjectURL(blob));
+        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.txt');
+        onUploadSuccess();
+      }
+      // 5. TEXT / MD / HTML / CSV TO PDF
       else if (target === 'pdf' && ['txt', 'md', 'html', 'json', 'csv'].includes(ext)) {
         setStatusText('Compiling text document layout into PDF...');
         const text = await file.text();
@@ -262,7 +258,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         setResultName(file.name.replace(/\.[^/.]+$/, "") + '.pdf');
         onUploadSuccess();
       }
-      // 5. NATIVE AUDIO DECODER TO WAV
+      // 6. NATIVE AUDIO DECODER TO WAV
       else if (target === 'wav' && ['mp3', 'aac', 'm4a', 'flac', 'ogg', 'opus', 'weba', 'wav'].includes(ext)) {
         setStatusText('Decoding audio PCM samples into uncompressed WAV...');
         setProgress(40);
@@ -273,7 +269,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         setResultName(file.name.replace(/\.[^/.]+$/, "") + '.wav');
         onUploadSuccess();
       }
-      // 6. CSV / JSON / HTML DATA TRANSFORMS
+      // 7. CSV / JSON / HTML DATA TRANSFORMS
       else if (target === 'json' && (ext === 'csv' || ext === 'txt')) {
         setStatusText('Parsing CSV data rows into formatted JSON objects...');
         const text = await file.text();
@@ -307,8 +303,8 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         setResultName(file.name.replace(/\.[^/.]+$/, "") + '.html');
         onUploadSuccess();
       }
-      // 7. MEDIA TRANSCODING (FFmpeg WASM)
-      else if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'aac', 'ogg', 'flac', 'm4a', 'gif'].includes(target) && ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'm4a', 'ogg', 'flac'].includes(ext)) {
+      // 8. MEDIA TRANSCODING (FFmpeg WASM)
+      else if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a', 'gif'].includes(target) && ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'weba', 'flac'].includes(ext)) {
         setStatusText('Initializing FFmpeg WebAssembly media engine...');
         await getFFmpeg(() => {}, setProgress);
         
@@ -320,25 +316,9 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         setResultName(result.name);
         onUploadSuccess();
       }
-      // 8. FALLBACK ENCODER FOR DOCUMENTS / SHEETS / SLIDES / OTHERS
+      // Never fabricate a target by changing a file extension.
       else {
-        setStatusText(`Compiling target format file for ${target.toUpperCase()}...`);
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        
-        const rawText = await file.text().catch(() => `Converted format data from ${file.name}`);
-        let sampleContent = rawText;
-        let mimeType = 'text/plain';
-        if (target === 'html') mimeType = 'text/html';
-        else if (target === 'csv') mimeType = 'text/csv';
-        else if (target === 'json') mimeType = 'application/json';
-        else if (target === 'docx' || target === 'doc') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-        
-        const blob = new Blob([sampleContent], { type: mimeType });
-        setProgress(95);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + `.${target}`);
-        onUploadSuccess();
+        throw new Error(`${ext.toUpperCase()} to ${target.toUpperCase()} is not supported by an installed conversion engine.`);
       }
     } catch (e: any) {
       console.error(e);
@@ -359,8 +339,8 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
   return (
     <div className="tool-layout">
       <ToolHeader 
-        title="Universal Format Converter" 
-        description="Convert any file between 212+ formats with smart compatibility matching directly on your device." 
+        title="Verified File Converter"
+        description="Reliable, private conversions using real format engines. Unsupported pairs are disabled instead of producing corrupt files."
         icon={MagicIcon} 
         onGoHome={() => {
           if (file || resultUrl || processing) {
@@ -383,9 +363,9 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
           <div className="lg:col-span-8 space-y-6">
             {!file ? (
               <FileUploader 
-                accept="*/*"
-                label="Select any file for universal format conversion"
-                subLabel="Supports images, audio, video, documents, spreadsheets, ebooks, archives, vectors & fonts"
+                accept={SUPPORTED_SOURCE_FORMATS.map(ext => `.${ext}`).join(',')}
+                label="Select a supported file to convert"
+                subLabel="Supports verified image, media, PDF, DOCX, text, CSV and JSON conversion pairs"
                 onFilesSelected={handleFileSelected}
                 maxSizeMB={500}
               />
@@ -430,7 +410,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
 
                   <div className="flex gap-2 w-full sm:w-auto">
                     <Input 
-                      placeholder="Search 212+ formats..." 
+                      placeholder="Search verified formats..."
                       value={searchQuery}
                       onChange={e => setSearchQuery(e.target.value)}
                       className="h-9 text-xs w-full sm:w-48 bg-transparent border-[var(--border-color)] text-[var(--text-primary)]"
@@ -509,9 +489,12 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
 
                 <Button 
                   onClick={startConversion}
+                  disabled={!supportedTargets.has(targetFormat)}
                   className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs shadow-sm cursor-pointer"
                 >
-                  Convert to {targetFormat.toUpperCase()}
+                  {supportedTargets.has(targetFormat)
+                    ? `Convert to ${targetFormat.toUpperCase()}`
+                    : 'No reliable conversion available'}
                 </Button>
               </Card>
             )}

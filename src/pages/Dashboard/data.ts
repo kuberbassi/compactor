@@ -218,10 +218,10 @@ export const TOOLS: ToolItem[] = [
   {
     id: 'universal-converter',
     title: 'Convert a file',
-    subtitle: 'Universal format converter',
-    description: 'Convert files between 212+ formats directly inside your browser.',
+    subtitle: 'Verified private file converter',
+    description: 'Convert supported documents, images, audio, video, and data with real browser-based engines.',
     category: 'AUDIO & CONVERT',
-    tags: ['212+ Formats', '100% Private', 'Zero Uploads'],
+    tags: ['Real Format Engines', 'PDF & DOCX', 'Zero Uploads'],
     illustrationType: 'convert'
   },
   {

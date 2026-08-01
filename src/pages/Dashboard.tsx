@@ -37,7 +37,7 @@ export function Dashboard({
         </h1>
 
         <p className="text-[10.5px] xs:text-[11px] sm:text-sm md:text-base text-zinc-400 max-w-xs xs:max-w-sm sm:max-w-xl mx-auto leading-relaxed px-1">
-          Thoughtful tools to make your files lighter, tidier, and ready to share.
+          Compress, organize, and convert files with verified private engines - including editable PDF-to-DOCX and precise multi-color SVG tracing.
         </p>
 
         <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-mono text-zinc-400 pt-0.5 max-w-full px-1">

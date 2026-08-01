@@ -1,7 +1,7 @@
 {
   "name": "Compressor — 100% Private Media & PDF Suite",
   "short_name": "Compressor",
-  "description": "100% Client-Side Private Media Compressor, PDF Toolkit & 212+ Format Converter by Kuber Bassi.",
+  "description": "100% client-side private media compressor, PDF toolkit and verified file converter by Kuber Bassi.",
   "start_url": "/",
   "id": "/",
   "scope": "/",
@@ -71,9 +71,9 @@
       ]
     },
     {
-      "name": "Universal Converter",
+      "name": "Verified File Converter",
       "short_name": "Convert",
-      "description": "Convert between 212+ file formats",
+      "description": "Convert supported documents, images, audio, video and data using real local engines",
       "url": "/#universal-converter",
       "icons": [
         {

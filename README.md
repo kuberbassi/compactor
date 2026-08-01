@@ -5,7 +5,7 @@
 <h1 align="center">Compactor</h1>
 
 <p align="center">
-  <b>100% Client-Side · Private · Zero Upload · Media Compressor, PDF Studio & Universal Converter</b><br />
+  <b>100% Client-Side · Private · Zero Upload · Media Compressor, PDF Studio & Verified File Converter</b><br />
   <i>Designed & Developed by <a href="https://kuberbassi.com">Kuber Bassi</a></i>
 </p>
 
@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-40%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-54%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
@@ -52,6 +52,7 @@
 
 ### 🖼️ Image Optimizer
 - Multi-format lossy and lossless compression (PNG, JPG, WebP, GIF, AVIF).
+- Multi-color raster-to-SVG vectorization with color quantization, layered edge tracing, line fitting, and quadratic spline fitting.
 - Aspect ratio cropping (`1:1`, `16:9`, `4:3`, `9:16`), rotation, horizontal/vertical flipping.
 - Interactive pixelation censorship brush for obscuring sensitive document regions.
 
@@ -60,7 +61,7 @@
 - **Audio Joiner** — Merge & concatenate multiple audio tracks into a single seamless audio file.
 - **Key & BPM Finder** — 100% in-browser Web Audio API detection of tempo (BPM), musical key & Camelot wheel code.
 - **Pitch & Speed Changer** — Transpose key pitch (-12 to +12 semitones) & adjust playback tempo (0.5× to 2.0×).
-- **Universal Format Converter** — Matrix supporting **212+ media & document formats** (Video, Audio, Images, Documents, E-books, Spreadsheets).
+- **Verified File Converter** — Strict engine-backed conversions for PDF, DOCX, text, data, common raster images, SVG, audio, and video. Unsupported pairs are disabled rather than fabricated.
 - **Metadata Editor** — Inspect and edit EXIF, ID3, and PDF tags directly in-browser.
 - **Poster Maker** — Multi-page printable wall poster grid generator.
 
@@ -73,8 +74,8 @@
 | **Core** | React 19, TypeScript 5, Vite 8 |
 | **Styling & UI** | TailwindCSS v4, Base UI, Custom Glassmorphism Design Tokens |
 | **Icons** | Lucide React |
-| **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, HTML5 Canvas 2D |
-| **Testing** | Vitest + Testing Library + JSDOM (40 tests, 10 test files) |
+| **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, ImageTracerJS, HTML5 Canvas 2D |
+| **Testing** | Vitest + Testing Library + JSDOM (54 tests, 13 test files) |
 | **Deployment** | Vercel with COOP/COEP security headers & immutable asset caching |
 
 ### Module Architecture
