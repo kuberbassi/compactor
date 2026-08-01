@@ -221,7 +221,7 @@ export const TOOLS: ToolItem[] = [
     subtitle: 'Verified private file converter',
     description: 'Convert supported documents, images, audio, video, and data with real browser-based engines.',
     category: 'AUDIO & CONVERT',
-    tags: ['Real Format Engines', 'Scanned PDF OCR', 'Zero Uploads'],
+    tags: ['Layout-Preserved Word', 'Scanned PDF OCR', 'Zero Uploads'],
     illustrationType: 'convert'
   },
   {

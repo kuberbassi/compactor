@@ -11,6 +11,7 @@ import {
   csvToJson, jsonToCsv, csvToHtmlTable, textToHtml
 } from '../../utils/universalConverters';
 import { docxToHtml, docxToPdf, docxToText, pdfToDocx, pdfToText, textToDocx } from '../../utils/documentConverters';
+import type { PdfDocxMode } from '../../utils/documentConverters';
 import { getSupportedTargets, isSupportedSourceFormat, SUPPORTED_SOURCE_FORMATS } from '../../utils/conversionCapabilities';
 import { 
   File as FileIcon, RefreshCw, 
@@ -54,6 +55,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [pdfDocxMode, setPdfDocxMode] = useState<PdfDocxMode>('preserve-layout');
   
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultName, setResultName] = useState('');
@@ -207,7 +209,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         const blob = await pdfToDocx(file, (percent, status) => {
           setProgress(20 + Math.round(percent * 0.7));
           setStatusText(status);
-        });
+        }, pdfDocxMode);
         setProgress(95);
         setResultSize(blob.size);
         setResultUrl(URL.createObjectURL(blob));
@@ -506,6 +508,37 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                     })}
                   </div>
                 </div>
+
+                {inputExt === 'pdf' && targetFormat === 'docx' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">
+                      Word conversion style
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPdfDocxMode('preserve-layout')}
+                        aria-pressed={pdfDocxMode === 'preserve-layout'}
+                        className={`rounded-xl border p-3 text-left transition-all ${pdfDocxMode === 'preserve-layout' ? 'border-white bg-zinc-800 text-white' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600'}`}
+                      >
+                        <span className="block text-xs font-bold">Preserve layout · Recommended</span>
+                        <span className="mt-1 block text-[10px] leading-relaxed text-zinc-400">Keeps images, fonts, columns, tables, and page appearance as closely as Word allows.</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPdfDocxMode('editable')}
+                        aria-pressed={pdfDocxMode === 'editable'}
+                        className={`rounded-xl border p-3 text-left transition-all ${pdfDocxMode === 'editable' ? 'border-white bg-zinc-800 text-white' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600'}`}
+                      >
+                        <span className="block text-xs font-bold">Editable text</span>
+                        <span className="mt-1 block text-[10px] leading-relaxed text-zinc-400">Extracts or OCRs text for editing; complex positioning and pictures may not match exactly.</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] leading-relaxed text-[var(--text-secondary)]">
+                      Preserve layout creates sharp page images inside Word for visual accuracy. Editable text prioritizes content editing.
+                    </p>
+                  </div>
+                )}
 
                 <Button 
                   onClick={startConversion}

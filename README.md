@@ -49,7 +49,7 @@
 - **Crop Margins** — Interactive trim percentage control for clean printable layouts.
 - **Sign & Stamp** — Vector approval stamps (`APPROVED`, `CONFIDENTIAL`, `FINAL DRAFT`) and digital signatures.
 - **Security** — AES-128/256 password encryption and password removal.
-- **Scanned PDF OCR** — Render image-only PDF pages locally and recognize English text in-browser before creating editable DOCX or TXT output.
+- **PDF to Word conversion modes** — Preserve images, columns, tables, and page formatting visually, or create editable DOCX/TXT text with private OCR for scanned pages.
 
 ### 🖼️ Image Optimizer
 - Multi-format lossy and lossless compression (PNG, JPG, WebP, GIF, AVIF).

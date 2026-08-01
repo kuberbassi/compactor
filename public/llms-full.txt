@@ -395,7 +395,7 @@ Supported source formats
 
 Document conversion paths
 
-- PDF to editable DOCX or TXT using embedded text where available and OCR for scanned pages
+- PDF to DOCX with either visual layout preservation for images and formatting or editable text using embedded text/OCR; PDF to TXT also supports OCR
 - DOCX to PDF, TXT, or HTML
 - TXT and Markdown to PDF, DOCX, or HTML
 

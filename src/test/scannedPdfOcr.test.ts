@@ -32,6 +32,9 @@ describe('scanned PDF OCR fallback', () => {
       fillStyle: '',
       fillRect: vi.fn(),
     } as unknown as CanvasRenderingContext2D);
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => {
+      callback(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }));
+    });
   });
 
   it('OCRs an image-only page and creates an editable DOCX', async () => {
@@ -47,5 +50,19 @@ describe('scanned PDF OCR fallback', () => {
     expect(recognize).toHaveBeenCalledTimes(1);
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(progress.some(status => status.includes('OCR'))).toBe(true);
+  });
+
+  it('creates a Word document with a visual rendering when layout preservation is selected', async () => {
+    const { pdfToDocx } = await import('../utils/documentConverters');
+    const pdf = new File(['%PDF-1.7 visual'], 'visual.pdf', { type: 'application/pdf' });
+
+    const output = await pdfToDocx(pdf, undefined, 'preserve-layout');
+    const bytes = new Uint8Array(await output.arrayBuffer());
+
+    expect(output.type).toContain('wordprocessingml');
+    expect(bytes[0]).toBe(0x50);
+    expect(bytes[1]).toBe(0x4b);
+    expect(page.render).toHaveBeenCalled();
+    expect(recognize).not.toHaveBeenCalled();
   });
 });

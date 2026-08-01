@@ -1,10 +1,11 @@
-import { Document, Packer, Paragraph, PageBreak, TextRun } from 'docx';
+import { Document, ImageRun, Packer, Paragraph, PageBreak, TextRun } from 'docx';
 import mammoth from 'mammoth/mammoth.browser';
 import type { Worker as TesseractWorker } from 'tesseract.js';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 type PdfTextItem = { str: string; transform: number[]; width: number; height: number };
 export type ConversionProgress = (percent: number, status: string) => void;
+export type PdfDocxMode = 'editable' | 'preserve-layout';
 
 const assertSignature = async (file: File, expected: 'pdf' | 'zip') => {
   const bytes = new Uint8Array(await file.slice(0, 8).arrayBuffer());
@@ -134,7 +135,85 @@ const extractPdfPages = async (file: File, onProgress?: ConversionProgress) => {
   return pages;
 };
 
-export const pdfToDocx = async (file: File, onProgress?: ConversionProgress): Promise<Blob> => {
+const canvasToPng = (canvas: HTMLCanvasElement) => new Promise<Uint8Array>((resolve, reject) => {
+  canvas.toBlob(async blob => {
+    if (!blob) return reject(new Error('Could not render a PDF page image.'));
+    resolve(new Uint8Array(await blob.arrayBuffer()));
+  }, 'image/png');
+});
+
+const pdfToLayoutDocx = async (file: File, onProgress?: ConversionProgress): Promise<Blob> => {
+  await assertSignature(file, 'pdf');
+  const pdfjsLib = await import('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const children: Paragraph[] = [];
+
+  try {
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+      onProgress?.(
+        Math.round(((pageNumber - 1) / pdf.numPages) * 100),
+        `Preserving page ${pageNumber} of ${pdf.numPages}, including images and formatting...`,
+      );
+      const page = await pdf.getPage(pageNumber);
+      const base = page.getViewport({ scale: 1 });
+      const maximumPixels = 10_000_000;
+      const scale = Math.max(1.5, Math.min(2.5, Math.sqrt(maximumPixels / (base.width * base.height))));
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.floor(viewport.width));
+      canvas.height = Math.max(1, Math.floor(viewport.height));
+      const context = canvas.getContext('2d', { alpha: false });
+      if (!context) throw new Error(`Could not prepare page ${pageNumber} for layout conversion.`);
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: context, viewport } as never).promise;
+
+      const availableWidth = 624;
+      const availableHeight = 864;
+      const fit = Math.min(availableWidth / base.width, availableHeight / base.height);
+      children.push(new Paragraph({
+        spacing: { before: 0, after: 0 },
+        children: [new ImageRun({
+          data: await canvasToPng(canvas),
+          type: 'png',
+          transformation: {
+            width: Math.max(1, Math.round(base.width * fit)),
+            height: Math.max(1, Math.round(base.height * fit)),
+          },
+          altText: {
+            title: `PDF page ${pageNumber}`,
+            description: `Visual rendering of page ${pageNumber} from ${file.name}`,
+            name: `Page ${pageNumber}`,
+          },
+        })],
+      }));
+      if (pageNumber < pdf.numPages) children.push(new Paragraph({ children: [new PageBreak()] }));
+      canvas.width = 1;
+      canvas.height = 1;
+      page.cleanup();
+      onProgress?.(Math.round((pageNumber / pdf.numPages) * 100), `Preserved page ${pageNumber} of ${pdf.numPages}.`);
+    }
+  } finally {
+    pdf.cleanup();
+  }
+
+  return Packer.toBlob(new Document({
+    creator: 'Compactor',
+    title: file.name.replace(/\.pdf$/i, ''),
+    sections: [{
+      properties: { page: { margin: { top: 360, right: 360, bottom: 360, left: 360 } } },
+      children,
+    }],
+  }));
+};
+
+export const pdfToDocx = async (
+  file: File,
+  onProgress?: ConversionProgress,
+  mode: PdfDocxMode = 'editable',
+): Promise<Blob> => {
+  if (mode === 'preserve-layout') return pdfToLayoutDocx(file, onProgress);
   const pages = await extractPdfPages(file, onProgress);
   const children: Paragraph[] = [];
 

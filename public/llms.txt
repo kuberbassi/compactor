@@ -41,7 +41,7 @@
 
 ### File Utilities
 
-- [Verified File Converter](https://compactor.kuberbassi.com/#universal-converter): Engine-backed conversion for supported PDF, DOCX, text, CSV, JSON, raster image, SVG, audio, and video pairs. Scanned PDF pages use private in-browser English OCR. Unsupported combinations are disabled instead of returning renamed or corrupt files.
+- [Verified File Converter](https://compactor.kuberbassi.com/#universal-converter): Engine-backed conversion for supported PDF, DOCX, text, CSV, JSON, raster image, SVG, audio, and video pairs. PDF to DOCX supports visual layout preservation or editable text with private in-browser English OCR. Unsupported combinations are disabled instead of returning renamed or corrupt files.
 - [Metadata Editor](https://compactor.kuberbassi.com/#metadata-editor): Read, edit, or remove EXIF, ID3, and document metadata.
 
 ## Privacy & Security
