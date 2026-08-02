@@ -514,24 +514,33 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                     <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">
                       Word conversion style
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5" role="radiogroup" aria-label="Word conversion style">
                       <button
                         type="button"
+                        role="radio"
+                        aria-checked={pdfDocxMode === 'preserve-layout'}
                         onClick={() => setPdfDocxMode('preserve-layout')}
-                        aria-pressed={pdfDocxMode === 'preserve-layout'}
-                        className={`rounded-xl border p-3 text-left transition-all ${pdfDocxMode === 'preserve-layout' ? 'border-white bg-zinc-800 text-white' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600'}`}
+                        className={`relative min-h-24 w-full rounded-xl border p-4 pr-11 text-left transition-all touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:min-h-28 ${pdfDocxMode === 'preserve-layout' ? 'border-white bg-zinc-800 text-white shadow-sm' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900/60'}`}
                       >
-                        <span className="block text-xs font-bold">Preserve layout · Recommended</span>
-                        <span className="mt-1 block text-[10px] leading-relaxed text-zinc-400">Keeps images, fonts, columns, tables, and page appearance as closely as Word allows.</span>
+                        <span className="block text-sm font-bold leading-snug">Preserve layout</span>
+                        <span className="mt-1 inline-flex rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200">Recommended</span>
+                        <span className="mt-2 block text-[11px] leading-relaxed text-zinc-400">Keeps images, fonts, columns, tables, and page appearance as closely as Word allows.</span>
+                        <span aria-hidden="true" className={`absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full border ${pdfDocxMode === 'preserve-layout' ? 'border-white bg-white text-zinc-950' : 'border-zinc-600'}`}>
+                          {pdfDocxMode === 'preserve-layout' && <span className="h-2 w-2 rounded-full bg-zinc-950" />}
+                        </span>
                       </button>
                       <button
                         type="button"
+                        role="radio"
+                        aria-checked={pdfDocxMode === 'editable'}
                         onClick={() => setPdfDocxMode('editable')}
-                        aria-pressed={pdfDocxMode === 'editable'}
-                        className={`rounded-xl border p-3 text-left transition-all ${pdfDocxMode === 'editable' ? 'border-white bg-zinc-800 text-white' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600'}`}
+                        className={`relative min-h-24 w-full rounded-xl border p-4 pr-11 text-left transition-all touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:min-h-28 ${pdfDocxMode === 'editable' ? 'border-white bg-zinc-800 text-white shadow-sm' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900/60'}`}
                       >
-                        <span className="block text-xs font-bold">Editable text</span>
-                        <span className="mt-1 block text-[10px] leading-relaxed text-zinc-400">Extracts or OCRs text for editing; complex positioning and pictures may not match exactly.</span>
+                        <span className="block text-sm font-bold leading-snug">Editable text</span>
+                        <span className="mt-2 block text-[11px] leading-relaxed text-zinc-400">Extracts or OCRs text for editing; complex positioning and pictures may not match exactly.</span>
+                        <span aria-hidden="true" className={`absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full border ${pdfDocxMode === 'editable' ? 'border-white bg-white text-zinc-950' : 'border-zinc-600'}`}>
+                          {pdfDocxMode === 'editable' && <span className="h-2 w-2 rounded-full bg-zinc-950" />}
+                        </span>
                       </button>
                     </div>
                     <p className="text-[10px] leading-relaxed text-[var(--text-secondary)]">
