@@ -4,6 +4,8 @@ import { FileUploader } from '../../components/Common/FileUploader';
 import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
+import { PdfEditor } from './PdfEditor';
+import { MarkdownEditor } from './MarkdownEditor';
 import { 
   mergePdfs, 
   extractPdfPages, 
@@ -16,8 +18,7 @@ import {
   signPdfDocumentAdvanced, 
   protectPdfWithPassword, 
   unlockPdfWithPassword,
-  checkPdfEncryptionStatus,
-  markdownToPdf, 
+  checkPdfEncryptionStatus, 
   extractPdfMarkdown,
   reorganizePdfPages,
   flattenPdfForm,
@@ -39,7 +40,7 @@ import {
   ShieldCheck as ShieldIcon, Pencil as EditIcon,
   ZoomIn as ZoomIcon, X as CloseIcon,
   List as ListIcon, Eye as EyeIcon, EyeOff as EyeSlashIcon,
-  Sparkles as MagicIcon
+  Sparkles as MagicIcon, PanelLeftClose, PanelLeftOpen
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
@@ -83,6 +84,7 @@ const TOOL_GROUPS = [
   {
     title: 'Organize & Edit',
     items: [
+      { id: 'pdf-edit', label: 'Edit PDF', icon: EditIcon, desc: 'Add shapes, text, annotations & manage layers' },
       { id: 'pdf-organize', label: 'Page Organizer', icon: LayersIcon, desc: 'Reorder, rotate & delete pages visually' },
       { id: 'pdf-merge', label: 'Merge PDF', icon: LayersIcon, desc: 'Combine multiple PDFs into one' },
       { id: 'pdf-split', label: 'Split PDF', icon: SplitIcon, desc: 'Extract specific page ranges' },
@@ -108,7 +110,7 @@ const TOOL_GROUPS = [
     items: [
       { id: 'pdf-to-image', label: 'PDF to Images', icon: ImageIcon, desc: 'Export pages to 300 DPI PNG/JPG' },
       { id: 'pdf-jpg-to-pdf', label: 'Images to PDF', icon: ImageIcon, desc: 'Document scan filters & layout' },
-      { id: 'pdf-word-to-pdf', label: 'Markdown to PDF', icon: TextIcon, desc: 'Compile Markdown (#, lists, code) to PDF' },
+      { id: 'pdf-word-to-pdf', label: 'Markdown Editor & PDF', icon: TextIcon, desc: 'Rich Markdown editor & PDF compiler' },
       { id: 'pdf-to-word', label: 'PDF to Markdown', icon: FileText, desc: 'Extract 100% real text layer (.md)' }
     ]
   }
@@ -553,6 +555,15 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [pagesList, setPagesList] = useState<PageItem[]>([]);
   const [peekPageIndex, setPeekPageIndex] = useState<number | null>(null);
 
+  // Sidebar Auto-collapse State (to maximize viewport width when file is active)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (singleFile || multipleFiles.length > 0) {
+      setIsSidebarCollapsed(true);
+    }
+  }, [singleFile, multipleFiles]);
+
   // Tool specific configuration states
   const [pageRangeText, setPageRangeText] = useState('1-2');
   const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
@@ -580,7 +591,6 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [securityPassword, setSecurityPassword] = useState('');
   const [pdfIsEncrypted, setPdfIsEncrypted] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [markdownInput, setMarkdownInput] = useState('# Project Specification\n\n> Document created with Compactor Pro Engine.\n\n## Overview\nThis PDF document was compiled directly from Markdown formatting.\n\n### Key Features\n- **Bold text styling** and *italic emphasis*\n- Bullet lists with custom vector points\n- Monospace code blocks\n\n```typescript\nconst status = "Compiled successfully!";\nconsole.log(status);\n```\n\n---\n*End of document.*');
 
   // Image to PDF Pro Option States
   const [imgOrientation, setImgOrientation] = useState<'auto' | 'portrait' | 'landscape'>('auto');
@@ -1199,23 +1209,6 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     setProgress(100); setProcessing(false);
   };
 
-  const runMdToPdf = async () => {
-    setProcessing(true); setProgress(40);
-    setStatusText('Compiling Markdown syntax into multi-page PDF document...');
-    try {
-      const blob = await markdownToPdf(markdownInput, 'Compiled Markdown Document');
-      setProgress(90);
-      setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
-      setResultName('markdown_compiled.pdf');
-      onUploadSuccess();
-    } catch (e) {
-      console.error(e);
-      alert('Markdown conversion failed.');
-    }
-    setProgress(100); setProcessing(false);
-  };
-
   const runPdfToMd = async () => {
     if (!singleFile) return;
     setProcessing(true); setProgress(40);
@@ -1287,39 +1280,66 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         </div>
       )}
 
+      {/* Sidebar Viewport Toggle Bar */}
+      {!processing && !resultUrl && (
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsSidebarCollapsed(prev => !prev)}
+              className="hidden lg:flex items-center gap-2 text-xs font-extrabold px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 cursor-pointer shadow-md transition-all"
+              title={isSidebarCollapsed ? "Show Tools Menu Sidebar" : "Collapse Tools Menu Sidebar to Maximize Canvas Viewport"}
+            >
+              {isSidebarCollapsed ? (
+                <>
+                  <PanelLeftOpen className="w-4 h-4 text-white shrink-0 stroke-[2.5]" />
+                  <span className="text-white font-extrabold">Show Tools Menu</span>
+                </>
+              ) : (
+                <>
+                  <PanelLeftClose className="w-4 h-4 text-white shrink-0 stroke-[2.5]" />
+                  <span className="text-white font-extrabold">Maximize Viewport</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {!processing && !resultUrl && compressionResults.length === 0 && extractedImages.length === 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* Adobe Acrobat Style Category Sidebar (Desktop Only) */}
-          <div className="tool-menu hidden lg:block lg:col-span-3 space-y-4">
-            {TOOL_GROUPS.map((group, gIdx) => (
-              <div key={gIdx} className="space-y-1.5">
-                <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block px-1">
-                  {group.title}
-                </span>
-                <div className="space-y-1 bg-zinc-950/60 p-1.5 rounded-xl border border-[var(--border-color)]">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => { setActiveTool(item.id); reset(); }}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
-                        activeTool === item.id 
-                          ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700 font-bold' 
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/50'
-                      }`}
-                    >
-                      <item.icon className="w-4 h-4 shrink-0 text-zinc-400" />
-                      <div className="truncate">
-                        <span className="block text-xs truncate">{item.label}</span>
-                      </div>
-                    </button>
-                  ))}
+          {/* Adobe Acrobat Style Category Sidebar (Desktop Only - Auto-hidden when file uploaded or toggled) */}
+          {!isSidebarCollapsed && (
+            <div className="tool-menu hidden lg:block lg:col-span-3 space-y-4">
+              {TOOL_GROUPS.map((group, gIdx) => (
+                <div key={gIdx} className="space-y-1.5">
+                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block px-1">
+                    {group.title}
+                  </span>
+                  <div className="space-y-1 bg-zinc-950/60 p-1.5 rounded-xl border border-[var(--border-color)]">
+                    {group.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => { setActiveTool(item.id); reset(); }}
+                        className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-all cursor-pointer ${
+                          activeTool === item.id 
+                            ? 'bg-white text-zinc-950 shadow-sm border border-white font-bold' 
+                            : 'text-zinc-400 hover:text-white hover:bg-zinc-900/50'
+                        }`}
+                      >
+                        <item.icon className="w-4 h-4 shrink-0 text-zinc-400" />
+                        <div className="truncate">
+                          <span className="block text-xs truncate">{item.label}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          <div className="col-span-1 lg:col-span-9 space-y-6">
+          <div className={`space-y-6 ${!isSidebarCollapsed ? 'col-span-1 lg:col-span-9' : 'col-span-1 lg:col-span-12'}`}>
 
             {/* Mobile Exclusive Condensed Tool Selector (Upload Box First) */}
             <div className="block lg:hidden w-full space-y-1.5 bg-zinc-900/80 p-3 rounded-2xl border border-zinc-800">
@@ -1351,6 +1371,34 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                 </SelectContent>
               </Select>
             </div>
+
+            {/* 0. EDIT PDF & REDACT WORKSPACE */}
+            {(activeTool === 'pdf-edit' || activeTool === 'pdf-redact') && (
+              <div className="space-y-6">
+                {!singleFile ? (
+                  <FileUploader 
+                    accept=".pdf"
+                    label={activeTool === 'pdf-redact' ? "Select PDF file to redact sensitive content" : "Select PDF file to edit"}
+                    subLabel={activeTool === 'pdf-redact' ? "Draw visual blackout boxes, text censorship overlays & redact sensitive areas with 100% precision" : "Add shapes, annotations, text, lines, border & fill colors, opacity, rotation & side element layers"}
+                    onFilesSelected={handleSingleFileSelected}
+                    maxSizeMB={200}
+                  />
+                ) : (
+                  <PdfEditor 
+                    file={singleFile.file} 
+                    mode={activeTool === 'pdf-redact' ? 'redact' : 'edit'}
+                    onSaveSuccess={() => onUploadSuccess(1)} 
+                  />
+                )}
+              </div>
+            )}
+
+            {/* MARKDOWN EDITOR WORKSPACE */}
+            {activeTool === 'pdf-word-to-pdf' && (
+              <MarkdownEditor 
+                onExportSuccess={() => onUploadSuccess(1)} 
+              />
+            )}
 
             {/* 1. VISUAL PAGE ORGANIZER WORKSPACE */}
             {activeTool === 'pdf-organize' && (
@@ -1950,7 +1998,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
             )}
 
             {/* 4. SINGLE FILE TOOL CONFIGURATOR WORKSPACE WITH REAL-TIME PREVIEW */}
-            {['pdf-split', 'pdf-watermark', 'pdf-page-numbers', 'pdf-protect', 'pdf-unlock', 'pdf-sign', 'pdf-to-word', 'pdf-crop-tool', 'pdf-stamps', 'pdf-flatten', 'pdf-redact', 'pdf-to-image'].includes(activeTool) && (
+            {['pdf-split', 'pdf-watermark', 'pdf-page-numbers', 'pdf-protect', 'pdf-unlock', 'pdf-sign', 'pdf-to-word', 'pdf-crop-tool', 'pdf-stamps', 'pdf-flatten', 'pdf-to-image'].includes(activeTool) && (
               <div className="space-y-6">
                 {!singleFile ? (
                   <FileUploader 
@@ -2492,28 +2540,6 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                   </div>
                 )}
               </div>
-            )}
-
-            {/* MARKDOWN TO PDF WORKSPACE */}
-            {activeTool === 'pdf-word-to-pdf' && (
-              <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
-                <div className="space-y-1">
-                  <h3 className="font-bold text-xs text-[var(--text-primary)] uppercase tracking-wider">Markdown to PDF Document Compiler</h3>
-                  <p className="text-xs text-[var(--text-secondary)]">Paste Markdown syntax (# headings, bullet points, blockquotes, code blocks) to compile into a styled multi-page PDF.</p>
-                </div>
-                <textarea 
-                  value={markdownInput} 
-                  onChange={e => setMarkdownInput(e.target.value)} 
-                  className="w-full h-56 bg-zinc-950/60 border border-[var(--border-color)] p-4 rounded-xl text-xs font-mono text-[var(--text-primary)] focus:outline-none leading-relaxed"
-                  placeholder="Paste Markdown syntax here..."
-                />
-                <Button 
-                  onClick={runMdToPdf} 
-                  className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs cursor-pointer shadow-sm"
-                >
-                  Compile Markdown to PDF Document &rarr;
-                </Button>
-              </Card>
             )}
           </div>
         </div>

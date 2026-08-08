@@ -73,8 +73,8 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Unlock PDF', href: 'pdf-unlock', icon: Key },
       { label: 'Page Numbers', href: 'pdf-page-numbers', icon: FileCode },
       { label: 'PDF to Images', href: 'pdf-to-image', icon: ImageIcon },
-      { label: 'Images to PDF', href: 'pdf-jpg-to-pdf', icon: ImageIcon },
-      { label: 'Markdown to PDF', href: 'pdf-word-to-pdf', icon: FileCode },
+      { label: 'Edit & Annotate PDF', href: 'pdf-editor-annotate', icon: FileText },
+      { label: 'Markdown Workspace', href: 'pdf-word-to-pdf', icon: FileCode },
       { label: 'PDF to Markdown', href: 'pdf-to-word', icon: FileText }
     ]
   },

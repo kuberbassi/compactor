@@ -1,7 +1,7 @@
 {
-  "name": "Compressor — 100% Private Media & PDF Suite",
-  "short_name": "Compressor",
-  "description": "100% client-side private media compressor, PDF toolkit and verified file converter by Kuber Bassi.",
+  "name": "Compactor",
+  "short_name": "Compactor",
+  "description": "100% client-side private media compressor, PDF toolkit and verified file converter.",
   "start_url": "/",
   "id": "/",
   "scope": "/",

@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-55%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-56%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
@@ -42,7 +42,9 @@
 - **Video to GIF** — Convert video clips into smooth 24/15/10 FPS animated GIFs.
 - **Mute Video** — Strip audio channels instantly with zero re-encoding loss.
 
-### 📄 PDF Studio Pro
+### 📄 PDF Studio Pro & Markdown Workspace
+- **Markdown Studio** — Rich GFM editor workspace with syntax toolbar, live split preview, templates (GitHub README, Tech Spec, Meeting Notes) & 100% selectable vector PDF compiler.
+- **PDF Annotate & Edit** — Add text, signatures, highlights, and custom shapes directly onto PDF pages.
 - **Document Scan Filters** — Smart Magic Color, Whiteboard Clean, B&W Binary Thresholding, and Vibrant Diagram filters.
 - **Page Organisation** — Drag-and-drop page reordering, rotation, extraction, and deletion.
 - **Merge & Split** — Combine multiple PDFs into one, or extract specific page ranges.

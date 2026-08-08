@@ -1,6 +1,6 @@
 # Compactor — 100% Private Client-Side Media Processing Suite
 
-> Compactor by Kuber Bassi is a fast, 100% private, client-side web application for video compression, PDF editing, audio processing, image optimization, metadata editing, and file conversion. Every operation runs entirely inside your browser using WebAssembly, FFmpeg, HTML5 APIs, and Canvas. No files are uploaded to any server.
+> Compactor is a fast, 100% private, client-side web application for video compression, PDF editing, audio processing, image optimization, metadata editing, and file conversion. Every operation runs entirely inside your browser using WebAssembly, FFmpeg, HTML5 APIs, and Canvas. No files are uploaded to any server.
 
 ## Core Capabilities & Tools
 

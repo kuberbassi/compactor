@@ -795,10 +795,15 @@ export const unlockPdfWithPassword = async (file: File, userPasswordStr?: string
   return new Blob([pdfBytes as any], { type: 'application/pdf' });
 };
 
+
+
 /**
- * Advanced Markdown to PDF Document Compiler
+ * 100% Real Selectable Vector Markdown to PDF Compiler
+ * - Clean white paper background (no dark page theme / no outer card border)
+ * - 100% Real Selectable Vector Text (Copy/Paste, Highlight, Search)
+ * - Pixel-perfect alignment for bullets, code blocks, tables & badges
  */
-export const markdownToPdf = async (markdownText: string, documentTitle?: string): Promise<Blob> => {
+export const markdownToPdf = async (markdownText: string, _documentTitle?: string): Promise<Blob> => {
   const pdf = await PDFDocument.create();
   const fontRegular = await pdf.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -806,159 +811,479 @@ export const markdownToPdf = async (markdownText: string, documentTitle?: string
   const fontMono = await pdf.embedFont(StandardFonts.Courier);
 
   const margin = 50;
-  const pageWidth = 595.28;  // A4
-  const pageHeight = 841.89; // A4
+  const pageWidth = 595.28;  // A4 pt
+  const pageHeight = 841.89; // A4 pt
   const contentWidth = pageWidth - margin * 2;
 
   let currentPage = pdf.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin;
 
-  const checkNewPage = (neededSpace = 20) => {
+  const checkNewPage = (neededSpace = 25) => {
     if (y - neededSpace < margin) {
       currentPage = pdf.addPage([pageWidth, pageHeight]);
       y = pageHeight - margin;
     }
   };
 
-  currentPage.drawText(documentTitle || 'Markdown Document', {
-    x: margin,
-    y: y - 5,
-    size: 20,
-    font: fontBold,
-    color: rgb(0.05, 0.1, 0.25),
-  });
-  y -= 35;
+  // Word wrapping helper for pdf-lib text fitting
+  const wrapText = (text: string, font: typeof fontRegular, size: number, maxW: number): string[] => {
+    if (!text) return [''];
+    const words = text.split(' ');
+    const linesArr: string[] = [];
+    let current = '';
+
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      try {
+        const width = font.widthOfTextAtSize(test, size);
+        if (width > maxW && current) {
+          linesArr.push(current);
+          current = word;
+        } else {
+          current = test;
+        }
+      } catch {
+        linesArr.push(test);
+        current = '';
+      }
+    }
+    if (current) linesArr.push(current);
+    return linesArr.length > 0 ? linesArr : [text];
+  };
 
   const lines = markdownText.split('\n');
   let inCodeBlock = false;
+  let codeLang = '';
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
 
+    // Image / Badge Line: ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+    if (trimmed.startsWith('![')) {
+      const badges = Array.from(trimmed.matchAll(/!\[(.*?)\]\((.*?)\)/g));
+      if (badges.length > 0) {
+        checkNewPage(26);
+        let badgeX = margin;
+        for (const bMatch of badges) {
+          const badgeAlt = bMatch[1] || 'Badge';
+          const badgeUrl = bMatch[2] || '';
+
+          let leftText = badgeAlt;
+          let rightText = '';
+          let rightBgColor = rgb(0.14, 0.38, 0.88); // Blue
+
+          if (badgeUrl.includes('build-passing') || badgeUrl.includes('passing')) {
+            leftText = 'build';
+            rightText = 'passing';
+            rightBgColor = rgb(0.14, 0.65, 0.28); // Green
+          } else if (badgeUrl.includes('license')) {
+            leftText = 'license';
+            rightText = 'MIT';
+            rightBgColor = rgb(0.14, 0.38, 0.88); // Blue
+          } else if (badgeAlt.includes('-')) {
+            const parts = badgeAlt.split('-');
+            leftText = parts[0];
+            rightText = parts.slice(1).join('-');
+          }
+
+          const leftW = Math.max(34, fontBold.widthOfTextAtSize(leftText, 8) + 12);
+          const rightW = rightText ? Math.max(34, fontBold.widthOfTextAtSize(rightText, 8) + 12) : 0;
+          const totalW = leftW + rightW;
+
+          // Left side pill
+          currentPage.drawRectangle({
+            x: badgeX,
+            y: y - 14,
+            width: leftW,
+            height: 16,
+            color: rgb(0.32, 0.34, 0.38),
+          });
+          currentPage.drawText(leftText, {
+            x: badgeX + 6,
+            y: y - 10,
+            size: 8,
+            font: fontBold,
+            color: rgb(1, 1, 1),
+          });
+
+          // Right side pill
+          if (rightText) {
+            currentPage.drawRectangle({
+              x: badgeX + leftW,
+              y: y - 14,
+              width: rightW,
+              height: 16,
+              color: rightBgColor,
+            });
+            currentPage.drawText(rightText, {
+              x: badgeX + leftW + 6,
+              y: y - 10,
+              size: 8,
+              font: fontBold,
+              color: rgb(1, 1, 1),
+            });
+          }
+
+          badgeX += totalW + 8;
+        }
+        y -= 24;
+        continue;
+      }
+    }
+
+    // Code Block Toggle ```lang
     if (trimmed.startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      checkNewPage(15);
-      y -= 6;
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeLang = trimmed.slice(3).trim().toUpperCase() || 'CODE';
+        checkNewPage(30);
+
+        // Header bar container (Lightish gray theme)
+        currentPage.drawRectangle({
+          x: margin,
+          y: y - 18,
+          width: contentWidth,
+          height: 18,
+          color: rgb(0.88, 0.9, 0.94),
+          borderColor: rgb(0.78, 0.8, 0.85),
+          borderWidth: 0.5,
+        });
+        currentPage.drawText(codeLang, {
+          x: margin + 10,
+          y: y - 13,
+          size: 8,
+          font: fontBold,
+          color: rgb(0.25, 0.3, 0.4),
+        });
+        y -= 26;
+      } else {
+        inCodeBlock = false;
+        y -= 12;
+      }
       continue;
     }
 
+    // Inside Code Block
     if (inCodeBlock) {
-      checkNewPage(16);
-      currentPage.drawRectangle({
-        x: margin - 5,
-        y: y - 3,
-        width: contentWidth + 10,
-        height: 14,
-        color: rgb(0.94, 0.95, 0.96),
-      });
-      currentPage.drawText(line.substring(0, 80), {
-        x: margin,
-        y,
-        size: 9,
-        font: fontMono,
-        color: rgb(0.15, 0.2, 0.3),
-      });
-      y -= 15;
+      const wrappedCodeLines = wrapText(rawLine, fontMono, 9, contentWidth - 20);
+      for (const cLine of wrappedCodeLines) {
+        checkNewPage(16);
+        currentPage.drawRectangle({
+          x: margin,
+          y: y - 3,
+          width: contentWidth,
+          height: 15,
+          color: rgb(0.95, 0.96, 0.98),
+          borderColor: rgb(0.85, 0.88, 0.92),
+          borderWidth: 0.5,
+        });
+        currentPage.drawText(cLine, {
+          x: margin + 10,
+          y,
+          size: 9,
+          font: fontMono,
+          color: rgb(0.1, 0.14, 0.22),
+        });
+        y -= 15;
+      }
       continue;
     }
 
     if (!trimmed) {
-      y -= 10;
+      y -= 8;
       continue;
     }
 
-    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
-      checkNewPage(15);
-      currentPage.drawLine({
-        start: { x: margin, y: y - 5 },
-        end: { x: pageWidth - margin, y: y - 5 },
-        thickness: 1,
-        color: rgb(0.8, 0.8, 0.85),
-      });
-      y -= 18;
-      continue;
-    }
+    // GFM Table: | Header | Header |
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      if (trimmed.includes('---')) continue; // skip divider line
+      const cells = trimmed.split('|').slice(1, -1).map(c => c.trim());
+      const cellW = contentWidth / Math.max(1, cells.length);
 
-    if (trimmed.startsWith('# ')) {
-      checkNewPage(35);
-      const text = trimmed.replace(/^#\s+/, '');
-      currentPage.drawText(text.substring(0, 50), {
-        x: margin,
-        y: y - 5,
-        size: 22,
-        font: fontBold,
-        color: rgb(0.05, 0.1, 0.25),
-      });
-      y -= 32;
-    } else if (trimmed.startsWith('## ')) {
-      checkNewPage(28);
-      const text = trimmed.replace(/^##\s+/, '');
-      currentPage.drawText(text.substring(0, 60), {
-        x: margin,
-        y: y - 3,
-        size: 16,
-        font: fontBold,
-        color: rgb(0.1, 0.2, 0.4),
-      });
-      y -= 25;
-    } else if (trimmed.startsWith('### ')) {
       checkNewPage(22);
-      const text = trimmed.replace(/^###\s+/, '');
-      currentPage.drawText(text.substring(0, 70), {
+      // Row box & border
+      currentPage.drawRectangle({
         x: margin,
-        y,
-        size: 13,
-        font: fontBold,
-        color: rgb(0.2, 0.3, 0.5),
+        y: y - 4,
+        width: contentWidth,
+        height: 20,
+        color: rgb(0.97, 0.97, 0.98),
+        borderColor: rgb(0.8, 0.82, 0.88),
+        borderWidth: 0.5,
       });
-      y -= 20;
-    } else if (trimmed.startsWith('> ')) {
-      checkNewPage(18);
-      const text = trimmed.replace(/^>\s+/, '');
+
+      // Draw vertical column lines between cells
+      for (let cIdx = 1; cIdx < cells.length; cIdx++) {
+        currentPage.drawLine({
+          start: { x: margin + cIdx * cellW, y: y + 16 },
+          end: { x: margin + cIdx * cellW, y: y - 4 },
+          thickness: 0.5,
+          color: rgb(0.8, 0.82, 0.88),
+        });
+      }
+
+      cells.forEach((cell, cIdx) => {
+        const cellText = cell.replace(/[*_`]/g, '');
+        currentPage.drawText(cellText.substring(0, 30), {
+          x: margin + cIdx * cellW + 8,
+          y: y + 1,
+          size: 9,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+      });
+      y -= 22;
+      continue;
+    }
+
+    // Horizontal Divider
+    if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+      checkNewPage(16);
       currentPage.drawLine({
-        start: { x: margin, y: y + 8 },
-        end: { x: margin, y: y - 6 },
-        thickness: 3,
-        color: rgb(0.3, 0.5, 0.9),
-      });
-      currentPage.drawText(text.substring(0, 75), {
-        x: margin + 12,
-        y,
-        size: 10,
-        font: fontOblique,
-        color: rgb(0.3, 0.3, 0.35),
+        start: { x: margin, y: y - 4 },
+        end: { x: pageWidth - margin, y: y - 4 },
+        thickness: 1,
+        color: rgb(0.88, 0.9, 0.94),
       });
       y -= 18;
+      continue;
+    }
+
+    // Headings
+    if (trimmed.startsWith('# ')) {
+      const hText = trimmed.replace(/^#\s+/, '').replace(/[*_`]/g, '');
+      const hLines = wrapText(hText, fontBold, 18, contentWidth);
+      for (const hl of hLines) {
+        checkNewPage(28);
+        currentPage.drawText(hl, {
+          x: margin,
+          y: y - 4,
+          size: 18,
+          font: fontBold,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+        y -= 24;
+      }
+      currentPage.drawLine({
+        start: { x: margin, y: y + 2 },
+        end: { x: pageWidth - margin, y: y + 2 },
+        thickness: 1,
+        color: rgb(0.88, 0.9, 0.94),
+      });
+      y -= 8;
+    } else if (trimmed.startsWith('## ')) {
+      const hText = trimmed.replace(/^##\s+/, '').replace(/[*_`]/g, '');
+      const hLines = wrapText(hText, fontBold, 14, contentWidth);
+      for (const hl of hLines) {
+        checkNewPage(22);
+        currentPage.drawText(hl, {
+          x: margin,
+          y: y - 3,
+          size: 14,
+          font: fontBold,
+          color: rgb(0.1, 0.14, 0.22),
+        });
+        y -= 20;
+      }
+      y -= 4;
+    } else if (trimmed.startsWith('### ')) {
+      const hText = trimmed.replace(/^###\s+/, '').replace(/[*_`]/g, '');
+      const hLines = wrapText(hText, fontBold, 12, contentWidth);
+      for (const hl of hLines) {
+        checkNewPage(18);
+        currentPage.drawText(hl, {
+          x: margin,
+          y,
+          size: 12,
+          font: fontBold,
+          color: rgb(0.18, 0.23, 0.32),
+        });
+        y -= 16;
+      }
+    } else if (trimmed.startsWith('> ')) {
+      const qText = trimmed.replace(/^>\s+/, '').replace(/[*_`]/g, '');
+      const qLines = wrapText(qText, fontOblique, 10, contentWidth - 24);
+      for (const ql of qLines) {
+        checkNewPage(18);
+        currentPage.drawRectangle({
+          x: margin + 4,
+          y: y - 3,
+          width: contentWidth - 4,
+          height: 16,
+          color: rgb(0.97, 0.98, 0.99),
+        });
+        currentPage.drawLine({
+          start: { x: margin, y: y + 9 },
+          end: { x: margin, y: y - 6 },
+          thickness: 3.5,
+          color: rgb(0.06, 0.09, 0.16),
+        });
+        currentPage.drawText(ql, {
+          x: margin + 12,
+          y,
+          size: 10,
+          font: fontOblique,
+          color: rgb(0.28, 0.33, 0.4),
+        });
+        y -= 16;
+      }
+    } else if (trimmed.startsWith('- [x] ') || trimmed.startsWith('* [x] ')) {
+      const taskText = trimmed.substring(6).replace(/[*_`]/g, '');
+      const tLines = wrapText(taskText, fontRegular, 10, contentWidth - 24);
+      for (let j = 0; j < tLines.length; j++) {
+        checkNewPage(16);
+        if (j === 0) {
+          currentPage.drawRectangle({
+            x: margin,
+            y: y - 1,
+            width: 11,
+            height: 11,
+            color: rgb(0.06, 0.09, 0.16),
+          });
+          currentPage.drawText('v', {
+            x: margin + 2,
+            y: y + 1,
+            size: 8,
+            font: fontBold,
+            color: rgb(1, 1, 1),
+          });
+        }
+        currentPage.drawText(tLines[j], {
+          x: margin + 20,
+          y,
+          size: 10,
+          font: fontRegular,
+          color: rgb(0.12, 0.16, 0.23),
+        });
+        y -= 16;
+      }
+    } else if (trimmed.startsWith('- [ ] ') || trimmed.startsWith('* [ ] ')) {
+      const taskText = trimmed.substring(6).replace(/[*_`]/g, '');
+      const tLines = wrapText(taskText, fontRegular, 10, contentWidth - 24);
+      for (let j = 0; j < tLines.length; j++) {
+        checkNewPage(16);
+        if (j === 0) {
+          currentPage.drawRectangle({
+            x: margin,
+            y: y - 1,
+            width: 11,
+            height: 11,
+            borderColor: rgb(0.6, 0.65, 0.7),
+            borderWidth: 1,
+            color: rgb(1, 1, 1),
+          });
+        }
+        currentPage.drawText(tLines[j], {
+          x: margin + 20,
+          y,
+          size: 10,
+          font: fontRegular,
+          color: rgb(0.28, 0.33, 0.4),
+        });
+        y -= 16;
+      }
     } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-      checkNewPage(16);
-      const text = trimmed.replace(/^[-*]\s+/, '');
-      currentPage.drawText('•', {
-        x: margin + 8,
-        y,
-        size: 12,
-        font: fontBold,
-        color: rgb(0.2, 0.4, 0.8),
-      });
-      currentPage.drawText(text.substring(0, 75), {
-        x: margin + 22,
-        y,
-        size: 10,
-        font: fontRegular,
-        color: rgb(0.2, 0.2, 0.2),
-      });
-      y -= 16;
+      const bulletText = trimmed.replace(/^[-*]\s+/, '');
+      const bLines = wrapText(bulletText, fontRegular, 10, contentWidth - 20);
+      for (let j = 0; j < bLines.length; j++) {
+        checkNewPage(16);
+        if (j === 0) {
+          currentPage.drawText('•', {
+            x: margin + 2,
+            y,
+            size: 12,
+            font: fontBold,
+            color: rgb(0.12, 0.16, 0.23),
+          });
+        }
+
+        // Render bullet line text with inline code backticks parsing & perfect alignment
+        const parts = bLines[j].split(/(`[^`]+`)/g);
+        let posX = margin + 18;
+
+        for (const part of parts) {
+          if (part.startsWith('`') && part.endsWith('`')) {
+            const codeText = part.slice(1, -1);
+            const cW = fontMono.widthOfTextAtSize(codeText, 9) + 8;
+            currentPage.drawRectangle({
+              x: posX,
+              y: y - 2,
+              width: cW,
+              height: 13,
+              color: rgb(0.92, 0.94, 0.96),
+              borderColor: rgb(0.8, 0.84, 0.88),
+              borderWidth: 0.5,
+            });
+            currentPage.drawText(codeText, {
+              x: posX + 4,
+              y: y + 1,
+              size: 9,
+              font: fontMono,
+              color: rgb(0.12, 0.15, 0.22),
+            });
+            posX += cW + 4;
+          } else if (part) {
+            const isBold = part.startsWith('**') || part.startsWith('__');
+            const cleanPart = part.replace(/[*_]/g, '');
+            const selFont = isBold ? fontBold : fontRegular;
+            currentPage.drawText(cleanPart, {
+              x: posX,
+              y,
+              size: 10,
+              font: selFont,
+              color: rgb(0.12, 0.16, 0.23),
+            });
+            posX += selFont.widthOfTextAtSize(cleanPart, 10);
+          }
+        }
+        y -= 16;
+      }
     } else {
-      checkNewPage(16);
-      const isBold = trimmed.startsWith('**') || trimmed.startsWith('__');
-      const cleanText = trimmed.replace(/[*_]{1,2}/g, '');
-      currentPage.drawText(cleanText.substring(0, 85), {
-        x: margin,
-        y,
-        size: 10,
-        font: isBold ? fontBold : fontRegular,
-        color: rgb(0.15, 0.15, 0.2),
-      });
-      y -= 15;
+      // Paragraph line with inline code backticks parsing
+      const pLines = wrapText(trimmed, fontRegular, 10, contentWidth);
+      for (const pl of pLines) {
+        checkNewPage(16);
+        const parts = pl.split(/(`[^`]+`)/g);
+        let posX = margin;
+
+        for (const part of parts) {
+          if (part.startsWith('`') && part.endsWith('`')) {
+            const codeText = part.slice(1, -1);
+            const cW = fontMono.widthOfTextAtSize(codeText, 9) + 8;
+            currentPage.drawRectangle({
+              x: posX,
+              y: y - 2,
+              width: cW,
+              height: 13,
+              color: rgb(0.92, 0.94, 0.96),
+              borderColor: rgb(0.8, 0.84, 0.88),
+              borderWidth: 0.5,
+            });
+            currentPage.drawText(codeText, {
+              x: posX + 4,
+              y: y + 1,
+              size: 9,
+              font: fontMono,
+              color: rgb(0.12, 0.15, 0.22),
+            });
+            posX += cW + 4;
+          } else if (part) {
+            const isBold = part.startsWith('**') || part.startsWith('__');
+            const cleanPart = part.replace(/[*_]/g, '');
+            const selFont = isBold ? fontBold : fontRegular;
+            currentPage.drawText(cleanPart, {
+              x: posX,
+              y,
+              size: 10,
+              font: selFont,
+              color: rgb(0.12, 0.16, 0.23),
+            });
+            posX += selFont.widthOfTextAtSize(cleanPart, 10);
+          }
+        }
+        y -= 16;
+      }
     }
   }
 

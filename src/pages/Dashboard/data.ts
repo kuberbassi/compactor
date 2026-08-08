@@ -123,29 +123,29 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-to-image',
-    title: 'PDF to High-Res Images',
-    subtitle: 'Export 300 DPI PNG/JPG',
-    description: 'Render PDF pages into crystal-clear 300 DPI images for printing or presentation.',
+    title: 'PDF to Images',
+    subtitle: 'Export to PNG / JPG',
+    description: 'Convert PDF pages into high-resolution 300 DPI PNG or JPEG image files.',
     category: 'PDF',
-    tags: ['300 DPI Images', 'PNG / JPG Export', 'Batch Render'],
+    tags: ['300 DPI Export', 'PNG & JPG', 'High Quality'],
     illustrationType: 'pdf-images'
   },
   {
     id: 'pdf-jpg-to-pdf',
-    title: 'Images to PDF & Scanner',
-    subtitle: 'Scan photos to PDF',
-    description: 'Combine photos into one PDF document with Smart Magic Color scan filters.',
+    title: 'Images to PDF',
+    subtitle: 'Convert images to PDF',
+    description: 'Combine multiple image files (JPG, PNG) into a single polished PDF document.',
     category: 'PDF',
-    tags: ['Document Scan', 'Merge Photos', 'Clean Whiteboard'],
+    tags: ['Scan Filter', 'Image to PDF', 'Layout Control'],
     illustrationType: 'pdf-images'
   },
   {
     id: 'pdf-word-to-pdf',
-    title: 'Markdown to PDF',
-    subtitle: 'Compile Markdown to PDF',
-    description: 'Convert raw Markdown syntax (# headings, code blocks, lists) into clean PDFs.',
+    title: 'Markdown Editor & PDF',
+    subtitle: 'Full MD Editor & PDF Export',
+    description: 'Rich Markdown editor workspace with syntax toolbar, live split preview, templates & PDF compiler.',
     category: 'PDF',
-    tags: ['Markdown Syntax', 'Code Highlighting', 'Clean Layout'],
+    tags: ['Markdown Editor', 'Rich Toolbar', 'Split Preview', 'PDF Compile'],
     illustrationType: 'pdf-text'
   },
   {

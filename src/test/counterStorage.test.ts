@@ -5,6 +5,7 @@ describe('trustworthy processed-file metrics', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('API unavailable')));
   });
 
   it('starts at an honest zero instead of a fabricated baseline', async () => {
