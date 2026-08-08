@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-56%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-58%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
@@ -42,14 +42,14 @@
 - **Video to GIF** — Convert video clips into smooth 24/15/10 FPS animated GIFs.
 - **Mute Video** — Strip audio channels instantly with zero re-encoding loss.
 
-### 📄 PDF Studio Pro & Markdown Workspace
-- **Markdown Studio** — Rich GFM editor workspace with syntax toolbar, live split preview, templates (GitHub README, Tech Spec, Meeting Notes) & 100% selectable vector PDF compiler.
+### 📄 PDF Tools & Markdown Workspace
+- **Markdown Workspace** — Rich GFM editor workspace with a syntax toolbar, live split preview, templates (GitHub README, Tech Spec, Meeting Notes), and preview-matched local PDF export.
 - **PDF Annotate & Edit** — Add text, signatures, highlights, and custom shapes directly onto PDF pages.
 - **Document Scan Filters** — Smart Magic Color, Whiteboard Clean, B&W Binary Thresholding, and Vibrant Diagram filters.
-- **Page Organisation** — Drag-and-drop page reordering, rotation, extraction, and deletion.
-- **Merge & Split** — Combine multiple PDFs into one, or extract specific page ranges.
+- **Page Organizer** — Drag-and-drop page reordering, rotation, extraction, and deletion.
+- **Merge PDF & Split PDF** — Combine multiple PDFs into one, or extract specific page ranges.
 - **Crop Margins** — Interactive trim percentage control for clean printable layouts.
-- **Sign & Stamp** — Vector approval stamps (`APPROVED`, `CONFIDENTIAL`, `FINAL DRAFT`) and digital signatures.
+- **Document Stamps & Sign Document** — Add vector approval stamps (`APPROVED`, `CONFIDENTIAL`, `FINAL DRAFT`) or a signature.
 - **Security** — AES-128/256 password encryption and password removal.
 - **PDF to Word conversion modes** — Preserve images, columns, tables, and page formatting visually, or create editable DOCX/TXT text with private OCR for scanned pages.
 
@@ -78,10 +78,12 @@
 | **Styling & UI** | TailwindCSS v4, Base UI, Custom Glassmorphism Design Tokens |
 | **Icons** | Lucide React |
 | **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, Tesseract.js OCR, ImageTracerJS, HTML5 Canvas 2D |
-| **Testing** | Vitest + Testing Library + JSDOM (55 tests, 14 test files) |
+| **Testing** | Vitest + Testing Library + JSDOM (58 tests, 14 test files) |
 | **Deployment** | Vercel with COOP/COEP security headers & immutable asset caching |
 
 ### Module Architecture
+
+Recent PDF improvements include reliable high-resolution annotation export, permanent rasterized redaction, preview-matched Markdown PDF export, a responsive Markdown workspace, and one-click bulk downloads for generated PDFs and PDF page images.
 
 ```
 src/
@@ -141,3 +143,5 @@ Compactor is configured as a standalone Web App. It can be installed directly on
 Designed & Developed with ❤️ by **[Kuber Bassi](https://kuberbassi.com)**.
 
 License: MIT
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md) before opening a pull request or security report.

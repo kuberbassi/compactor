@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a clear, reproducible problem
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Files stay in your browser. Do not attach private documents.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      placeholder: Tell us what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: 1. Open... 2. Choose... 3. See...
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Chrome on an Android phone
+    validations:
+      required: true

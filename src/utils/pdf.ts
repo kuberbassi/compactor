@@ -1,10 +1,73 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
+import html2canvas from 'html2canvas';
 import { extractRealPdfMarkdown } from './pdfRenderer';
 
 export interface PageOrganizeSpec {
   originalIndex: number;
   rotation: number; // 0, 90, 180, 270
 }
+
+/**
+ * Exports the rendered Markdown preview itself so the PDF matches the visible
+ * typography, colors, tables, code blocks, spacing, and wrapping.
+ */
+export const renderedElementToPdf = async (element: HTMLElement, title = 'Markdown document'): Promise<Blob> => {
+  await document.fonts?.ready;
+
+  const pixelBudget = 40_000_000;
+  const requestedScale = Math.min(2.5, Math.max(2, window.devicePixelRatio || 1));
+  const safeScale = Math.max(1, Math.min(
+    requestedScale,
+    Math.sqrt(pixelBudget / Math.max(1, element.scrollWidth * element.scrollHeight))
+  ));
+
+  const canvas = await html2canvas(element, {
+    allowTaint: false,
+    backgroundColor: getComputedStyle(element).backgroundColor || '#ffffff',
+    imageTimeout: 4000,
+    logging: false,
+    scale: safeScale,
+    useCORS: true,
+    windowHeight: element.scrollHeight,
+    windowWidth: element.scrollWidth,
+  });
+
+  if (!canvas.width || !canvas.height) throw new Error('The Markdown preview is empty.');
+
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(title);
+  pdf.setCreator('Compactor');
+
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const margin = 24;
+  const drawWidth = pageWidth - margin * 2;
+  const drawHeight = pageHeight - margin * 2;
+  const sliceHeight = Math.max(1, Math.floor(canvas.width * (drawHeight / drawWidth)));
+
+  for (let sourceY = 0; sourceY < canvas.height; sourceY += sliceHeight) {
+    const height = Math.min(sliceHeight, canvas.height - sourceY);
+    const slice = document.createElement('canvas');
+    slice.width = canvas.width;
+    slice.height = height;
+    const context = slice.getContext('2d');
+    if (!context) throw new Error('Could not prepare the PDF page.');
+    context.drawImage(canvas, 0, sourceY, canvas.width, height, 0, 0, canvas.width, height);
+
+    const image = await pdf.embedPng(slice.toDataURL('image/png'));
+    const renderedHeight = drawWidth * (height / canvas.width);
+    const page = pdf.addPage([pageWidth, pageHeight]);
+    page.drawImage(image, {
+      x: margin,
+      y: pageHeight - margin - renderedHeight,
+      width: drawWidth,
+      height: renderedHeight,
+    });
+  }
+
+  const bytes = await pdf.save({ useObjectStreams: true });
+  return new Blob([bytes as BlobPart], { type: 'application/pdf' });
+};
 
 /**
  * Gets page count from a PDF File

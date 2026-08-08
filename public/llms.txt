@@ -11,20 +11,22 @@
 - [Video to GIF](https://compactor.kuberbassi.com/#video-to-gif): Convert video clips into optimized animated GIFs with FPS control.
 - [Mute Video](https://compactor.kuberbassi.com/#video-mute): Remove audio tracks while preserving video quality.
 
-### PDF Studio Pro
+### PDF Tools
 
-- [Organize PDF Pages](https://compactor.kuberbassi.com/#pdf-organize): Rearrange, rotate, and remove pages.
-- [Merge PDFs](https://compactor.kuberbassi.com/#pdf-merge): Combine multiple PDF documents.
+- [Edit PDF](https://compactor.kuberbassi.com/#pdf-edit): Add text and shapes, manage layers, and export locally.
+- [Redact PDF](https://compactor.kuberbassi.com/#pdf-redact): Permanently remove covered content through high-resolution rasterized export.
+- [Page Organizer](https://compactor.kuberbassi.com/#pdf-organize): Rearrange, rotate, and remove pages.
+- [Merge PDF](https://compactor.kuberbassi.com/#pdf-merge): Combine multiple PDF documents.
 - [Split PDF](https://compactor.kuberbassi.com/#pdf-split): Extract selected pages or split documents.
-- [Crop PDF Margins](https://compactor.kuberbassi.com/#pdf-crop-tool): Remove unnecessary white borders.
+- [Crop Margins](https://compactor.kuberbassi.com/#pdf-crop-tool): Remove unnecessary white borders.
 - [Compress PDF](https://compactor.kuberbassi.com/#pdf-compress): Reduce document size while preserving readability.
-- [Add Stamp or Watermark](https://compactor.kuberbassi.com/#pdf-stamps): Apply text or image watermarks.
+- [Document Stamps](https://compactor.kuberbassi.com/#pdf-stamps): Apply approval and status stamps.
 - [Protect PDF](https://compactor.kuberbassi.com/#pdf-protect): Encrypt PDF files using password protection.
 - [Unlock PDF](https://compactor.kuberbassi.com/#pdf-unlock): Remove password protection from authorized documents.
-- [Insert Page Numbers](https://compactor.kuberbassi.com/#pdf-page-numbers): Add customizable page numbering.
+- [Page Numbers](https://compactor.kuberbassi.com/#pdf-page-numbers): Add customizable page numbering.
 - [PDF to Images](https://compactor.kuberbassi.com/#pdf-to-image): Export pages as high-resolution PNG or JPG.
 - [Images to PDF](https://compactor.kuberbassi.com/#pdf-jpg-to-pdf): Combine photos into a PDF scanner document.
-- [Markdown to PDF](https://compactor.kuberbassi.com/#pdf-word-to-pdf): Convert Markdown documents into PDFs.
+- [Markdown Workspace](https://compactor.kuberbassi.com/#pdf-word-to-pdf): Write with templates and live preview, then download Markdown or a preview-matched PDF.
 - [PDF to Markdown](https://compactor.kuberbassi.com/#pdf-to-word): Extract searchable text into Markdown.
 
 ### Image Tools

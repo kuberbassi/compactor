@@ -59,21 +59,22 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'pdf',
     defaultHref: 'pdf-organize',
     items: [
-      { label: 'Organize Pages', href: 'pdf-organize', icon: Layers },
-      { label: 'Merge PDFs', href: 'pdf-merge', icon: FilePlus },
+      { label: 'Edit PDF', href: 'pdf-edit', icon: FileText },
+      { label: 'Page Organizer', href: 'pdf-organize', icon: Layers },
+      { label: 'Merge PDF', href: 'pdf-merge', icon: FilePlus },
       { label: 'Split PDF', href: 'pdf-split', icon: Scissors },
       { label: 'Crop Margins', href: 'pdf-crop-tool', icon: Crop },
       { label: 'Compress PDF', href: 'pdf-compress', icon: Sliders },
-      { label: 'Sign & Stamp PDF', href: 'pdf-stamps', icon: Stamp },
-      { label: 'Redact & Censor', href: 'pdf-redact', icon: ShieldOff },
-      { label: 'Flatten Form Fields', href: 'pdf-flatten', icon: Lock },
+      { label: 'Document Stamps', href: 'pdf-stamps', icon: Stamp },
+      { label: 'Redact & Annotate', href: 'pdf-redact', icon: ShieldOff },
+      { label: 'Flatten Forms', href: 'pdf-flatten', icon: Lock },
       { label: 'Sign Document', href: 'pdf-sign', icon: Stamp },
       { label: 'Add Watermark', href: 'pdf-watermark', icon: FileText },
       { label: 'Protect Password', href: 'pdf-protect', icon: Lock },
       { label: 'Unlock PDF', href: 'pdf-unlock', icon: Key },
       { label: 'Page Numbers', href: 'pdf-page-numbers', icon: FileCode },
       { label: 'PDF to Images', href: 'pdf-to-image', icon: ImageIcon },
-      { label: 'Edit & Annotate PDF', href: 'pdf-editor-annotate', icon: FileText },
+      { label: 'Images to PDF', href: 'pdf-jpg-to-pdf', icon: ImageIcon },
       { label: 'Markdown Workspace', href: 'pdf-word-to-pdf', icon: FileCode },
       { label: 'PDF to Markdown', href: 'pdf-to-word', icon: FileText }
     ]
@@ -287,7 +288,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
 
                 {/* Desktop Dropdown â€” site charcoal colors */}
                 {hasMultipleItems && isOpen && (
-                  <div className="absolute top-[calc(100%+6px)] left-1/2 -translate-x-1/2 min-w-[11rem] p-1.5 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] shadow-[0_16px_40px_rgba(0,0,0,0.25)] space-y-0.5 z-[1000] animate-in fade-in zoom-in-95 duration-150">
+                  <div data-nav-group-items={group.label} className="absolute top-[calc(100%+6px)] left-1/2 -translate-x-1/2 min-w-[11rem] p-1.5 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] shadow-[0_16px_40px_rgba(0,0,0,0.25)] space-y-0.5 z-[1000] animate-in fade-in zoom-in-95 duration-150">
                     {group.items.map((item) => {
                       const ItemIcon = item.icon;
                       const isItemActive = activeToolId === item.href;

@@ -5,7 +5,7 @@ import {
   Link as LinkIcon, Image as ImageIcon, Minus, Eraser, FileText, Download,
   Eye, Columns3, Edit3, Copy, Check, RefreshCw, FileCode
 } from 'lucide-react';
-import { markdownToPdf } from '../../utils/pdf';
+import { renderedElementToPdf } from '../../utils/pdf';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 
 interface MarkdownEditorProps {
@@ -142,6 +142,13 @@ POST \`/api/v1/documents/compile\`
   }
 ];
 
+const safePreviewUrl = (value: string, allowMail = false): string => {
+  const trimmed = value.trim();
+  if (/^(https?:\/\/|#|\/)/i.test(trimmed)) return trimmed.replace(/"/g, '&quot;');
+  if (allowMail && /^mailto:/i.test(trimmed)) return trimmed.replace(/"/g, '&quot;');
+  return '#';
+};
+
 export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   initialContent,
   onExportSuccess
@@ -155,6 +162,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Helper to insert markdown text at cursor position
   const insertFormatting = (prefix: string, suffix: string = '', defaultText: string = '') => {
@@ -224,7 +232,9 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const handleExportPdf = async () => {
     setIsExporting(true);
     try {
-      const pdfBlob = await markdownToPdf(markdown);
+      const preview = previewRef.current;
+      if (!preview) throw new Error('Open Split or Preview mode before exporting.');
+      const pdfBlob = await renderedElementToPdf(preview, selectedTemplateName || 'Markdown document');
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -237,6 +247,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       if (onExportSuccess) onExportSuccess();
     } catch (err) {
       console.error('Failed exporting MD to PDF:', err);
+      alert(err instanceof Error ? err.message : 'Could not export the Markdown preview.');
     } finally {
       setIsExporting(false);
     }
@@ -253,8 +264,8 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/!\[(.*?)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="max-w-full rounded-xl my-3 border border-[var(--border-color)] shadow-md" />')
-      .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener" class="text-white underline font-bold hover:text-zinc-300 transition">$1</a>')
+      .replace(/!\[(.*?)\]\((.*?)\)/g, (_, alt, url) => `<img src="${safePreviewUrl(url)}" alt="${alt.replace(/"/g, '&quot;')}" class="max-w-full rounded-xl my-3 border border-[var(--border-color)] shadow-md" />`)
+      .replace(/\[(.*?)\]\((.*?)\)/g, (_, label, url) => `<a href="${safePreviewUrl(url, true)}" target="_blank" rel="noopener noreferrer" class="text-white underline font-bold hover:text-zinc-300 transition">${label}</a>`)
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-[var(--text-primary)]">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em class="italic text-[var(--text-primary)]">$1</em>')
       .replace(/~~(.*?)~~/g, '<del class="line-through text-[var(--text-tertiary)]">$1</del>')
@@ -366,12 +377,12 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   };
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-140px)] rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
+    <div className="markdown-editor flex flex-col min-h-[calc(100vh-140px)] rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
       {/* Top Header Controls */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-6 py-3 flex items-center justify-between gap-4 flex-wrap sticky top-0 z-30">
+      <div className="markdown-editor__header border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-6 py-3 flex items-center justify-between gap-4 flex-wrap sticky top-0 z-30">
         <div className="flex items-center gap-2.5">
           <FileCode className="w-5 h-5 text-white stroke-[2.5]" />
-          <span className="text-sm font-extrabold text-[var(--text-primary)] tracking-tight">Markdown Studio</span>
+          <span className="text-sm font-extrabold text-[var(--text-primary)] tracking-tight">Markdown Workspace</span>
         </div>
 
         {/* Templates & View Switcher */}
@@ -482,7 +493,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       </div>
 
       {/* Rich Formatting Toolbar */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--surface-color)] px-6 py-2 flex items-center gap-1 overflow-x-auto text-[var(--text-secondary)]">
+      <div className="markdown-editor__formatting border-b border-[var(--border-color)] bg-[var(--surface-color)] px-6 py-2 flex items-center gap-1 overflow-x-auto text-[var(--text-secondary)]" aria-label="Markdown formatting toolbar">
         <button onClick={() => insertFormatting('**', '**', 'bold text')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Bold (**text**)">
           <Bold className="w-4 h-4" />
         </button>
@@ -555,7 +566,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       </div>
 
       {/* Main Workspace */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className="markdown-editor__workspace flex-1 flex flex-col md:flex-row overflow-hidden relative">
         {/* Raw Markdown Editor Area */}
         {(viewMode === 'split' || viewMode === 'edit') && (
           <div className="flex-1 flex flex-col bg-[var(--bg-color)] border-b md:border-b-0 md:border-r border-[var(--border-color)] p-4 sm:p-6 overflow-hidden min-h-[300px] md:min-h-0">
@@ -565,14 +576,20 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
               onChange={e => setMarkdown(e.target.value)}
               placeholder="Start writing Markdown..."
               className="w-full h-full bg-transparent text-[var(--text-primary)] font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder:text-[var(--text-tertiary)]"
+              aria-label="Markdown source"
             />
           </div>
         )}
 
         {/* Rendered Live Preview Area */}
-        {(viewMode === 'split' || viewMode === 'preview') && (
-          <div className="flex-1 bg-[var(--bg-color)] p-4 sm:p-8 overflow-y-auto min-h-[300px] md:min-h-0">
-            <div id="markdown-preview-container" className="max-w-3xl mx-auto bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-4 sm:p-8 shadow-2xl">
+        {(viewMode === 'split' || viewMode === 'preview' || viewMode === 'edit') && (
+          <div
+            className={viewMode === 'edit'
+              ? 'markdown-export-preview'
+              : 'flex-1 bg-[var(--bg-color)] p-4 sm:p-8 overflow-y-auto min-h-[300px] md:min-h-0'}
+            aria-hidden={viewMode === 'edit'}
+          >
+            <div ref={previewRef} id="markdown-preview-container" className="max-w-3xl mx-auto bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-4 sm:p-8 shadow-2xl">
               <div
                 dangerouslySetInnerHTML={{
                   __html: renderMarkdownToHtml(markdown),
@@ -584,7 +601,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       </div>
 
       {/* Bottom Status Bar */}
-      <div className="border-t border-[var(--border-color)] bg-[var(--surface-hover)] px-6 py-2.5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+      <div className="markdown-editor__status border-t border-[var(--border-color)] bg-[var(--surface-hover)] px-6 py-2.5 flex items-center justify-between text-xs text-[var(--text-secondary)]">
         <div className="flex items-center gap-4">
           <span><strong>{wordsCount}</strong> words</span>
           <span><strong>{charsCount}</strong> characters</span>

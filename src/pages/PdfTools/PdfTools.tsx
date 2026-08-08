@@ -110,7 +110,7 @@ const TOOL_GROUPS = [
     items: [
       { id: 'pdf-to-image', label: 'PDF to Images', icon: ImageIcon, desc: 'Export pages to 300 DPI PNG/JPG' },
       { id: 'pdf-jpg-to-pdf', label: 'Images to PDF', icon: ImageIcon, desc: 'Document scan filters & layout' },
-      { id: 'pdf-word-to-pdf', label: 'Markdown Editor & PDF', icon: TextIcon, desc: 'Rich Markdown editor & PDF compiler' },
+      { id: 'pdf-word-to-pdf', label: 'Markdown Workspace', icon: TextIcon, desc: 'Write Markdown with live preview & PDF export' },
       { id: 'pdf-to-word', label: 'PDF to Markdown', icon: FileText, desc: 'Extract 100% real text layer (.md)' }
     ]
   }
@@ -555,7 +555,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [pagesList, setPagesList] = useState<PageItem[]>([]);
   const [peekPageIndex, setPeekPageIndex] = useState<number | null>(null);
 
-  // Sidebar Auto-collapse State (to maximize viewport width when file is active)
+  // Tool list stays available but yields space once a file is active.
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
@@ -592,7 +592,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [pdfIsEncrypted, setPdfIsEncrypted] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Image to PDF Pro Option States
+  // Image to PDF option states
   const [imgOrientation, setImgOrientation] = useState<'auto' | 'portrait' | 'landscape'>('auto');
   const [imgPageSize, setImgPageSize] = useState<'fit' | 'a4' | 'letter'>('fit');
   const [imgMargin, setImgMargin] = useState<'none' | 'small' | 'big'>('none');
@@ -1233,7 +1233,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const match = group.items.find(i => i.id === activeTool);
       if (match) return match.label;
     }
-    return 'Adobe-Level PDF Editor Pro';
+    return 'PDF Tools';
   };
 
   const getToolDesc = () => {
@@ -1241,7 +1241,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const match = group.items.find(i => i.id === activeTool);
       if (match) return match.desc;
     }
-    return 'Comprehensive PDF toolkit for page organization, digital signatures, watermarks, encryption, and conversions.';
+    return 'Choose a PDF tool to edit, organize, protect, or convert a document locally.';
   };
 
   useEffect(() => {
@@ -1280,39 +1280,37 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         </div>
       )}
 
-      {/* Sidebar Viewport Toggle Bar */}
+      {/* Compact tool-list control */}
       {!processing && !resultUrl && (
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsSidebarCollapsed(prev => !prev)}
-              className="hidden lg:flex items-center gap-2 text-xs font-extrabold px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-900 text-white hover:bg-zinc-800 cursor-pointer shadow-md transition-all"
-              title={isSidebarCollapsed ? "Show Tools Menu Sidebar" : "Collapse Tools Menu Sidebar to Maximize Canvas Viewport"}
-            >
-              {isSidebarCollapsed ? (
-                <>
-                  <PanelLeftOpen className="w-4 h-4 text-white shrink-0 stroke-[2.5]" />
-                  <span className="text-white font-extrabold">Show Tools Menu</span>
-                </>
-              ) : (
-                <>
-                  <PanelLeftClose className="w-4 h-4 text-white shrink-0 stroke-[2.5]" />
-                  <span className="text-white font-extrabold">Maximize Viewport</span>
-                </>
-              )}
-            </button>
-          </div>
+        <div className="pdf-sidebar-toggle-row hidden lg:flex justify-start mb-3">
+          <button
+            type="button"
+            onClick={() => setIsSidebarCollapsed(prev => !prev)}
+            className="pdf-sidebar-toggle inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] cursor-pointer"
+            aria-expanded={!isSidebarCollapsed}
+            aria-controls="pdf-tool-sidebar"
+            title={isSidebarCollapsed ? 'Show PDF tools' : 'Hide PDF tools'}
+          >
+            {isSidebarCollapsed
+              ? <PanelLeftOpen className="w-4 h-4 shrink-0" />
+              : <PanelLeftClose className="w-4 h-4 shrink-0" />}
+            <span>{isSidebarCollapsed ? 'Show tools' : 'Hide tools'}</span>
+          </button>
         </div>
       )}
 
       {!processing && !resultUrl && compressionResults.length === 0 && extractedImages.length === 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className={`pdf-tool-workspace grid grid-cols-1 gap-6 items-start ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
           
-          {/* Adobe Acrobat Style Category Sidebar (Desktop Only - Auto-hidden when file uploaded or toggled) */}
-          {!isSidebarCollapsed && (
-            <div className="tool-menu hidden lg:block lg:col-span-3 space-y-4">
-              {TOOL_GROUPS.map((group, gIdx) => (
-                <div key={gIdx} className="space-y-1.5">
+          {/* Desktop tool list */}
+            <aside
+              id="pdf-tool-sidebar"
+              className="pdf-tool-sidebar tool-menu hidden lg:block space-y-4"
+              aria-hidden={isSidebarCollapsed}
+              inert={isSidebarCollapsed ? true : undefined}
+            >
+              {TOOL_GROUPS.map((group) => (
+                <div key={group.title} className="space-y-1.5">
                   <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block px-1">
                     {group.title}
                   </span>
@@ -1336,10 +1334,9 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                   </div>
                 </div>
               ))}
-            </div>
-          )}
+            </aside>
 
-          <div className={`space-y-6 ${!isSidebarCollapsed ? 'col-span-1 lg:col-span-9' : 'col-span-1 lg:col-span-12'}`}>
+          <div className="pdf-tool-main space-y-6 min-w-0">
 
             {/* Mobile Exclusive Condensed Tool Selector (Upload Box First) */}
             <div className="block lg:hidden w-full space-y-1.5 bg-zinc-900/80 p-3 rounded-2xl border border-zinc-800">
@@ -2662,6 +2659,15 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
               </div>
             ))}
           </div>
+          <Button
+            onClick={() => downloadAll(extractedImages.map(image => ({
+              url: image.url,
+              name: `page_${image.pageNumber}.${pdfExportImgFormat}`,
+            })))}
+            className="w-full rounded-full h-11 text-xs font-bold"
+          >
+            <Download className="w-4 h-4 mr-2" /> Download all {extractedImages.length} images
+          </Button>
         </Card>
       )}
 

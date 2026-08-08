@@ -2708,7 +2708,178 @@ a.bg-zinc-50:hover {
 }
 
 /* Loaded workspaces need a stricter layout than their empty upload states. */
+@media (min-width: 1024px) {
+  .pdf-tool-workspace {
+    grid-template-columns: minmax(14rem, 3fr) minmax(0, 9fr);
+    transition: grid-template-columns .24s cubic-bezier(.2, .8, .2, 1), gap .24s cubic-bezier(.2, .8, .2, 1);
+  }
+
+  .pdf-tool-workspace.is-collapsed {
+    gap: 0;
+    grid-template-columns: 0 minmax(0, 1fr);
+  }
+
+  .pdf-tool-sidebar {
+    min-width: 0;
+    opacity: 1;
+    overflow: hidden;
+    transform: translateX(0);
+    transition: opacity .16s ease, transform .24s cubic-bezier(.2, .8, .2, 1), visibility 0s linear;
+  }
+
+  .pdf-tool-workspace.is-collapsed .pdf-tool-sidebar {
+    opacity: 0;
+    transform: translateX(-.75rem);
+    visibility: hidden;
+    transition: opacity .12s ease, transform .2s ease, visibility 0s linear .2s;
+  }
+
+  .pdf-sidebar-toggle {
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease, transform .15s ease;
+  }
+
+  .pdf-sidebar-toggle:hover {
+    transform: translateY(-1px);
+  }
+
+  .pdf-sidebar-toggle:active {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-tool-workspace,
+  .pdf-tool-sidebar,
+  .pdf-sidebar-toggle {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.markdown-export-preview {
+  left: -10000px;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  width: 768px;
+}
+
+.pdf-editor-dialog {
+  animation: pdf-dialog-backdrop-in .16s ease-out both;
+}
+
+.pdf-editor-dialog > [role="dialog"],
+.pdf-editor-dialog > [role="alertdialog"] {
+  animation: pdf-dialog-panel-in .2s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@keyframes pdf-dialog-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pdf-dialog-panel-in {
+  from { opacity: 0; transform: translateY(.5rem) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 480px) {
+  .pdf-editor-dialog > [role="dialog"],
+  .pdf-editor-dialog > [role="alertdialog"] {
+    padding: 1rem !important;
+  }
+
+  .pdf-editor-dialog [class*="justify-end"] {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .pdf-editor-dialog [class*="justify-end"] button {
+    min-height: 2.75rem;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pdf-editor-dialog,
+  .pdf-editor-dialog > [role="dialog"],
+  .pdf-editor-dialog > [role="alertdialog"] {
+    animation-duration: .01ms !important;
+  }
+}
+
 @media (max-width: 767px) {
+  .pdf-editor,
+  .markdown-editor {
+    min-height: auto !important;
+  }
+
+  .pdf-editor__toolbar,
+  .markdown-editor__header {
+    align-items: stretch !important;
+    padding: .75rem !important;
+    position: static !important;
+  }
+
+  .pdf-editor__toolbar > *,
+  .markdown-editor__header > * {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .pdf-editor__toolbar button,
+  .markdown-editor__header button,
+  .markdown-editor__formatting button {
+    min-height: 2.5rem;
+  }
+
+  .pdf-editor__workspace {
+    flex-direction: column;
+    overflow: visible !important;
+  }
+
+  .pdf-editor__viewport {
+    max-height: 62svh !important;
+    min-height: 22rem !important;
+    padding: .75rem !important;
+  }
+
+  .pdf-editor__layers {
+    border-left: 0 !important;
+    border-top: 1px solid var(--border-color);
+    width: 100% !important;
+  }
+
+  .pdf-editor__layers [class*="max-h-[calc"] {
+    max-height: 18rem !important;
+  }
+
+  .markdown-editor__header > div:last-child {
+    width: 100%;
+  }
+
+  .markdown-editor__formatting {
+    padding-inline: .75rem !important;
+    scrollbar-width: thin;
+  }
+
+  .markdown-editor__workspace {
+    overflow: visible !important;
+  }
+
+  .markdown-editor__status {
+    align-items: flex-start !important;
+    flex-direction: column;
+    gap: .35rem;
+    padding: .75rem !important;
+  }
+
+  .markdown-editor__status > div:first-child {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1rem !important;
+  }
+
   /* PDF task panels are intentionally one column on phones.  A queue must
      never compete with its action panel for half a narrow viewport. */
   .pdf-mobile-stack,

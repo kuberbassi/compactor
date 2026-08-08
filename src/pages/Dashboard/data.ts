@@ -41,8 +41,17 @@ export const TOOLS: ToolItem[] = [
 
   // PDF
   {
+    id: 'pdf-edit',
+    title: 'Edit PDF',
+    subtitle: 'Add text, shapes & annotations',
+    description: 'Edit PDF pages locally with text, shapes, layers, styling, and private export.',
+    category: 'PDF',
+    tags: ['Text & Shapes', 'Layer Controls', 'Private Export'],
+    illustrationType: 'pdf-edit'
+  },
+  {
     id: 'pdf-organize',
-    title: 'Organize PDF Pages',
+    title: 'Page Organizer',
     subtitle: 'Reorder & rotate pages',
     description: 'Rearrange, rotate, or delete PDF pages visually with clear thumbnails.',
     category: 'PDF',
@@ -51,7 +60,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-merge',
-    title: 'Merge PDFs',
+    title: 'Merge PDF',
     subtitle: 'Combine multiple PDF files',
     description: 'Stitch multiple PDF documents together into a single organized file.',
     category: 'PDF',
@@ -69,7 +78,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-crop-tool',
-    title: 'Crop PDF Margins',
+    title: 'Crop Margins',
     subtitle: 'Trim white margins',
     description: 'Crop unnecessary white borders off PDF pages for cleaner viewing.',
     category: 'PDF',
@@ -87,7 +96,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-stamps',
-    title: 'Add Stamp or Watermark',
+    title: 'Document Stamps',
     subtitle: 'Brand PDF with watermark',
     description: 'Apply text or image stamps (APPROVED, CONFIDENTIAL) with opacity control.',
     category: 'PDF',
@@ -96,7 +105,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-protect',
-    title: 'Protect PDF Password',
+    title: 'Protect Password',
     subtitle: 'Encrypt PDF with AES',
     description: 'Encrypt PDF files with passwords to prevent unauthorized viewing.',
     category: 'PDF',
@@ -105,7 +114,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-unlock',
-    title: 'Unlock Password PDF',
+    title: 'Unlock PDF',
     subtitle: 'Remove PDF password restriction',
     description: 'Decrypt password-protected PDFs to restore unrestricted printing & copying.',
     category: 'PDF',
@@ -114,7 +123,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-page-numbers',
-    title: 'Insert Page Numbers',
+    title: 'Page Numbers',
     subtitle: 'Add header or footer numbering',
     description: 'Number PDF pages automatically with customizable position and font style.',
     category: 'PDF',
@@ -141,16 +150,16 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-word-to-pdf',
-    title: 'Markdown Editor & PDF',
-    subtitle: 'Full MD Editor & PDF Export',
-    description: 'Rich Markdown editor workspace with syntax toolbar, live split preview, templates & PDF compiler.',
+    title: 'Markdown Workspace',
+    subtitle: 'Write Markdown & export PDF',
+    description: 'Write Markdown with a formatting toolbar, live split preview, templates, and local PDF export.',
     category: 'PDF',
     tags: ['Markdown Editor', 'Rich Toolbar', 'Split Preview', 'PDF Compile'],
     illustrationType: 'pdf-text'
   },
   {
     id: 'pdf-to-word',
-    title: 'PDF to Markdown Text',
+    title: 'PDF to Markdown',
     subtitle: 'Extract real text layer',
     description: 'Extract text layer from PDF documents directly to Markdown (.md).',
     category: 'PDF',

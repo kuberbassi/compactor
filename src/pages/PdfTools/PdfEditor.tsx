@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument } from 'pdf-lib';
@@ -67,6 +68,22 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   // Modal dialog states
   const [showRemoveAllConfirm, setShowRemoveAllConfirm] = useState(false);
   const [showNoAnnotsWarning, setShowNoAnnotsWarning] = useState(false);
+
+  useEffect(() => {
+    if (!showRemoveAllConfirm && !showNoAnnotsWarning) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeDialog = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setShowRemoveAllConfirm(false);
+      setShowNoAnnotsWarning(false);
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', closeDialog);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeDialog);
+    };
+  }, [showNoAnnotsWarning, showRemoveAllConfirm]);
 
   // Active Mouse Drag State (Move / Resize / Rotate)
   const [dragState, setDragState] = useState<{
@@ -139,12 +156,14 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
       ) {
         e.preventDefault();
-        deleteAnnotation(selectedId);
+        setAnnotations(prev => prev.filter(item => item.id !== selectedId));
+        setSelectedId(null);
+        if (editingTextId === selectedId) setEditingTextId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedId]);
+  }, [editingTextId, selectedId]);
 
   // Render PDF Pages to high-res image URLs using PDF.js
   useEffect(() => {
@@ -254,7 +273,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       if (item.isBold !== undefined) setIsBold(item.isBold);
       if (item.isItalic !== undefined) setIsItalic(item.isItalic);
     }
-  }, [selectedId, editingTextId]);
+  }, [annotations, selectedId, editingTextId]);
 
   // Canvas Mouse Coordinates Helper (in percentage 0..100)
   const getCanvasCoords = (e: React.MouseEvent<HTMLDivElement> | MouseEvent, targetRect: DOMRect) => {
@@ -589,13 +608,20 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
     setSaving(true);
     try {
+      await document.fonts?.ready;
       const origBuffer = await file.arrayBuffer();
       const pdfDoc = await PDFDocument.load(origBuffer);
       const pages = pdfDoc.getPages();
+      const secureRedaction = mode === 'redact';
+      const outputPdf = secureRedaction ? await PDFDocument.create() : pdfDoc;
+      const sourceLoadingTask = secureRedaction
+        ? pdfjsLib.getDocument({ data: new Uint8Array(origBuffer.slice(0)), verbosity: 0 })
+        : null;
+      const sourcePdf = sourceLoadingTask ? await sourceLoadingTask.promise : null;
 
       for (let pIdx = 0; pIdx < pages.length; pIdx++) {
         const pageAnnots = annotations.filter(a => a.pageIndex === pIdx && a.isVisible);
-        if (pageAnnots.length === 0) continue;
+        if (pageAnnots.length === 0 && !secureRedaction) continue;
 
         const page = pages[pIdx];
         const { width: pWidth, height: pHeight } = page.getSize();
@@ -604,12 +630,28 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         const displayWidth = (pageDimensions[pIdx] && pageDimensions[pIdx].width) ? pageDimensions[pIdx].width : (pWidth * 1.6);
         const scaleFactor = pWidth / displayWidth;
 
-        const scale = 2;
+        const scale = 3;
         const canvas = document.createElement('canvas');
         canvas.width = Math.floor(pWidth * scale);
         canvas.height = Math.floor(pHeight * scale);
         const ctx = canvas.getContext('2d');
         if (!ctx) continue;
+
+        // Redaction exports are flattened page images. This permanently removes
+        // covered source text and objects instead of leaving them extractable.
+        if (sourcePdf) {
+          const sourcePage = await sourcePdf.getPage(pIdx + 1);
+          const sourceViewport = sourcePage.getViewport({ scale });
+          const sourceCanvas = document.createElement('canvas');
+          sourceCanvas.width = Math.floor(sourceViewport.width);
+          sourceCanvas.height = Math.floor(sourceViewport.height);
+          const sourceContext = sourceCanvas.getContext('2d');
+          if (!sourceContext) throw new Error('Could not render a source PDF page.');
+          await (sourcePage.render as any)({ canvasContext: sourceContext, viewport: sourceViewport, canvas: sourceCanvas }).promise;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(sourceCanvas, 0, 0, canvas.width, canvas.height);
+        }
 
         ctx.scale(scale, scale);
 
@@ -730,8 +772,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         }
 
         const pngUrl = canvas.toDataURL('image/png');
-        const pngImg = await pdfDoc.embedPng(pngUrl);
-        page.drawImage(pngImg, {
+        const pngImg = await outputPdf.embedPng(pngUrl);
+        const outputPage = secureRedaction ? outputPdf.addPage([pWidth, pHeight]) : page;
+        outputPage.drawImage(pngImg, {
           x: 0,
           y: 0,
           width: pWidth,
@@ -739,7 +782,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         });
       }
 
-      const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
+      await sourceLoadingTask?.destroy();
+
+      const pdfBytes = await outputPdf.save({ useObjectStreams: true });
       const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -758,9 +803,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   };
 
   return (
-    <div className="flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]">
+    <div className="pdf-editor flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]">
       {/* Top Main Toolbar */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-4 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
+      <div className="pdf-editor__toolbar border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-4 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
         <div className="flex items-center gap-2 flex-wrap">
           {/* Mode Switcher */}
           <div className="bg-[var(--surface-color)] border border-[var(--border-color)] rounded-xl p-1 flex items-center gap-1">
@@ -1133,11 +1178,11 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       </div>
 
       {/* Main Workspace (Viewport + Side Layer Panel) */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="pdf-editor__workspace flex-1 flex overflow-hidden relative">
         {/* PDF Document Canvas Viewport with Non-Passive Wheel Zoom */}
         <div
           ref={viewportRef}
-          className="flex-1 overflow-y-auto overflow-x-auto bg-[var(--bg-color)] p-6 flex justify-center items-start relative max-h-[calc(100vh-140px)] min-h-[500px]"
+          className="pdf-editor__viewport flex-1 overflow-y-auto overflow-x-auto bg-[var(--bg-color)] p-6 flex justify-center items-start relative max-h-[calc(100vh-140px)] min-h-[500px]"
         >
           {loading ? (
             <div className="flex flex-col items-center justify-center my-24 gap-3 text-[var(--text-secondary)]">
@@ -1316,7 +1361,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                   />
                                 </svg>
                               )}
-                              {/* MS Word / Acrobat level Text Box */}
+                              {/* Editable text box */}
                               {item.type === 'text' && (
                                 <div
                                   onClick={e => {
@@ -1465,7 +1510,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         </div>
 
         {/* Side Panel (Layers & Elements) */}
-        <div className="w-80 bg-[var(--surface-color)] border-l border-[var(--border-color)] flex flex-col justify-between shrink-0">
+        <div className="pdf-editor__layers w-80 bg-[var(--surface-color)] border-l border-[var(--border-color)] flex flex-col justify-between shrink-0">
           <div>
             {/* Header */}
             <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between">
@@ -1619,15 +1664,15 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       </div>
 
       {/* Custom Remove All Confirmation Modal */}
-      {showRemoveAllConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in-0 duration-200">
-          <div className="w-full max-w-md bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+      {showRemoveAllConfirm && createPortal(
+        <div className="pdf-editor-dialog fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md" onMouseDown={() => setShowRemoveAllConfirm(false)}>
+          <div role="alertdialog" aria-modal="true" aria-labelledby="remove-all-title" className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl space-y-4" onMouseDown={event => event.stopPropagation()}>
             <div className="flex items-center gap-3">
               <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20 text-red-400 shrink-0">
                 <Trash2 className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-[var(--text-primary)]">Remove All Elements?</h4>
+                <h4 id="remove-all-title" className="text-base font-bold text-[var(--text-primary)]">Remove All Elements?</h4>
                 <p className="text-xs text-[var(--text-secondary)]">This action cannot be undone.</p>
               </div>
             </div>
@@ -1638,6 +1683,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
+                autoFocus
                 onClick={() => setShowRemoveAllConfirm(false)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-[var(--text-secondary)] bg-[var(--surface-hover)] hover:text-white border border-[var(--border-color)] transition cursor-pointer"
               >
@@ -1656,19 +1702,20 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Custom No Annotations Warning Modal */}
-      {showNoAnnotsWarning && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in-0 duration-200">
-          <div className="w-full max-w-md bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
+      {showNoAnnotsWarning && createPortal(
+        <div className="pdf-editor-dialog fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md" onMouseDown={() => setShowNoAnnotsWarning(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="no-changes-title" className="w-full max-w-md max-h-[calc(100svh-2rem)] overflow-y-auto bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-6 shadow-2xl space-y-4" onMouseDown={event => event.stopPropagation()}>
             <div className="flex items-center gap-3">
               <div className="p-3 bg-amber-500/10 rounded-xl border border-amber-500/20 text-amber-400 shrink-0">
                 <AlertTriangle className="w-6 h-6" />
               </div>
               <div>
-                <h4 className="text-base font-bold text-[var(--text-primary)]">No Changes Made</h4>
+                <h4 id="no-changes-title" className="text-base font-bold text-[var(--text-primary)]">No Changes Made</h4>
                 <p className="text-xs text-[var(--text-secondary)]">Add annotations before saving</p>
               </div>
             </div>
@@ -1679,6 +1726,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             <div className="flex justify-end pt-2">
               <button
+                autoFocus
                 onClick={() => setShowNoAnnotsWarning(false)}
                 className="px-5 py-2 rounded-xl text-xs font-bold text-zinc-950 bg-white hover:bg-zinc-200 transition cursor-pointer"
               >
@@ -1686,7 +1734,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

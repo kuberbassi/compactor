@@ -66,6 +66,23 @@ export const IllustrationBanner: React.FC<{ type: string }> = ({ type }) => {
         </div>
       );
 
+    case 'pdf-edit':
+      return (
+        <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-violet-500/30 bg-gradient-to-br from-violet-950/60 to-zinc-950/80 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="relative w-16 h-18 rounded-md bg-zinc-100 border border-violet-300/70 shadow-lg p-2">
+              <div className="h-1 w-9 rounded bg-zinc-400/60 mb-1.5" />
+              <div className="h-1 w-11 rounded bg-zinc-300 mb-1" />
+              <div className="h-1 w-8 rounded bg-zinc-300" />
+              <div className="absolute left-3 bottom-3 w-7 h-4 border-2 border-violet-500 rounded-sm bg-violet-200/40" />
+              <div className="absolute -right-2 top-4 w-6 h-6 rounded-full bg-violet-500 border-2 border-zinc-950 text-white text-xs font-black flex items-center justify-center shadow-lg">
+                T
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
     case 'pdf-organize':
       return (
         <div className="w-full h-full flex items-center justify-center relative p-3 select-none">

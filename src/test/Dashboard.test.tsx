@@ -12,8 +12,10 @@ describe('Dashboard Component', () => {
   it('renders tool showcase cards', () => {
     render(<Dashboard onSelectTool={vi.fn()} processedCount={{ count: 1500000, scope: 'global' }} />);
     expect(screen.getByText('Compress a video')).toBeInTheDocument();
-    expect(screen.getByText('Organize PDF Pages')).toBeInTheDocument();
-    expect(screen.getByText('Merge PDFs')).toBeInTheDocument();
+    expect(screen.getByText('Page Organizer')).toBeInTheDocument();
+    expect(screen.getByText('Merge PDF')).toBeInTheDocument();
+    expect(screen.getByText('Edit PDF')).toBeInTheDocument();
+    expect(screen.getByText('Markdown Workspace')).toBeInTheDocument();
   });
 
   it('triggers onSelectTool when a tool card is clicked', () => {
@@ -30,6 +32,8 @@ describe('Dashboard Component', () => {
     render(<Dashboard onSelectTool={vi.fn()} processedCount={{ count: 1500000, scope: 'global' }} />);
     const pdfButtons = screen.getAllByRole('button', { name: /PDF/i });
     fireEvent.click(pdfButtons[0]);
-    expect(screen.getByText('Organize PDF Pages')).toBeInTheDocument();
+    expect(screen.getByText('Page Organizer')).toBeInTheDocument();
+    expect(screen.getByText('Edit PDF')).toBeInTheDocument();
+    expect(screen.getByText('Markdown Workspace')).toBeInTheDocument();
   });
 });

@@ -1,0 +1,17 @@
+name: Feature request
+description: Suggest a useful improvement
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What do you need?
+      placeholder: Describe the problem in simple terms.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Suggested solution
+      placeholder: Explain how you think it should work.

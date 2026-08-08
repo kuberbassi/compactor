@@ -21,4 +21,46 @@ describe('SimpleNav Component', () => {
     const menuButton = screen.getByRole('button', { name: /open menu/i });
     expect(menuButton).toBeInTheDocument();
   });
+
+  it('links the new PDF tools to their real routes', () => {
+    const handleLinkClick = vi.fn();
+    render(<SimpleNav onLinkClick={handleLinkClick} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^pdf/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Edit PDF/i }));
+    expect(handleLinkClick).toHaveBeenCalledWith('pdf-edit');
+
+    fireEvent.click(screen.getByRole('button', { name: /^pdf/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Markdown Workspace/i }));
+    expect(handleLinkClick).toHaveBeenCalledWith('pdf-word-to-pdf');
+  });
+
+  it('keeps PDF navigation in the same order as the PDF tools page', () => {
+    render(<SimpleNav />);
+    fireEvent.click(screen.getByRole('button', { name: /^pdf/i }));
+
+    const labels = Array.from(document.querySelectorAll('[data-nav-group-items="pdf"] button'))
+      .map(button => button.textContent?.trim());
+
+    expect(labels).toEqual([
+      'Edit PDF',
+      'Page Organizer',
+      'Merge PDF',
+      'Split PDF',
+      'Crop Margins',
+      'Compress PDF',
+      'Document Stamps',
+      'Redact & Annotate',
+      'Flatten Forms',
+      'Sign Document',
+      'Add Watermark',
+      'Protect Password',
+      'Unlock PDF',
+      'Page Numbers',
+      'PDF to Images',
+      'Images to PDF',
+      'Markdown Workspace',
+      'PDF to Markdown',
+    ]);
+  });
 });

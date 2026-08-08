@@ -123,9 +123,30 @@ Features
 
 ---
 
-# PDF Studio Pro
+# PDF Tools
 
-## Organize PDF Pages (#pdf-organize)
+## Edit PDF (#pdf-edit)
+
+Features
+
+- Add text, rectangles, circles, lines, and arrows
+- Move, resize, rotate, style, reorder, hide, or remove layers
+- Export a flattened PDF locally
+- Responsive phone and tablet workspace
+
+---
+
+## Redact PDF (#pdf-redact)
+
+Features
+
+- Blackout, whiteout, or labelled redaction boxes
+- Exported pages are rasterized at high resolution so covered source content is permanently removed
+- Files remain inside the browser
+
+---
+
+## Page Organizer (#pdf-organize)
 
 Features
 
@@ -137,7 +158,7 @@ Features
 
 ---
 
-## Merge PDFs (#pdf-merge)
+## Merge PDF (#pdf-merge)
 
 Features
 
@@ -157,7 +178,7 @@ Features
 
 ---
 
-## Crop PDF Margins (#pdf-crop-tool)
+## Crop Margins (#pdf-crop-tool)
 
 Features
 
@@ -177,7 +198,7 @@ Features
 
 ---
 
-## Add Stamp or Watermark (#pdf-stamps)
+## Document Stamps (#pdf-stamps)
 
 Features
 
@@ -208,7 +229,7 @@ Features
 
 ---
 
-## Insert Page Numbers (#pdf-page-numbers)
+## Page Numbers (#pdf-page-numbers)
 
 Features
 
@@ -227,6 +248,7 @@ Features
 - JPG export
 - High-resolution rendering
 - Batch conversion
+- Download all rendered pages in one action
 
 ---
 
@@ -247,13 +269,17 @@ Document filters
 
 ---
 
-## Markdown to PDF (#pdf-word-to-pdf)
+## Markdown Workspace (#pdf-word-to-pdf)
 
 Features
 
 - Markdown rendering
+- Live edit, split, and preview modes
+- README, meeting notes, proposal, and API templates
+- Download editable Markdown
 - Code block formatting
-- Printable PDF generation
+- Preview-matched PDF generation that preserves visible fonts, colors, tables, code blocks, and wrapping
+- PDF pages are image-based to prioritize visual fidelity over selectable text
 
 ---
 

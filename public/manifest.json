@@ -1,7 +1,7 @@
 {
   "name": "Compactor",
   "short_name": "Compactor",
-  "description": "100% client-side private media compressor, PDF toolkit and verified file converter.",
+  "description": "Private PDF editor, Markdown workspace, media compressor and verified file converter.",
   "start_url": "/",
   "id": "/",
   "scope": "/",
@@ -57,6 +57,20 @@
           "sizes": "192x192"
         }
       ]
+    },
+    {
+      "name": "Edit PDF",
+      "short_name": "Edit PDF",
+      "description": "Add text, shapes and private redactions to PDF documents",
+      "url": "/#pdf-edit",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Markdown Workspace",
+      "short_name": "Markdown",
+      "description": "Write Markdown with live preview and preview-matched local PDF export",
+      "url": "/#pdf-word-to-pdf",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
     },
     {
       "name": "Image Optimizer",
