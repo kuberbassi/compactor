@@ -1,7 +1,7 @@
 {
   "name": "Compactor",
   "short_name": "Compactor",
-  "description": "Private PDF editor, Markdown workspace, media compressor and verified file converter.",
+  "description": "Compress videos, optimize images, edit PDFs, and convert file formats locally in your browser with zero server uploads.",
   "start_url": "/",
   "id": "/",
   "scope": "/",

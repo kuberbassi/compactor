@@ -5,8 +5,7 @@
 <h1 align="center">Compactor</h1>
 
 <p align="center">
-  <b>100% Client-Side · Private · Zero Upload · Media Compressor, PDF Studio & Verified File Converter</b><br />
-  <i>Designed & Developed by <a href="https://kuberbassi.com">Kuber Bassi</a></i>
+  <b>Private Media Compressor, PDF Studio &amp; File Converter</b>
 </p>
 
 <p align="center">
