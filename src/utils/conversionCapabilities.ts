@@ -34,3 +34,19 @@ export const getSupportedTargets = (extension: string): Set<string> => {
   if (targets.size > 1) targets.delete(source);
   return targets;
 };
+
+export const getFileExtension = (file: Pick<File, 'name'>): string =>
+  file.name.split('.').pop()?.toLowerCase() || '';
+
+export const getCommonSupportedTargets = (files: Array<Pick<File, 'name'>>): Set<string> => {
+  if (files.length === 0) return new Set();
+  const [first, ...rest] = files;
+  const common = getSupportedTargets(getFileExtension(first));
+  rest.forEach(file => {
+    const targets = getSupportedTargets(getFileExtension(file));
+    Array.from(common).forEach(target => {
+      if (!targets.has(target)) common.delete(target);
+    });
+  });
+  return common;
+};

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getSupportedTargets, isSupportedSourceFormat, SUPPORTED_SOURCE_FORMATS } from '../utils/conversionCapabilities';
+import {
+  getCommonSupportedTargets,
+  getFileExtension,
+  getSupportedTargets,
+  isSupportedSourceFormat,
+  SUPPORTED_SOURCE_FORMATS,
+} from '../utils/conversionCapabilities';
 import { docxToText, textToDocx } from '../utils/documentConverters';
 
 describe('universal converter capability registry', () => {
@@ -21,6 +27,22 @@ describe('universal converter capability registry', () => {
     expect(getSupportedTargets('mp4').has('flv')).toBe(false);
     expect(getSupportedTargets('mp4').has('gif')).toBe(false);
     expect(getSupportedTargets('avif').has('svg')).toBe(false);
+  });
+
+  it('finds only targets supported by every file in a mixed batch', () => {
+    const markdown = new File(['# Notes'], 'notes.md', { type: 'text/markdown' });
+    const text = new File(['Notes'], 'notes.txt', { type: 'text/plain' });
+
+    expect(getFileExtension(markdown)).toBe('md');
+    expect([...getCommonSupportedTargets([markdown, text])]).toEqual(['pdf', 'docx', 'html']);
+  });
+
+  it('returns no shared target for files that cannot safely share a batch', () => {
+    const image = new File(['image'], 'photo.png', { type: 'image/png' });
+    const document = new File(['document'], 'report.pdf', { type: 'application/pdf' });
+
+    expect(getCommonSupportedTargets([image, document]).size).toBe(0);
+    expect(getCommonSupportedTargets([]).size).toBe(0);
   });
 
   it('creates a real DOCX package that can be parsed back', async () => {

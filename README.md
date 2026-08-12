@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-58%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-61%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
@@ -63,7 +63,7 @@
 - **Audio Joiner** — Merge & concatenate multiple audio tracks into a single seamless audio file.
 - **Key & BPM Finder** — 100% in-browser Web Audio API detection of tempo (BPM), musical key & Camelot wheel code.
 - **Pitch & Speed Changer** — Transpose key pitch (-12 to +12 semitones) & adjust playback tempo (0.5× to 2.0×).
-- **Verified File Converter** — Strict engine-backed conversions for PDF, DOCX, text, data, common raster images, SVG, audio, and video. Unsupported pairs are disabled rather than fabricated.
+- **Verified File Converter** — Strict engine-backed conversions for PDF, DOCX, text, data, common raster images, SVG, audio, and video. Compatible mixed files can run as a sequential bulk queue with shared-target filtering, per-file progress, retry, and Download All; unsupported pairs are disabled rather than fabricated.
 - **Metadata Editor** — Inspect and edit EXIF, ID3, and PDF tags directly in-browser.
 - **Poster Maker** — Multi-page printable wall poster grid generator.
 
@@ -77,7 +77,7 @@
 | **Styling & UI** | TailwindCSS v4, Base UI, Custom Glassmorphism Design Tokens |
 | **Icons** | Lucide React |
 | **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, Tesseract.js OCR, ImageTracerJS, HTML5 Canvas 2D |
-| **Testing** | Vitest + Testing Library + JSDOM (58 tests, 14 test files) |
+| **Testing** | Vitest + Testing Library + JSDOM (61 tests, 15 test files) |
 | **Deployment** | Vercel with COOP/COEP security headers & immutable asset caching |
 
 ### Module Architecture

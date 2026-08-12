@@ -1,30 +1,39 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
-import { traceImageToSvg } from '../../utils/svgTracer';
-import { imagesToPdf, textToPdf } from '../../utils/pdf';
-import { getFFmpeg, transcodeFormatLossless } from '../../utils/ffmpeg';
-import { formatBytes, loadImage } from '../../utils/image';
+import { formatBytes } from '../../utils/image';
 import {
-  canvasToBmp, canvasToIco, audioFileToWav,
-  csvToJson, jsonToCsv, csvToHtmlTable, textToHtml
-} from '../../utils/universalConverters';
-import { docxToHtml, docxToPdf, docxToText, pdfToDocx, pdfToText, textToDocx } from '../../utils/documentConverters';
+  getCommonSupportedTargets,
+  getFileExtension,
+  isSupportedSourceFormat,
+  SUPPORTED_SOURCE_FORMATS,
+} from '../../utils/conversionCapabilities';
+import { appendUniqueFiles, downloadAll, fileIdentity, makeUniqueNames } from '../../utils/batch';
+import { convertUniversalFile } from '../../utils/universalConversion';
 import type { PdfDocxMode } from '../../utils/documentConverters';
-import { getSupportedTargets, isSupportedSourceFormat, SUPPORTED_SOURCE_FORMATS } from '../../utils/conversionCapabilities';
-import { 
-  File as FileIcon, RefreshCw, 
-  CheckCircle, Download,
-  Sparkles as MagicIcon, ShieldCheck as ShieldIcon,
-  Zap as ZapIcon, Check as CheckIcon,
-  Ban as ProhibitIcon, Lightbulb as BulbIcon
+import {
+  AlertCircle,
+  ArrowDown,
+  ArrowUp,
+  Ban as ProhibitIcon,
+  Check as CheckIcon,
+  CheckCircle,
+  Download,
+  File as FileIcon,
+  Lightbulb as BulbIcon,
+  LoaderCircle,
+  RefreshCw,
+  ShieldCheck as ShieldIcon,
+  Sparkles as MagicIcon,
+  Trash2,
+  X,
+  Zap as ZapIcon,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Card, CardTitle, CardDescription } from '../../components/ui/card';
+import { Card, CardDescription, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
 
-// The catalog can show familiar formats, but only engine-backed pairs are enabled.
 const FORMAT_CATEGORIES = {
   document: ['pdf', 'docx', 'txt', 'md', 'html'],
   image: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif', 'bmp', 'ico', 'svg'],
@@ -33,571 +42,420 @@ const FORMAT_CATEGORIES = {
   data: ['csv', 'json'],
 };
 
-/**
- * Smart Compatibility Matrix Helper
- * Derives valid conversion target formats for any input extension
- */
+type QueueStatus = 'pending' | 'processing' | 'completed' | 'error';
+
+interface QueueResult {
+  blob: Blob;
+  url: string;
+  name: string;
+}
+
+interface QueueItem {
+  id: string;
+  file: File;
+  extension: string;
+  status: QueueStatus;
+  progress: number;
+  statusText: string;
+  error?: string;
+  result?: QueueResult;
+}
+
 interface UniversalConverterProps {
   onGoHome: () => void;
   onUploadSuccess: () => void;
 }
 
+const categoryForFormat = (format: string): string =>
+  Object.entries(FORMAT_CATEGORIES).find(([, formats]) => formats.includes(format))?.[0] || 'document';
+
+const preferredTarget = (files: File[], targets: Set<string>): string => {
+  if (files.length === 1) {
+    const extension = getFileExtension(files[0]);
+    const preferred: Record<string, string> = {
+      pdf: 'docx',
+      png: 'webp',
+      jpg: 'png',
+      jpeg: 'png',
+      mp4: 'mp3',
+      mov: 'mp3',
+      webm: 'mp3',
+      csv: 'json',
+      json: 'csv',
+    };
+    if (preferred[extension] && targets.has(preferred[extension])) return preferred[extension];
+  }
+  return Array.from(targets)[0] || '';
+};
+
 export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome, onUploadSuccess }) => {
-  const [file, setFile] = useState<File | null>(null);
-  const [inputExt, setInputExt] = useState<string>('');
-  const [inputCategory, setInputCategory] = useState<string>('');
-  
-  const [targetCategory, setTargetCategory] = useState<string>('image');
-  const [targetFormat, setTargetFormat] = useState<string>('png');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  
+  const [items, setItems] = useState<QueueItem[]>([]);
+  const [targetCategory, setTargetCategory] = useState('image');
+  const [targetFormat, setTargetFormat] = useState('png');
+  const [searchQuery, setSearchQuery] = useState('');
   const [processing, setProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [overallProgress, setOverallProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [pdfDocxMode, setPdfDocxMode] = useState<PdfDocxMode>('preserve-layout');
-  
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
-  const [resultName, setResultName] = useState('');
-  const [resultSize, setResultSize] = useState<number>(0);
+  const [hasRun, setHasRun] = useState(false);
+  const stopRequestedRef = useRef(false);
+  const resultUrlsRef = useRef(new Set<string>());
 
-  // Compute supported target formats for current file
-  const supportedTargets = file ? getSupportedTargets(inputExt) : new Set<string>();
+  const files = useMemo(() => items.map(item => item.file), [items]);
+  const supportedTargets = useMemo(() => getCommonSupportedTargets(files), [files]);
+  const completedItems = items.filter(item => item.status === 'completed' && item.result);
+  const failedItems = items.filter(item => item.status === 'error');
 
-  // Detect input file extension & categorize it automatically
-  const handleFileSelected = (selectedFiles: File[]) => {
-    if (selectedFiles.length === 0) return;
-    const f = selectedFiles[0];
-    const ext = f.name.split('.').pop()?.toLowerCase() || '';
-    if (!isSupportedSourceFormat(ext)) {
-      setErrorMessage(`.${ext || 'unknown'} files are not shown because Compactor has no reliable conversion engine for them.`);
-      return;
-    }
-    setFile(f);
-    setErrorMessage('');
-    setInputExt(ext);
-    
-    // Find category
-    let foundCat = 'document';
-    for (const [cat, list] of Object.entries(FORMAT_CATEGORIES)) {
-      if (list.includes(ext)) {
-        foundCat = cat;
-        break;
+  useEffect(() => () => {
+    resultUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    resultUrlsRef.current.clear();
+  }, []);
+
+  const updateItem = (id: string, patch: Partial<QueueItem>) => {
+    setItems(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
+  };
+
+  const handleFilesSelected = (incoming: File[]) => {
+    const uniqueFiles = appendUniqueFiles(files, incoming);
+    const duplicateCount = files.length + incoming.length - uniqueFiles.length;
+    const accepted = [...files];
+    const rejected: string[] = [];
+
+    uniqueFiles.slice(files.length).forEach(file => {
+      const extension = getFileExtension(file);
+      if (!isSupportedSourceFormat(extension)) {
+        rejected.push(file.name);
+        return;
       }
+      const candidate = [...accepted, file];
+      if (accepted.length > 0 && getCommonSupportedTargets(candidate).size === 0) {
+        rejected.push(file.name);
+        return;
+      }
+      accepted.push(file);
+    });
+
+    const acceptedNewFiles = accepted.slice(files.length);
+    if (acceptedNewFiles.length > 0) {
+      const newItems = acceptedNewFiles.map(file => ({
+        id: fileIdentity(file),
+        file,
+        extension: getFileExtension(file),
+        status: 'pending' as const,
+        progress: 0,
+        statusText: 'Waiting',
+      }));
+      setItems(current => [...current, ...newItems]);
+
+      const nextTargets = getCommonSupportedTargets(accepted);
+      const nextTarget = nextTargets.has(targetFormat) ? targetFormat : preferredTarget(accepted, nextTargets);
+      setTargetFormat(nextTarget);
+      setTargetCategory(categoryForFormat(nextTarget));
+      setHasRun(false);
     }
-    setInputCategory(foundCat);
-    
-    // Derive valid smart targets
-    const validTargets = getSupportedTargets(ext);
-    
-    // Find category containing the best default target format
-    let bestCat = foundCat;
-    let bestFormat = Array.from(validTargets)[0] || 'pdf';
 
-    // Special smart defaults:
-    if (ext === 'pdf') { bestCat = 'document'; bestFormat = 'docx'; }
-    else if (['jpg', 'jpeg', 'png', 'webp'].includes(ext)) { bestCat = 'image'; bestFormat = ext === 'png' ? 'webp' : 'png'; }
-    else if (['mp4', 'mov', 'webm'].includes(ext)) { bestCat = 'video'; bestFormat = 'mp3'; }
-    else if (['csv', 'json'].includes(ext)) { bestCat = 'data'; bestFormat = ext === 'csv' ? 'json' : 'csv'; }
+    const notices: string[] = [];
+    if (duplicateCount > 0) notices.push(`${duplicateCount} duplicate ${duplicateCount === 1 ? 'file was' : 'files were'} skipped.`);
+    if (rejected.length > 0) notices.push(`${rejected.length} ${rejected.length === 1 ? 'file does' : 'files do'} not share a conversion target with this queue: ${rejected.join(', ')}`);
+    setErrorMessage(notices.join(' '));
+  };
 
-    setTargetCategory(bestCat);
-    setTargetFormat(bestFormat);
+  const removeItem = (id: string) => {
+    setItems(current => {
+      const removed = current.find(item => item.id === id);
+      if (removed?.result) {
+        URL.revokeObjectURL(removed.result.url);
+        resultUrlsRef.current.delete(removed.result.url);
+      }
+      const next = current.filter(item => item.id !== id);
+      const targets = getCommonSupportedTargets(next.map(item => item.file));
+      if (next.length > 0 && !targets.has(targetFormat)) {
+        const nextTarget = preferredTarget(next.map(item => item.file), targets);
+        setTargetFormat(nextTarget);
+        setTargetCategory(categoryForFormat(nextTarget));
+      }
+      return next;
+    });
+    setErrorMessage('');
+  };
+
+  const moveItem = (index: number, direction: -1 | 1) => {
+    setItems(current => {
+      const destination = index + direction;
+      if (destination < 0 || destination >= current.length) return current;
+      const next = [...current];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      return next;
+    });
   };
 
   const reset = () => {
-    setFile(null);
-    setInputExt('');
-    setInputCategory('');
-    setResultUrl(null);
-    setResultName('');
-    setResultSize(0);
-    setProgress(0);
+    resultUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    resultUrlsRef.current.clear();
+    setItems([]);
+    setTargetFormat('png');
+    setTargetCategory('image');
+    setSearchQuery('');
+    setOverallProgress(0);
     setProcessing(false);
+    setHasRun(false);
     setErrorMessage('');
+    stopRequestedRef.current = false;
   };
 
-  const startConversion = async () => {
-    if (!file) return;
+  const startConversion = async (onlyIds?: string[]) => {
+    const selected = items.filter(item =>
+      onlyIds ? onlyIds.includes(item.id) : item.status === 'pending' || item.status === 'error',
+    );
+    if (selected.length === 0 || !supportedTargets.has(targetFormat)) return;
+
     setProcessing(true);
+    setHasRun(false);
     setErrorMessage('');
-    setProgress(10);
-    setStatusText('Analyzing file format headers...');
-    
-    try {
-      const ext = file.name.split('.').pop()?.toLowerCase() || '';
-      const target = targetFormat.toLowerCase();
+    setOverallProgress(0);
+    stopRequestedRef.current = false;
+    const usedNames = items.flatMap(item => item.result ? [item.result.name] : []);
 
-      // 1. IMAGE CONVERSIONS (Lossless & High Quality HTML5 Canvas)
-      if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico'].includes(target) && ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'svg', 'avif'].includes(ext)) {
-        setStatusText(`Loading raster image into loss-free conversion pipeline...`);
-        setProgress(30);
-        const img = await loadImage(file);
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw new Error('Could not instantiate 2D context');
+    for (let index = 0; index < selected.length; index += 1) {
+      if (stopRequestedRef.current) break;
+      const item = selected[index];
+      if (item.result) {
+        URL.revokeObjectURL(item.result.url);
+        resultUrlsRef.current.delete(item.result.url);
+      }
+      updateItem(item.id, { status: 'processing', progress: 0, statusText: 'Starting...', error: undefined, result: undefined });
+      setStatusText(`Converting ${index + 1} of ${selected.length}: ${item.file.name}`);
 
-        // White background for JPEG / BMP if source has alpha
-        if (['jpg', 'jpeg', 'bmp'].includes(target)) {
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-        ctx.drawImage(img, 0, 0);
-        setProgress(70);
-
-        let resultBlob: Blob;
-        if (target === 'png') {
-          setStatusText('Encoding lossless 32-bit PNG format...');
-          resultBlob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob(b => b ? resolve(b) : reject('PNG conversion failed'), 'image/png');
-          });
-        } else if (target === 'webp') {
-          setStatusText('Encoding 100% max quality WebP format...');
-          resultBlob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob(b => b ? resolve(b) : reject('WebP conversion failed'), 'image/webp', 1.0);
-          });
-        } else if (target === 'jpg' || target === 'jpeg') {
-          setStatusText('Encoding high-fidelity JPEG format...');
-          resultBlob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob(b => b ? resolve(b) : reject('JPEG conversion failed'), 'image/jpeg', 0.98);
-          });
-        } else if (target === 'bmp') {
-          setStatusText('Encoding uncompressed 24-bit BMP binary bitmap...');
-          resultBlob = canvasToBmp(canvas);
-        } else if (target === 'ico') {
-          setStatusText('Encoding 256x256 ICO icon asset...');
-          resultBlob = canvasToIco(canvas, 256);
-        } else {
-          throw new Error('Unsupported image target');
-        }
-
-        setProgress(95);
-        setResultSize(resultBlob.size);
-        setResultUrl(URL.createObjectURL(resultBlob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + `.${target}`);
-        onUploadSuccess();
-      }
-      // 2. IMAGE TO VECTOR SVG
-      else if (target === 'svg' && ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(ext)) {
-        setStatusText('Tracing image contour paths into SVG vector shapes...');
-        setProgress(40);
-        const svgContent = await traceImageToSvg(file);
-        setProgress(90);
-        
-        const blob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.svg');
-        onUploadSuccess();
-      }
-      // 3. IMAGE TO PDF
-      else if (target === 'pdf' && ['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext)) {
-        setStatusText('Compiling image file to vector PDF document page...');
-        const blob = await imagesToPdf([file]);
-        setProgress(90);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.pdf');
-        onUploadSuccess();
-      }
-      // 4. REAL DOCUMENT CONVERSIONS
-      else if (ext === 'pdf' && target === 'docx') {
-        setStatusText('Reading PDF text layout and building a valid editable Word document...');
-        setProgress(25);
-        const blob = await pdfToDocx(file, (percent, status) => {
-          setProgress(20 + Math.round(percent * 0.7));
-          setStatusText(status);
-        }, pdfDocxMode);
-        setProgress(95);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.docx');
-        onUploadSuccess();
-      }
-      else if (ext === 'docx' && target === 'pdf') {
-        setStatusText('Parsing the Word document and typesetting a valid PDF...');
-        setProgress(30);
-        const blob = await docxToPdf(file);
-        setProgress(95);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.pdf');
-        onUploadSuccess();
-      }
-      else if (ext === 'docx' && (target === 'txt' || target === 'html')) {
-        setStatusText(`Parsing Word content into ${target.toUpperCase()}...`);
-        const content = target === 'txt' ? await docxToText(file) : await docxToHtml(file);
-        const blob = new Blob([content], { type: target === 'txt' ? 'text/plain;charset=utf-8' : 'text/html;charset=utf-8' });
-        setProgress(95);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, '') + `.${target}`);
-        onUploadSuccess();
-      }
-      else if (target === 'docx' && ['txt', 'md'].includes(ext)) {
-        setStatusText('Building a valid editable Word document package...');
-        const blob = await textToDocx(await file.text(), file.name);
-        setProgress(95);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.docx');
-        onUploadSuccess();
-      }
-      else if (ext === 'pdf' && target === 'txt') {
-        setStatusText('Extracting readable text from the PDF...');
-        const text = await pdfToText(file, (percent, status) => {
-          setProgress(20 + Math.round(percent * 0.7));
-          setStatusText(status);
+      try {
+        const converted = await convertUniversalFile(item.file, targetFormat, pdfDocxMode, (percent, status) => {
+          updateItem(item.id, { progress: percent, statusText: status });
+          setOverallProgress(Math.round(((index + percent / 100) / selected.length) * 100));
         });
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        setProgress(95);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, '') + '.txt');
+        const name = makeUniqueNames([...usedNames, converted.name]).at(-1) || converted.name;
+        usedNames.push(name);
+        const url = URL.createObjectURL(converted.blob);
+        resultUrlsRef.current.add(url);
+        updateItem(item.id, {
+          status: 'completed',
+          progress: 100,
+          statusText: 'Completed',
+          result: { blob: converted.blob, url, name },
+        });
         onUploadSuccess();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        updateItem(item.id, { status: 'error', progress: 100, statusText: 'Failed', error: message });
       }
-      // 5. TEXT / MD / HTML / CSV TO PDF
-      else if (target === 'pdf' && ['txt', 'md', 'html', 'json', 'csv'].includes(ext)) {
-        setStatusText('Compiling text document layout into PDF...');
-        const text = await file.text();
-        const blob = await textToPdf(text, file.name);
-        setProgress(90);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.pdf');
-        onUploadSuccess();
-      }
-      // 6. NATIVE AUDIO DECODER TO WAV
-      else if (target === 'wav' && ['mp3', 'aac', 'm4a', 'flac', 'ogg', 'opus', 'weba', 'wav'].includes(ext)) {
-        setStatusText('Decoding audio PCM samples into uncompressed WAV...');
-        setProgress(40);
-        const wavBlob = await audioFileToWav(file);
-        setProgress(90);
-        setResultSize(wavBlob.size);
-        setResultUrl(URL.createObjectURL(wavBlob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.wav');
-        onUploadSuccess();
-      }
-      // 7. CSV / JSON / HTML DATA TRANSFORMS
-      else if (target === 'json' && (ext === 'csv' || ext === 'txt')) {
-        setStatusText('Parsing CSV data rows into formatted JSON objects...');
-        const text = await file.text();
-        const jsonStr = csvToJson(text);
-        const blob = new Blob([jsonStr], { type: 'application/json' });
-        setProgress(90);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.json');
-        onUploadSuccess();
-      }
-      else if (target === 'csv' && (ext === 'json' || ext === 'txt')) {
-        setStatusText('Structuring JSON data into comma-separated CSV rows...');
-        const text = await file.text();
-        const csvStr = jsonToCsv(text);
-        const blob = new Blob([csvStr], { type: 'text/csv' });
-        setProgress(90);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.csv');
-        onUploadSuccess();
-      }
-      else if (target === 'html' && (ext === 'csv' || ext === 'txt' || ext === 'md')) {
-        setStatusText('Formatting document text to styled semantic HTML page...');
-        const text = await file.text();
-        const htmlStr = ext === 'csv' ? csvToHtmlTable(text, file.name) : textToHtml(text, file.name);
-        const blob = new Blob([htmlStr], { type: 'text/html' });
-        setProgress(90);
-        setResultSize(blob.size);
-        setResultUrl(URL.createObjectURL(blob));
-        setResultName(file.name.replace(/\.[^/.]+$/, "") + '.html');
-        onUploadSuccess();
-      }
-      // 8. MEDIA TRANSCODING (FFmpeg WASM)
-      else if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a', 'gif'].includes(target) && ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'weba', 'flac'].includes(ext)) {
-        setStatusText('Initializing FFmpeg WebAssembly media engine...');
-        await getFFmpeg(() => {}, setProgress);
-        
-        setStatusText(`Transcoding ${ext.toUpperCase()} to ${target.toUpperCase()}...`);
-        const result = await transcodeFormatLossless(file, target, () => {}, setProgress);
-        
-        setResultSize(result.blob.size);
-        setResultUrl(result.url);
-        setResultName(result.name);
-        onUploadSuccess();
-      }
-      // Never fabricate a target by changing a file extension.
-      else {
-        throw new Error(`${ext.toUpperCase()} to ${target.toUpperCase()} is not supported by an installed conversion engine.`);
-      }
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(e.message || String(e));
+      setOverallProgress(Math.round(((index + 1) / selected.length) * 100));
     }
-    
-    setProgress(100);
+
+    if (stopRequestedRef.current) {
+      setStatusText('Queue stopped. Unprocessed files are still waiting.');
+    } else {
+      setStatusText('Batch conversion complete.');
+    }
     setProcessing(false);
+    setHasRun(true);
   };
 
-  // Filter formats based on search query
-  const getFilteredFormats = () => {
-    const list = FORMAT_CATEGORIES[targetCategory as keyof typeof FORMAT_CATEGORIES] || [];
-    if (!searchQuery) return list;
-    return list.filter(f => f.toLowerCase().includes(searchQuery.toLowerCase()));
-  };
+  const filteredFormats = (FORMAT_CATEGORIES[targetCategory as keyof typeof FORMAT_CATEGORIES] || [])
+    .filter(format => !searchQuery || format.includes(searchQuery.toLowerCase()));
+
+  const distinctExtensions = Array.from(new Set(items.map(item => item.extension)));
 
   return (
     <div className="tool-layout">
-      <ToolHeader 
+      <ToolHeader
         title="Verified File Converter"
-        description="Reliable, private conversions using real format engines. Unsupported pairs are disabled instead of producing corrupt files."
-        icon={MagicIcon} 
-        onGoHome={() => {
-          if (file || resultUrl || processing) {
-            reset();
-          } else {
-            onGoHome();
-          }
-        }} 
+        description="Convert one file or a compatible batch privately. Files run one at a time to protect browser memory."
+        icon={MagicIcon}
+        onGoHome={() => items.length > 0 || processing ? reset() : onGoHome()}
       />
 
       {processing && (
-        <div className="max-w-2xl mx-auto py-12">
-          <ProgressBar progress={progress} statusText={statusText} subText="High-precision client-side format conversion engine" />
+        <div className="mx-auto max-w-3xl space-y-5 py-8 sm:py-12" aria-live="polite">
+          <ProgressBar progress={overallProgress} statusText={statusText} subText="Sequential client-side conversion queue" />
+          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-4 sm:p-5">
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {items.map(item => (
+                <div key={item.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-[var(--border-color)] bg-zinc-950/30 p-3">
+                  {item.status === 'processing' ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" />
+                    : item.status === 'completed' ? <CheckCircle className="h-4 w-4 shrink-0 text-emerald-400" />
+                    : item.status === 'error' ? <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                    : <FileIcon className="h-4 w-4 shrink-0 text-zinc-500" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-[var(--text-primary)]">{item.file.name}</p>
+                    <p className="truncate text-[10px] text-[var(--text-secondary)]">{item.statusText}</p>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-bold text-[var(--text-secondary)]">{item.progress}%</span>
+                </div>
+              ))}
+            </div>
+            <Button variant="outline" onClick={() => { stopRequestedRef.current = true; }} className="mt-4 min-h-11 w-full rounded-full text-xs">
+              Stop after current file
+            </Button>
+          </Card>
         </div>
       )}
 
-      {!processing && !resultUrl && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Main workspace */}
-          <div className="lg:col-span-8 space-y-6">
+      {!processing && !hasRun && (
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-8">
             {errorMessage && (
-              <Card role="alert" className="border-red-500/40 bg-red-950/20 p-4">
+              <Card role="alert" className="border-amber-500/40 bg-amber-950/20 p-4">
                 <div className="flex items-start gap-3">
-                  <ProhibitIcon className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-red-100">Conversion could not be completed</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-red-200/80">{errorMessage}</p>
-                  </div>
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                  <p className="min-w-0 text-xs leading-relaxed text-amber-100">{errorMessage}</p>
                 </div>
               </Card>
             )}
-            {!file ? (
-              <FileUploader 
-                accept={SUPPORTED_SOURCE_FORMATS.map(ext => `.${ext}`).join(',')}
-                label="Select a supported file to convert"
-                subLabel="Supports verified image, media, PDF, DOCX, text, CSV and JSON conversion pairs"
-                onFilesSelected={handleFileSelected}
+
+            {items.length === 0 ? (
+              <FileUploader
+                accept={SUPPORTED_SOURCE_FORMATS.map(extension => `.${extension}`).join(',')}
+                multiple
+                label="Select files to convert"
+                subLabel="Choose compatible files that share at least one verified output format"
+                onFilesSelected={handleFilesSelected}
                 maxSizeMB={500}
               />
             ) : (
-              <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm p-6 space-y-5">
-                <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
-                  <div className="flex items-center gap-2">
-                    <FileIcon className="w-4 h-4 text-zinc-400" />
-                    <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Selected Source File</span>
-                  </div>
-                  <Button variant="ghost" onClick={reset} className="text-rose-500 hover:text-rose-600 text-xs h-7 px-2">Change File</Button>
-                </div>
-                
-                <div className="flex items-center gap-3.5 p-4 bg-zinc-950/40 border border-[var(--border-color)] rounded-xl">
-                  <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 font-bold text-xs uppercase flex-shrink-0">
-                    {inputExt || 'FILE'}
-                  </div>
-                  <div className="truncate flex-1 min-w-0">
-                    <span className="block text-xs font-bold truncate text-[var(--text-primary)]">{file.name}</span>
-                    <span className="text-[10px] text-[var(--text-secondary)] mt-0.5 block font-medium">
-                      Category: <span className="text-zinc-200 font-semibold uppercase">{inputCategory}</span> &bull; Size: <span className="text-zinc-200 font-semibold">{formatBytes(file.size)}</span>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Smart Conversion Helper Tip Bar */}
-                <div className="flex items-center gap-2.5 bg-zinc-950/70 border border-zinc-800 p-3 rounded-xl text-xs text-zinc-300">
-                  <BulbIcon className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                  <div className="text-[11px] leading-tight">
-                    <strong className="text-zinc-100">Smart Compatibility Helper:</strong> Showing <span className="text-zinc-200 font-bold">{supportedTargets.size} compatible targets</span> for <span className="text-white font-bold uppercase">.{inputExt}</span>. Incompatible formats are automatically dimmed.
-                  </div>
-                </div>
-
-                {/* Target Format Config Header */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-zinc-950/60 p-4 border border-[var(--border-color)] rounded-xl justify-between">
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Target Output Format</span>
-                    <span className="text-base font-black text-[var(--text-primary)] uppercase tracking-wide flex items-center gap-2">
-                      <ZapIcon className="w-4 h-4 text-zinc-400" /> {targetFormat}
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2 w-full sm:w-auto">
-                    <Input 
-                      placeholder="Search verified formats..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)}
-                      className="h-9 text-xs w-full sm:w-48 bg-transparent border-[var(--border-color)] text-[var(--text-primary)]"
-                    />
-                  </div>
-                </div>
-
-                {/* Categories Tab Selector */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Format Category</label>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 bg-zinc-950/60 p-1.5 rounded-xl border border-[var(--border-color)]">
-                    {Object.keys(FORMAT_CATEGORIES).map(cat => {
-                      const catList = FORMAT_CATEGORIES[cat as keyof typeof FORMAT_CATEGORIES] || [];
-                      const hasSupported = catList.some(fmt => supportedTargets.has(fmt));
-
-                      return (
-                        <button
-                          key={cat}
-                          onClick={() => {
-                            setTargetCategory(cat);
-                            // Find first supported format in this category or default to first
-                            const firstValid = catList.find(fmt => supportedTargets.has(fmt)) || catList[0] || 'pdf';
-                            setTargetFormat(firstValid);
-                          }}
-                          className={`py-1.5 px-1 text-[10px] font-bold rounded-lg uppercase tracking-wide transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                            targetCategory === cat
-                              ? 'bg-zinc-800 text-white shadow-sm border border-zinc-700'
-                              : hasSupported
-                              ? 'text-zinc-300 hover:text-white hover:bg-zinc-900/50'
-                              : 'text-zinc-600 opacity-40 hover:opacity-70'
-                          }`}
-                        >
-                          {hasSupported && <span className="w-1.5 h-1.5 rounded-full bg-white inline-block" />}
-                          <span>{cat}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Target Format Buttons Grid */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">
-                    Available Formats ({getFilteredFormats().length})
-                  </label>
-                  <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 gap-1.5 max-h-44 overflow-y-auto pr-1">
-                    {getFilteredFormats().map(fmt => {
-                      const isSupported = supportedTargets.has(fmt);
-
-                      return (
-                        <button
-                          key={fmt}
-                          disabled={!isSupported}
-                          onClick={() => isSupported && setTargetFormat(fmt)}
-                          title={isSupported ? `Convert .${inputExt.toUpperCase()} to .${fmt.toUpperCase()}` : `.${fmt.toUpperCase()} is not compatible with .${inputExt.toUpperCase()} files`}
-                          className={`py-2 px-1.5 rounded-lg text-[10px] font-black transition-all uppercase border flex items-center justify-center gap-1 ${
-                            targetFormat === fmt
-                              ? 'border-white bg-zinc-100 text-zinc-950 shadow-md scale-105 cursor-pointer z-10'
-                              : isSupported
-                              ? 'border-zinc-800 bg-zinc-950/40 text-zinc-200 hover:text-white hover:border-zinc-600 hover:bg-zinc-900/80 cursor-pointer'
-                              : 'border-zinc-900/40 bg-zinc-950/10 text-zinc-600 opacity-25 cursor-not-allowed line-through decoration-zinc-700/50'
-                          }`}
-                        >
-                          {isSupported ? (
-                            <span>{fmt}</span>
-                          ) : (
-                            <span className="flex items-center gap-0.5">
-                              <ProhibitIcon className="w-2.5 h-2.5" /> {fmt}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {inputExt === 'pdf' && targetFormat === 'docx' && (
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">
-                      Word conversion style
-                    </label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5" role="radiogroup" aria-label="Word conversion style">
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={pdfDocxMode === 'preserve-layout'}
-                        onClick={() => setPdfDocxMode('preserve-layout')}
-                        className={`relative min-h-24 w-full rounded-xl border p-4 pr-11 text-left transition-all touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:min-h-28 ${pdfDocxMode === 'preserve-layout' ? 'border-white bg-zinc-800 text-white shadow-sm' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900/60'}`}
-                      >
-                        <span className="block text-sm font-bold leading-snug">Preserve layout</span>
-                        <span className="mt-1 inline-flex rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-zinc-200">Recommended</span>
-                        <span className="mt-2 block text-[11px] leading-relaxed text-zinc-400">Keeps images, fonts, columns, tables, and page appearance as closely as Word allows.</span>
-                        <span aria-hidden="true" className={`absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full border ${pdfDocxMode === 'preserve-layout' ? 'border-white bg-white text-zinc-950' : 'border-zinc-600'}`}>
-                          {pdfDocxMode === 'preserve-layout' && <span className="h-2 w-2 rounded-full bg-zinc-950" />}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        role="radio"
-                        aria-checked={pdfDocxMode === 'editable'}
-                        onClick={() => setPdfDocxMode('editable')}
-                        className={`relative min-h-24 w-full rounded-xl border p-4 pr-11 text-left transition-all touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:min-h-28 ${pdfDocxMode === 'editable' ? 'border-white bg-zinc-800 text-white shadow-sm' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300 hover:border-zinc-600 hover:bg-zinc-900/60'}`}
-                      >
-                        <span className="block text-sm font-bold leading-snug">Editable text</span>
-                        <span className="mt-2 block text-[11px] leading-relaxed text-zinc-400">Extracts or OCRs text for editing; complex positioning and pictures may not match exactly.</span>
-                        <span aria-hidden="true" className={`absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full border ${pdfDocxMode === 'editable' ? 'border-white bg-white text-zinc-950' : 'border-zinc-600'}`}>
-                          {pdfDocxMode === 'editable' && <span className="h-2 w-2 rounded-full bg-zinc-950" />}
-                        </span>
-                      </button>
+              <>
+                <Card className="space-y-4 border-[var(--border-color)] bg-[var(--surface-color)] p-4 shadow-sm sm:p-6">
+                  <div className="flex flex-col gap-3 border-b border-[var(--border-color)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileIcon className="h-4 w-4 shrink-0 text-zinc-400" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-wide text-[var(--text-primary)]">Conversion queue</p>
+                        <p className="text-[10px] text-[var(--text-secondary)]">{items.length} {items.length === 1 ? 'file' : 'files'} · {formatBytes(files.reduce((sum, file) => sum + file.size, 0))}</p>
+                      </div>
                     </div>
-                    <p className="text-[10px] leading-relaxed text-[var(--text-secondary)]">
-                      Preserve layout creates sharp page images inside Word for visual accuracy. Editable text prioritizes content editing.
-                    </p>
+                    <Button variant="ghost" onClick={reset} className="min-h-10 self-start px-3 text-xs text-rose-500 sm:self-auto">
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Clear all
+                    </Button>
                   </div>
-                )}
 
-                <Button 
-                  onClick={startConversion}
-                  disabled={!supportedTargets.has(targetFormat)}
-                  className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs shadow-sm cursor-pointer"
-                >
-                  {supportedTargets.has(targetFormat)
-                    ? `Convert to ${targetFormat.toUpperCase()}`
-                    : 'No reliable conversion available'}
-                </Button>
-              </Card>
+                  <div className="max-h-80 space-y-2 overflow-y-auto pr-1" aria-label="Files waiting for conversion">
+                    {items.map((item, index) => (
+                      <div key={item.id} className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--border-color)] bg-zinc-950/30 p-3 sm:gap-3">
+                        <span className="w-5 shrink-0 text-center text-[10px] font-bold text-zinc-500">{index + 1}</span>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-[9px] font-bold uppercase text-zinc-200">
+                          {item.extension}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold text-[var(--text-primary)]" title={item.file.name}>{item.file.name}</p>
+                          <p className="text-[10px] text-[var(--text-secondary)]">{formatBytes(item.file.size)}</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button type="button" disabled={index === 0} onClick={() => moveItem(index, -1)} aria-label={`Move ${item.file.name} up`} className="flex h-10 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 disabled:opacity-25">
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" disabled={index === items.length - 1} onClick={() => moveItem(index, 1)} aria-label={`Move ${item.file.name} down`} className="flex h-10 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 disabled:opacity-25">
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" onClick={() => removeItem(item.id)} aria-label={`Remove ${item.file.name}`} className="flex h-10 w-9 items-center justify-center rounded-lg text-rose-400 hover:bg-rose-950/40">
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <FileUploader
+                  accept={SUPPORTED_SOURCE_FORMATS.map(extension => `.${extension}`).join(',')}
+                  multiple
+                  compact
+                  label="Add more compatible files"
+                  subLabel="Duplicates and files without a shared target are skipped"
+                  onFilesSelected={handleFilesSelected}
+                  maxSizeMB={500}
+                />
+
+                <Card className="space-y-5 border-[var(--border-color)] bg-[var(--surface-color)] p-4 shadow-sm sm:p-6">
+                  <div className="flex items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-300">
+                    <BulbIcon className="h-4 w-4 shrink-0 text-amber-400" />
+                    <p className="text-[11px] leading-relaxed"><strong className="text-zinc-100">Shared compatibility:</strong> {supportedTargets.size} verified targets work for every queued {distinctExtensions.map(extension => `.${extension}`).join(', ')} file.</p>
+                  </div>
+
+                  <div className="flex flex-col items-start justify-between gap-4 rounded-xl border border-[var(--border-color)] bg-zinc-950/60 p-4 sm:flex-row sm:items-center">
+                    <div>
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">Output format for all files</span>
+                      <span className="mt-1 flex items-center gap-2 text-base font-black uppercase tracking-wide text-[var(--text-primary)]"><ZapIcon className="h-4 w-4" /> {targetFormat}</span>
+                    </div>
+                    <Input placeholder="Search formats..." value={searchQuery} onChange={event => setSearchQuery(event.target.value)} className="h-10 w-full bg-transparent text-xs sm:w-48" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">Format category</span>
+                    <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-[var(--border-color)] bg-zinc-950/60 p-1.5 sm:grid-cols-5">
+                      {Object.keys(FORMAT_CATEGORIES).map(category => {
+                        const categoryFormats = FORMAT_CATEGORIES[category as keyof typeof FORMAT_CATEGORIES];
+                        const hasSupported = categoryFormats.some(format => supportedTargets.has(format));
+                        return (
+                          <button key={category} type="button" disabled={!hasSupported} onClick={() => {
+                            setTargetCategory(category);
+                            const first = categoryFormats.find(format => supportedTargets.has(format));
+                            if (first) setTargetFormat(first);
+                          }} className={`min-h-10 rounded-lg border px-1 text-[10px] font-bold uppercase transition-colors ${targetCategory === category ? 'border-zinc-700 bg-zinc-800 text-white' : 'border-transparent text-zinc-300 hover:bg-zinc-900'} disabled:cursor-not-allowed disabled:opacity-25`}>
+                            {category}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">Available shared formats</span>
+                    <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-6 md:grid-cols-8">
+                      {filteredFormats.map(format => {
+                        const enabled = supportedTargets.has(format);
+                        return (
+                          <button key={format} type="button" disabled={!enabled} onClick={() => setTargetFormat(format)} className={`min-h-10 rounded-lg border px-2 text-[10px] font-black uppercase ${targetFormat === format ? 'border-white bg-zinc-100 text-zinc-950' : enabled ? 'border-zinc-800 bg-zinc-950/40 text-zinc-200 hover:border-zinc-600' : 'border-zinc-900/40 text-zinc-600 opacity-25 line-through'}`}>
+                            {enabled ? format : <span className="inline-flex items-center gap-1"><ProhibitIcon className="h-2.5 w-2.5" />{format}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {distinctExtensions.length === 1 && distinctExtensions[0] === 'pdf' && targetFormat === 'docx' && (
+                    <div className="space-y-2">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">Word conversion style</span>
+                      <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2" role="radiogroup" aria-label="Word conversion style">
+                        {([
+                          ['preserve-layout', 'Preserve layout', 'Recommended. Keeps each PDF page visually faithful inside Word.'],
+                          ['editable', 'Editable text', 'Extracts or OCRs text; complex positioning and pictures may change.'],
+                        ] as const).map(([mode, label, description]) => (
+                          <button key={mode} type="button" role="radio" aria-checked={pdfDocxMode === mode} onClick={() => setPdfDocxMode(mode)} className={`min-h-24 rounded-xl border p-4 text-left ${pdfDocxMode === mode ? 'border-white bg-zinc-800 text-white' : 'border-zinc-800 bg-zinc-950/40 text-zinc-300'}`}>
+                            <span className="block text-sm font-bold">{label}</span>
+                            <span className="mt-2 block text-[11px] leading-relaxed text-zinc-400">{description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <Button onClick={() => startConversion()} disabled={!supportedTargets.has(targetFormat)} className="min-h-12 w-full rounded-full bg-zinc-950 text-xs font-bold text-white dark:bg-zinc-50 dark:text-zinc-950">
+                    Convert {items.length} {items.length === 1 ? 'file' : 'files'} to {targetFormat.toUpperCase()}
+                  </Button>
+                </Card>
+              </>
             )}
           </div>
 
-          <div className="lg:col-span-4 space-y-4">
-            <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 space-y-3">
-              <div className="flex items-center gap-2 text-zinc-200">
-                <ShieldIcon className="w-4 h-4 text-zinc-300" />
-                <CardTitle className="text-xs font-bold text-[var(--text-primary)]">100% Client-Side Privacy</CardTitle>
-              </div>
-              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                All conversions process strictly inside your web browser. Your files never leave your device or get uploaded to any external server.
-              </p>
+          <div className="space-y-4 lg:col-span-4">
+            <Card className="space-y-3 border-[var(--border-color)] bg-[var(--surface-color)] p-5">
+              <div className="flex items-center gap-2"><ShieldIcon className="h-4 w-4" /><CardTitle className="text-xs font-bold">100% Client-Side Privacy</CardTitle></div>
+              <p className="text-[11px] leading-relaxed text-[var(--text-secondary)]">The queue stays in your browser. Files are processed sequentially and are never uploaded.</p>
             </Card>
-
-            {file && (
-              <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 space-y-3">
-                <div className="flex items-center gap-2 text-zinc-200">
-                  <CheckIcon className="w-4 h-4 text-white" />
-                  <CardTitle className="text-xs font-bold text-[var(--text-primary)]">Supported Targets Summary</CardTitle>
-                </div>
+            {items.length > 0 && (
+              <Card className="space-y-3 border-[var(--border-color)] bg-[var(--surface-color)] p-5">
+                <div className="flex items-center gap-2"><CheckIcon className="h-4 w-4" /><CardTitle className="text-xs font-bold">Shared targets</CardTitle></div>
                 <div className="flex flex-wrap gap-1.5">
-                  {Array.from(supportedTargets).map(t => (
-                    <span
-                      key={t}
-                      onClick={() => {
-                        setTargetFormat(t);
-                        // Find category
-                        for (const [cat, list] of Object.entries(FORMAT_CATEGORIES)) {
-                          if (list.includes(t)) { setTargetCategory(cat); break; }
-                        }
-                      }}
-                      className={`text-[9px] font-mono font-bold px-2 py-1 rounded cursor-pointer uppercase transition-all ${
-                        targetFormat === t
-                          ? 'bg-white text-zinc-950 font-black shadow-sm'
-                          : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white border border-zinc-800'
-                      }`}
-                    >
-                      {t}
-                    </span>
+                  {Array.from(supportedTargets).map(target => (
+                    <button key={target} type="button" onClick={() => { setTargetFormat(target); setTargetCategory(categoryForFormat(target)); }} className={`min-h-8 rounded px-2 text-[9px] font-bold uppercase ${targetFormat === target ? 'bg-white text-zinc-950' : 'border border-zinc-800 bg-zinc-900 text-zinc-300'}`}>{target}</button>
                   ))}
                 </div>
               </Card>
@@ -606,42 +464,53 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
         </div>
       )}
 
-      {/* RESULT PAGE */}
-      {resultUrl && !processing && (
-        <div className="max-w-xl mx-auto space-y-6">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm text-center p-6 space-y-5">
-            <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800/60 text-zinc-900 dark:text-zinc-100 rounded-full flex items-center justify-center mx-auto shadow-inner border border-[var(--border-color)]">
-              <CheckCircle className="w-7 h-7" />
-            </div>
-
-            <div>
-              <CardTitle className="text-xl font-black text-[var(--text-primary)]">Conversion Complete!</CardTitle>
-              <CardDescription className="text-xs text-[var(--text-secondary)] mt-1">Your converted format asset is compiled and ready for download.</CardDescription>
-            </div>
-
-            <div className="flex items-center gap-3 p-4 bg-zinc-950/40 border border-[var(--border-color)] rounded-xl text-left">
-              <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 font-bold text-xs uppercase flex-shrink-0">
-                {targetFormat}
+      {!processing && hasRun && (
+        <div className="mx-auto max-w-4xl space-y-6">
+          <Card className="space-y-4 border-[var(--border-color)] bg-[var(--surface-color)] p-4 sm:p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-xl font-black">Batch conversion complete</CardTitle>
+                <CardDescription className="mt-1 text-xs">{completedItems.length} completed · {failedItems.length} failed · {items.filter(item => item.status === 'pending').length} waiting</CardDescription>
               </div>
-              <div className="truncate flex-1 min-w-0">
-                <span className="block text-xs font-bold truncate text-[var(--text-primary)]">{resultName}</span>
-                <span className="text-[10px] text-[var(--text-secondary)] uppercase mt-0.5 block font-semibold">
-                  {inputExt.toUpperCase()} &rarr; {targetFormat.toUpperCase()} &bull; Output Size: {formatBytes(resultSize)}
-                </span>
-              </div>
+              <Button variant="outline" onClick={reset} className="min-h-11 rounded-full px-5 text-xs"><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> New batch</Button>
             </div>
 
-            <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-              <a 
-                href={resultUrl} 
-                download={resultName}
-                className="inline-flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold px-6 py-3 rounded-full text-xs shadow-sm cursor-pointer"
-              >
-                <Download className="w-4 h-4" /> Download Converted File
-              </a>
-              <Button variant="outline" onClick={reset} className="rounded-full h-10 text-xs border-[var(--border-color)]">
-                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Convert Another File
-              </Button>
+            <div className="space-y-2" aria-live="polite">
+              {items.map(item => (
+                <div key={item.id} className="flex min-w-0 flex-col gap-3 rounded-xl border border-[var(--border-color)] bg-zinc-950/30 p-4 sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    {item.status === 'completed' ? <CheckCircle className="h-5 w-5 shrink-0 text-emerald-400" />
+                      : item.status === 'error' ? <AlertCircle className="h-5 w-5 shrink-0 text-rose-400" />
+                      : <FileIcon className="h-5 w-5 shrink-0 text-zinc-500" />}
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-[var(--text-primary)]">{item.result?.name || item.file.name}</p>
+                      <p className={`mt-0.5 text-[10px] ${item.error ? 'text-rose-300' : 'text-[var(--text-secondary)]'}`}>{item.error || (item.result ? `${formatBytes(item.file.size)} → ${formatBytes(item.result.blob.size)}` : item.statusText)}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    {item.result && <a href={item.result.url} download={item.result.name} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-xs font-bold text-zinc-200 hover:bg-zinc-800 sm:flex-none"><Download className="h-3.5 w-3.5" /> Download</a>}
+                    {item.status === 'error' && <Button variant="outline" onClick={() => startConversion([item.id])} className="min-h-10 flex-1 text-xs sm:flex-none"><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry</Button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-[var(--border-color)] pt-4 sm:flex-row sm:justify-center">
+              {completedItems.length > 0 && (
+                <Button onClick={() => downloadAll(completedItems.map(item => ({ url: item.result!.url, name: item.result!.name, blob: item.result!.blob })))} className="min-h-11 rounded-full px-6 text-xs font-bold">
+                  <Download className="mr-2 h-4 w-4" /> Download all ({completedItems.length})
+                </Button>
+              )}
+              {failedItems.length > 0 && (
+                <Button variant="outline" onClick={() => startConversion(failedItems.map(item => item.id))} className="min-h-11 rounded-full px-6 text-xs font-bold text-rose-300">
+                  <RefreshCw className="mr-2 h-4 w-4" /> Retry failed ({failedItems.length})
+                </Button>
+              )}
+              {items.some(item => item.status === 'pending') && (
+                <Button variant="outline" onClick={() => startConversion(items.filter(item => item.status === 'pending').map(item => item.id))} className="min-h-11 rounded-full px-6 text-xs font-bold">
+                  Continue queue
+                </Button>
+              )}
             </div>
           </Card>
         </div>
