@@ -69,6 +69,9 @@ describe('visual Word to PDF conversion', () => {
     const pdf = await PDFDocument.load(await output.arrayBuffer());
 
     expect(renderAsync).toHaveBeenCalledOnce();
+    const renderHost = vi.mocked(renderAsync).mock.calls[0][1] as HTMLElement;
+    expect(renderHost.style.left).toBe('-100000px');
+    expect(renderHost.style.zIndex).toBe('-1');
     expect(html2canvas).toHaveBeenCalledTimes(2);
     const firstRenderedPage = vi.mocked(html2canvas).mock.calls[0][0] as HTMLElement;
     expect(firstRenderedPage.style.borderTopStyle).toBe('double');

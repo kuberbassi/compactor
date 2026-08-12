@@ -327,12 +327,12 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
   host.setAttribute('aria-hidden', 'true');
   Object.assign(host.style, {
     position: 'fixed',
-    left: '0',
+    left: '-100000px',
     top: '0',
     width: 'max-content',
     background: '#ffffff',
     pointerEvents: 'none',
-    zIndex: '2147483646',
+    zIndex: '-1',
   });
   document.body.appendChild(host);
 
