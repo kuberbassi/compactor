@@ -1,5 +1,8 @@
 import { Document, ImageRun, Packer, Paragraph, PageBreak, TextRun } from 'docx';
+import { renderAsync } from 'docx-preview';
+import html2canvas from 'html2canvas';
 import mammoth from 'mammoth/mammoth.browser';
+import { PDFDocument } from 'pdf-lib';
 import type { Worker as TesseractWorker } from 'tesseract.js';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -13,6 +16,35 @@ const assertSignature = async (file: File, expected: 'pdf' | 'zip') => {
     ? String.fromCharCode(...bytes.slice(0, 5)) === '%PDF-'
     : bytes[0] === 0x50 && bytes[1] === 0x4b;
   if (!valid) throw new Error(`This file is not a valid ${expected === 'pdf' ? 'PDF' : 'DOCX'} document.`);
+};
+
+type DocxBorder = { type?: string; color?: string; size?: string; offset?: string };
+
+const applyDocxPageBorders = (pages: HTMLElement[], documentModel: any) => {
+  const borders = documentModel?.documentPart?.body?.props?.pageBorders as Record<string, DocxBorder> | undefined;
+  if (!borders) return;
+
+  const cssBorderStyle = (type?: string): string => {
+    if (type === 'double') return 'double';
+    if (type === 'dotted') return 'dotted';
+    if (type === 'dashed' || type === 'dashSmallGap' || type === 'dotDash' || type === 'dotDotDash') return 'dashed';
+    if (type === 'none' || type === 'nil') return 'none';
+    return 'solid';
+  };
+
+  pages.forEach(page => {
+    (['top', 'right', 'bottom', 'left'] as const).forEach(side => {
+      const border = borders[side];
+      if (!border || cssBorderStyle(border.type) === 'none') return;
+      const style = cssBorderStyle(border.type);
+      const width = border.type === 'double' ? `max(3px, ${border.size || '1.5pt'})` : border.size || '1pt';
+      const color = !border.color || border.color === 'auto' ? '#000000' : `#${border.color}`;
+      page.style.setProperty(`border-${side}-style`, style);
+      page.style.setProperty(`border-${side}-width`, width);
+      page.style.setProperty(`border-${side}-color`, color);
+    });
+    page.style.boxSizing = 'border-box';
+  });
 };
 
 const linesFromPdfItems = (items: PdfTextItem[]) => {
@@ -267,8 +299,96 @@ export const docxToHtml = async (file: File): Promise<string> => {
   return `<!doctype html><html><head><meta charset="utf-8"><title>${file.name}</title></head><body>${result.value}</body></html>`;
 };
 
-export const docxToPdf = async (file: File): Promise<Blob> => {
-  const text = await docxToText(file);
-  const { textToPdf } = await import('./pdf');
-  return textToPdf(text, file.name.replace(/\.docx$/i, ''));
+export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Promise<Blob> => {
+  await assertSignature(file, 'zip');
+  onProgress?.(10, 'Reading Word document layout...');
+
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  Object.assign(host.style, {
+    position: 'fixed',
+    left: '-100000px',
+    top: '0',
+    width: 'max-content',
+    background: '#ffffff',
+    pointerEvents: 'none',
+    zIndex: '-1',
+  });
+  document.body.appendChild(host);
+
+  try {
+    const documentModel = await renderAsync(file, host, host, {
+      breakPages: true,
+      experimental: true,
+      ignoreFonts: false,
+      ignoreHeight: false,
+      ignoreLastRenderedPageBreak: false,
+      ignoreWidth: false,
+      inWrapper: true,
+      renderAltChunks: true,
+      renderChanges: false,
+      renderComments: false,
+      renderEndnotes: true,
+      renderFooters: true,
+      renderFootnotes: true,
+      renderHeaders: true,
+      useBase64URL: true,
+    });
+    onProgress?.(25, 'Preparing fonts and embedded images...');
+
+    await document.fonts?.ready;
+    await Promise.all(Array.from(host.querySelectorAll('img')).map(async image => {
+      if (image.complete) return;
+      try {
+        await image.decode();
+      } catch {
+        // A broken embedded image should not block the rest of the document.
+      }
+    }));
+
+    const pages = Array.from(host.querySelectorAll<HTMLElement>('section.docx'));
+    if (pages.length === 0) throw new Error('The DOCX renderer did not produce any printable pages.');
+    applyDocxPageBorders(pages, documentModel);
+
+    const pdf = await PDFDocument.create();
+    pdf.setTitle(file.name.replace(/\.docx$/i, ''));
+    pdf.setCreator('Compactor');
+
+    for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+      const pageElement = pages[pageIndex];
+      onProgress?.(
+        30 + Math.round((pageIndex / pages.length) * 60),
+        `Rendering Word page ${pageIndex + 1} of ${pages.length}...`,
+      );
+      const width = Math.max(1, pageElement.scrollWidth, pageElement.offsetWidth);
+      const height = Math.max(1, pageElement.scrollHeight, pageElement.offsetHeight);
+      const pixelBudget = 24_000_000;
+      const requestedScale = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1));
+      const scale = Math.max(1, Math.min(requestedScale, Math.sqrt(pixelBudget / (width * height))));
+      const canvas = await html2canvas(pageElement, {
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        foreignObjectRendering: true,
+        imageTimeout: 8000,
+        logging: false,
+        scale,
+        useCORS: true,
+        windowHeight: height,
+        windowWidth: width,
+      });
+      if (!canvas.width || !canvas.height) throw new Error('A rendered Word page was empty.');
+
+      const pageWidth = width * 0.75;
+      const pageHeight = height * 0.75;
+      const image = await pdf.embedPng(canvas.toDataURL('image/png'));
+      const page = pdf.addPage([pageWidth, pageHeight]);
+      page.drawImage(image, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+    }
+
+    onProgress?.(95, 'Finalizing visual PDF pages...');
+    const bytes = await pdf.save({ useObjectStreams: true });
+    return new Blob([bytes as BlobPart], { type: 'application/pdf' });
+  } finally {
+    host.remove();
+  }
 };

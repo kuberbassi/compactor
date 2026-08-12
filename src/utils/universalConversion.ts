@@ -97,7 +97,10 @@ export const convertUniversalFile = async (
 
   if (ext === 'docx' && target === 'pdf') {
     onProgress(30, 'Parsing Word content and building a PDF...');
-    return { blob: await docxToPdf(file), name: outputName(file, 'pdf') };
+    return {
+      blob: await docxToPdf(file, (percent, status) => onProgress(percent, status)),
+      name: outputName(file, 'pdf'),
+    };
   }
 
   if (ext === 'docx' && (target === 'txt' || target === 'html')) {
