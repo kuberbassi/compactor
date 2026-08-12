@@ -1,0 +1,35 @@
+name: Dependency health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Check for high-severity production vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build production app
+        run: npm run build

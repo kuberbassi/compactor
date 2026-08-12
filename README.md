@@ -108,6 +108,9 @@ src/
 
 ## 🚀 Quick Start & Development
 
+For short copy-paste update checks and GitHub dependency notifications, see
+[MAINTENANCE.md](MAINTENANCE.md).
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/kuberbassi/compactor.git
