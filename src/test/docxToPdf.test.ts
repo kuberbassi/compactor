@@ -26,6 +26,17 @@ describe('visual Word to PDF conversion', () => {
           scrollHeight: { value: 1123 },
           offsetHeight: { value: 1123 },
         });
+        page.getBoundingClientRect = () => ({
+          bottom: 1123, height: 1123, left: 0, right: 794, top: 0, width: 794, x: 0, y: 0,
+          toJSON: () => ({}),
+        });
+        const overflowContent = document.createElement('div');
+        overflowContent.textContent = 'Name, roll number, and class';
+        overflowContent.getBoundingClientRect = () => ({
+          bottom: 1300, height: 60, left: 100, right: 694, top: 1240, width: 594, x: 100, y: 1240,
+          toJSON: () => ({}),
+        });
+        page.appendChild(overflowContent);
         host.appendChild(page);
       }
       return {
@@ -62,6 +73,8 @@ describe('visual Word to PDF conversion', () => {
     const firstRenderedPage = vi.mocked(html2canvas).mock.calls[0][0] as HTMLElement;
     expect(firstRenderedPage.style.borderTopStyle).toBe('double');
     expect(firstRenderedPage.style.borderLeftColor).toBe('rgb(0, 0, 0)');
+    expect(vi.mocked(html2canvas).mock.calls[0][1]).toMatchObject({ height: 1304, windowHeight: 1304 });
+    expect(firstRenderedPage.style.overflow).toBe('');
     expect(pdf.getPageCount()).toBe(2);
     expect(document.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
   });

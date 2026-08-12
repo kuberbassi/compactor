@@ -2,7 +2,7 @@ import { Document, ImageRun, Packer, Paragraph, PageBreak, TextRun } from 'docx'
 import { renderAsync } from 'docx-preview';
 import html2canvas from 'html2canvas';
 import mammoth from 'mammoth/mammoth.browser';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import type { Worker as TesseractWorker } from 'tesseract.js';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -45,6 +45,19 @@ const applyDocxPageBorders = (pages: HTMLElement[], documentModel: any) => {
     });
     page.style.boxSizing = 'border-box';
   });
+};
+
+const getRenderedContentHeight = (page: HTMLElement, pageHeight: number) => {
+  const pageRect = page.getBoundingClientRect();
+  if (!pageRect.height) return pageHeight;
+
+  const lowestContentEdge = Array.from(page.querySelectorAll<HTMLElement>('*')).reduce((lowest, element) => {
+    const rect = element.getBoundingClientRect();
+    if (!rect.height || !rect.width) return lowest;
+    return Math.max(lowest, rect.bottom - pageRect.top);
+  }, pageHeight);
+
+  return Math.max(pageHeight, Math.ceil(lowestContentEdge) + 4);
 };
 
 const linesFromPdfItems = (items: PdfTextItem[]) => {
@@ -369,9 +382,12 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
       );
       const width = Math.max(1, pageElement.scrollWidth, pageElement.offsetWidth);
       const height = Math.max(1, pageElement.scrollHeight, pageElement.offsetHeight);
+      const captureHeight = getRenderedContentHeight(pageElement, height);
       const pixelBudget = 12_000_000;
       const requestedScale = Math.min(1.75, Math.max(1.25, window.devicePixelRatio || 1));
-      const scale = Math.max(1, Math.min(requestedScale, Math.sqrt(pixelBudget / (width * height))));
+      const scale = Math.max(1, Math.min(requestedScale, Math.sqrt(pixelBudget / (width * captureHeight))));
+      const previousOverflow = pageElement.style.overflow;
+      pageElement.style.overflow = 'visible';
       const canvas = await html2canvas(pageElement, {
         allowTaint: false,
         backgroundColor: '#ffffff',
@@ -380,9 +396,11 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
         logging: false,
         scale,
         useCORS: true,
-        windowHeight: height,
+        height: captureHeight,
+        windowHeight: captureHeight,
         windowWidth: width,
       });
+      pageElement.style.overflow = previousOverflow;
       if (!canvas.width || !canvas.height) throw new Error('A rendered Word page was empty.');
 
       const pageWidth = width * 0.75;
@@ -390,6 +408,18 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
       const image = await pdf.embedJpg(await canvasToJpeg(canvas));
       const page = pdf.addPage([pageWidth, pageHeight]);
       page.drawImage(image, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+      const computedStyle = window.getComputedStyle(pageElement);
+      if (['Top', 'Right', 'Bottom', 'Left'].some(side => parseFloat(computedStyle[`border${side}Width` as keyof CSSStyleDeclaration] as string) > 0)) {
+        const inset = 1.5;
+        page.drawRectangle({
+          borderColor: rgb(0, 0, 0),
+          borderWidth: 0.75,
+          height: pageHeight - (inset * 2),
+          width: pageWidth - (inset * 2),
+          x: inset,
+          y: inset,
+        });
+      }
       canvas.width = 1;
       canvas.height = 1;
     }
