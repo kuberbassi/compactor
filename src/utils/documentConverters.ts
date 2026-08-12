@@ -174,6 +174,13 @@ const canvasToPng = (canvas: HTMLCanvasElement) => new Promise<Uint8Array>((reso
   }, 'image/png');
 });
 
+const canvasToJpeg = (canvas: HTMLCanvasElement, quality = 0.92) => new Promise<Uint8Array>((resolve, reject) => {
+  canvas.toBlob(async blob => {
+    if (!blob) return reject(new Error('Could not render a Word page image.'));
+    resolve(new Uint8Array(await blob.arrayBuffer()));
+  }, 'image/jpeg', quality);
+});
+
 const pdfToLayoutDocx = async (file: File, onProgress?: ConversionProgress): Promise<Blob> => {
   await assertSignature(file, 'pdf');
   const pdfjsLib = await import('pdfjs-dist');
@@ -307,12 +314,12 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
   host.setAttribute('aria-hidden', 'true');
   Object.assign(host.style, {
     position: 'fixed',
-    left: '-100000px',
+    left: '0',
     top: '0',
     width: 'max-content',
     background: '#ffffff',
     pointerEvents: 'none',
-    zIndex: '-1',
+    zIndex: '2147483646',
   });
   document.body.appendChild(host);
 
@@ -362,13 +369,13 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
       );
       const width = Math.max(1, pageElement.scrollWidth, pageElement.offsetWidth);
       const height = Math.max(1, pageElement.scrollHeight, pageElement.offsetHeight);
-      const pixelBudget = 24_000_000;
-      const requestedScale = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1));
+      const pixelBudget = 12_000_000;
+      const requestedScale = Math.min(1.75, Math.max(1.25, window.devicePixelRatio || 1));
       const scale = Math.max(1, Math.min(requestedScale, Math.sqrt(pixelBudget / (width * height))));
       const canvas = await html2canvas(pageElement, {
         allowTaint: false,
         backgroundColor: '#ffffff',
-        foreignObjectRendering: true,
+        foreignObjectRendering: false,
         imageTimeout: 8000,
         logging: false,
         scale,
@@ -380,13 +387,15 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
 
       const pageWidth = width * 0.75;
       const pageHeight = height * 0.75;
-      const image = await pdf.embedPng(canvas.toDataURL('image/png'));
+      const image = await pdf.embedJpg(await canvasToJpeg(canvas));
       const page = pdf.addPage([pageWidth, pageHeight]);
       page.drawImage(image, { x: 0, y: 0, width: pageWidth, height: pageHeight });
+      canvas.width = 1;
+      canvas.height = 1;
     }
 
     onProgress?.(95, 'Finalizing visual PDF pages...');
-    const bytes = await pdf.save({ useObjectStreams: true });
+    const bytes = await pdf.save({ objectsPerTick: Number.POSITIVE_INFINITY, useObjectStreams: false });
     return new Blob([bytes as BlobPart], { type: 'application/pdf' });
   } finally {
     host.remove();

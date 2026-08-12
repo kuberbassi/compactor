@@ -12,7 +12,7 @@ vi.mock('html2canvas', () => ({
   default: vi.fn(),
 }));
 
-const onePixelPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XqYhAAAAAElFTkSuQmCC';
+const onePixelJpeg = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABBQJ//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAwEBPwF//8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAgBAgEBPwF//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAGPwJ//8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPyF//9oADAMBAAIAAwAAABD/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==';
 
 describe('visual Word to PDF conversion', () => {
   it('renders each DOCX page visually instead of rebuilding plain text', async () => {
@@ -46,7 +46,9 @@ describe('visual Word to PDF conversion', () => {
     vi.mocked(html2canvas).mockResolvedValue({
       width: 1588,
       height: 2246,
-      toDataURL: () => onePixelPng,
+      toBlob: (callback: BlobCallback) => callback(new Blob([
+        Uint8Array.from(atob(onePixelJpeg), character => character.charCodeAt(0)),
+      ], { type: 'image/jpeg' })),
     } as HTMLCanvasElement);
 
     const file = new File([new Uint8Array([0x50, 0x4b, 0x03, 0x04])], 'cover.docx', {
