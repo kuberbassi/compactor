@@ -16,6 +16,9 @@ const onePixelJpeg = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP////////////////////////
 
 describe('visual Word to PDF conversion', () => {
   it('renders each DOCX page visually instead of rebuilding plain text', async () => {
+    const appRoot = document.createElement('div');
+    appRoot.id = 'root';
+    document.body.appendChild(appRoot);
     vi.mocked(renderAsync).mockImplementation(async (_file, host) => {
       for (let index = 0; index < 2; index += 1) {
         const page = document.createElement('section');
@@ -70,8 +73,9 @@ describe('visual Word to PDF conversion', () => {
 
     expect(renderAsync).toHaveBeenCalledOnce();
     const renderHost = vi.mocked(renderAsync).mock.calls[0][1] as HTMLElement;
-    expect(renderHost.style.left).toBe('-100000px');
-    expect(renderHost.style.zIndex).toBe('-1');
+    expect(renderHost.style.left).toBe('0px');
+    expect(renderHost.style.opacity).toBe('0.001');
+    expect(renderHost.style.zIndex).toBe('2147483646');
     expect(html2canvas).toHaveBeenCalledTimes(2);
     const firstRenderedPage = vi.mocked(html2canvas).mock.calls[0][0] as HTMLElement;
     expect(firstRenderedPage.style.borderTopStyle).toBe('double');
@@ -80,5 +84,8 @@ describe('visual Word to PDF conversion', () => {
     expect(firstRenderedPage.style.overflow).toBe('');
     expect(pdf.getPageCount()).toBe(2);
     expect(document.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
+    expect(appRoot.style.position).toBe('');
+    expect(appRoot.style.zIndex).toBe('');
+    appRoot.remove();
   });
 });

@@ -327,13 +327,15 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
   host.setAttribute('aria-hidden', 'true');
   Object.assign(host.style, {
     position: 'fixed',
-    left: '-100000px',
+    left: '0',
     top: '0',
     width: 'max-content',
     background: '#ffffff',
+    opacity: '0.001',
     pointerEvents: 'none',
-    zIndex: '-1',
+    zIndex: '2147483646',
   });
+  host.dataset.compactorDocxRenderHost = 'true';
   document.body.appendChild(host);
 
   try {
@@ -365,6 +367,8 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
         // A broken embedded image should not block the rest of the document.
       }
     }));
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise(resolve => setTimeout(resolve, 250));
 
     const pages = Array.from(host.querySelectorAll<HTMLElement>('section.docx'));
     if (pages.length === 0) throw new Error('The DOCX renderer did not produce any printable pages.');
@@ -394,6 +398,10 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
         foreignObjectRendering: false,
         imageTimeout: 8000,
         logging: false,
+        onclone: clonedDocument => {
+          const clonedHost = clonedDocument.querySelector<HTMLElement>('[data-compactor-docx-render-host="true"]');
+          if (clonedHost) clonedHost.style.opacity = '1';
+        },
         scale,
         useCORS: true,
         height: captureHeight,
@@ -402,7 +410,6 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
       });
       pageElement.style.overflow = previousOverflow;
       if (!canvas.width || !canvas.height) throw new Error('A rendered Word page was empty.');
-
       const pageWidth = width * 0.75;
       const pageHeight = height * 0.75;
       const image = await pdf.embedJpg(await canvasToJpeg(canvas));
