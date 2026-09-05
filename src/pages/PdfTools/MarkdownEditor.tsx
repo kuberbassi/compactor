@@ -3,10 +3,11 @@ import {
   Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3, Heading4,
   List, ListOrdered, CheckSquare, Quote, Terminal, Table as TableIcon,
   Link as LinkIcon, Image as ImageIcon, Minus, Eraser, FileText, Download,
-  Eye, Columns3, Edit3, Copy, Check, RefreshCw, FileCode
+  Eye, Columns3, Edit3, Copy, Check, RefreshCw
 } from 'lucide-react';
 import { renderedElementToPdf } from '../../utils/pdf';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { ErrorBanner } from '../../components/Common/ErrorBanner';
 
 interface MarkdownEditorProps {
   initialContent?: string;
@@ -160,6 +161,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const [viewMode, setViewMode] = useState<'split' | 'edit' | 'preview'>('split');
   const [copied, setCopied] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -247,7 +249,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       if (onExportSuccess) onExportSuccess();
     } catch (err) {
       console.error('Failed exporting MD to PDF:', err);
-      alert(err instanceof Error ? err.message : 'Could not export the Markdown preview.');
+      setErrorMessage(err instanceof Error ? err.message : 'Could not export the Markdown preview.');
     } finally {
       setIsExporting(false);
     }
@@ -377,17 +379,21 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   };
 
   return (
-    <div className="markdown-editor flex flex-col min-h-[calc(100vh-140px)] rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
-      {/* Top Header Controls */}
-      <div className="markdown-editor__header border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-6 py-3 flex items-center justify-between gap-4 flex-wrap sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <FileCode className="w-5 h-5 text-white stroke-[2.5]" />
-          <span className="text-sm font-extrabold text-[var(--text-primary)] tracking-tight">Markdown Workspace</span>
+    <div className="markdown-editor flex flex-col h-full flex-1 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
+      {errorMessage && (
+        <div className="p-3 bg-zinc-950/80 border-b border-zinc-800">
+          <ErrorBanner 
+            message={errorMessage} 
+            onDismiss={() => setErrorMessage(null)} 
+            onRetry={handleExportPdf} 
+          />
         </div>
+      )}
 
-        {/* Templates & View Switcher */}
+      {/* Top Header Controls */}
+      <div className="markdown-editor__header border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-30">
+        {/* Template selector */}
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Custom Dark Theme Popover Template Dropdown */}
           <div className="flex items-center gap-2 bg-[var(--surface-color)] px-3 py-1 rounded-xl border border-[var(--border-color)] text-xs">
             <span className="text-[var(--text-secondary)] font-semibold whitespace-nowrap">Template:</span>
             <Select
@@ -411,6 +417,10 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        {/* View Switcher & Action buttons */}
+        <div className="flex items-center gap-3 flex-wrap">
 
           <div className="h-6 w-px bg-[var(--border-color)]" />
 

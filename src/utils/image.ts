@@ -13,6 +13,7 @@ export interface ImageProcessOptions {
   flipV?: boolean;
   cropAspect?: string; // 'none', '1:1', '16:9', '4:3', '9:16'
   grayscale?: boolean;
+  scanEnhanceMode?: 'none' | 'smart-contrast' | 'crisp-bw' | 'deskew';
   cropLeftPct?: number;
   cropTopPct?: number;
   cropWidthPct?: number;
@@ -199,7 +200,9 @@ export const processImage = async (
     }
   }
 
-  let finalFormat = options.format || file.type || 'image/jpeg';
+  let finalFormat = options.format === 'preserve' || options.format === 'original'
+    ? file.type
+    : options.format || file.type || 'image/jpeg';
   if (!['image/jpeg', 'image/png', 'image/webp'].includes(finalFormat)) {
     finalFormat = 'image/jpeg';
   }
@@ -450,5 +453,95 @@ export const processImage = async (
     newSize: finalBlob.size,
     width: finalWidth,
     height: finalHeight
+  };
+};
+
+export interface WatermarkOptions {
+  text: string;
+  position: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'pattern';
+  opacity: number;
+  fontSize: number;
+  color: string;
+}
+
+/**
+ * Draws a text watermark onto an image and returns the result as a Blob.
+ */
+export const watermarkImage = async (
+  file: File,
+  options: WatermarkOptions
+): Promise<ImageProcessResult> => {
+  const img = await loadImage(file);
+  const canvas = document.createElement('canvas');
+  canvas.width = img.naturalWidth || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Could not get 2D canvas context');
+
+  ctx.drawImage(img, 0, 0);
+
+  const fontSize = Math.max(12, options.fontSize);
+  ctx.font = `bold ${fontSize}px sans-serif`;
+  ctx.globalAlpha = Math.max(0, Math.min(1, options.opacity));
+  ctx.fillStyle = options.color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const textW = ctx.measureText(options.text).width;
+  const padding = 24;
+  const w = canvas.width;
+  const h = canvas.height;
+
+  if (options.position === 'pattern') {
+    const angle = (-30 * Math.PI) / 180;
+    const stepX = Math.max(textW + 64, fontSize * 3.5);
+    const stepY = Math.max(fontSize * 3, 60);
+    const diag = Math.sqrt(w * w + h * h);
+
+    ctx.save();
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(angle);
+
+    for (let py = -diag; py < diag; py += stepY) {
+      const rowOffset = (Math.round(py / stepY) % 2) * (stepX / 2);
+      for (let px = -diag; px < diag; px += stepX) {
+        ctx.fillText(options.text, px + rowOffset, py);
+      }
+    }
+    ctx.restore();
+  } else {
+    let x: number;
+    let y: number;
+
+    switch (options.position) {
+      case 'top-left':    x = textW / 2 + padding; y = fontSize / 2 + padding; break;
+      case 'top-right':   x = w - textW / 2 - padding; y = fontSize / 2 + padding; break;
+      case 'bottom-left': x = textW / 2 + padding; y = h - fontSize / 2 - padding; break;
+      case 'bottom-right':x = w - textW / 2 - padding; y = h - fontSize / 2 - padding; break;
+      default:            x = w / 2; y = h / 2; // center
+    }
+
+    ctx.fillText(options.text, x, y);
+  }
+
+  ctx.globalAlpha = 1;
+
+  const mimeType = file.type || 'image/jpeg';
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), mimeType, 0.92);
+  });
+
+  const ext = mimeType.split('/')[1] || 'jpg';
+  const baseName = file.name.substring(0, file.name.lastIndexOf('.'));
+  const url = URL.createObjectURL(blob);
+
+  return {
+    blob,
+    url,
+    name: `${baseName}_watermarked.${ext}`,
+    originalSize: file.size,
+    newSize: blob.size,
+    width: canvas.width,
+    height: canvas.height,
   };
 };

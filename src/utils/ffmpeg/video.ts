@@ -26,6 +26,11 @@ export interface VideoCompressResult {
   newSize: number;
 }
 
+export const buildGifPaletteFilter = (inputLabel: string, frameRate: number, scaleFilter: string): string =>
+  `${inputLabel}fps=${frameRate},${scaleFilter}:flags=lanczos,split[gif_frames][gif_palette_source];` +
+  '[gif_palette_source]palettegen[gif_palette];' +
+  '[gif_frames][gif_palette]paletteuse[gif_output]';
+
 const mergeIntervals = (intervals: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
   if (intervals.length <= 1) return intervals;
   
@@ -81,6 +86,7 @@ export const compressVideo = async (
   const outputName = `output_video.${ext}`;
 
   // Write file to memory
+  await ffmpeg.deleteFile(outputName).catch(() => undefined);
   await ffmpeg.writeFile(inputName, await fetchFile(file));
 
   // Determine Duration
@@ -125,18 +131,24 @@ export const compressVideo = async (
   const originalVideoBitrateKbps = Math.max(100, Math.round((totalBitrateBps - audioBps) / 1000));
 
   // Build command arguments
-  const args: string[] = [];
+  const args: string[] = ['-fflags', '+genpts'];
 
-  // If there is exactly one segment, optimize using simple accurate seek
+  // If there is exactly one segment, optimize using accurate seek and zero-aligned PTS
   if (activeIntervals.length === 1) {
     const { start, end } = activeIntervals[0];
-    args.push('-i', inputName, '-ss', start.toString(), '-to', end.toString());
+    args.push(
+      '-i', inputName,
+      '-ss', start.toString(),
+      '-t', Math.max(0.001, end - start).toString(),
+      '-avoid_negative_ts', 'make_zero'
+    );
   } else {
     // Multi-segment concat using filter_complex
     args.push('-i', inputName);
   }
 
   if (options.format === 'gif') {
+    const gifFrameRate = Math.min(30, Math.max(5, options.frameRate || 15));
     if (activeIntervals.length > 1) {
       // Build complex filter for multi-cut stitching + high quality GIF rendering
       const filterComplexParts: string[] = [];
@@ -149,25 +161,31 @@ export const compressVideo = async (
       
       const scaleArg = options.scale !== 'no-scale' ? `scale=${options.scale.split(':')[0]}:-1` : 'scale=480:-1';
       filterComplexParts.push(`${concatInputs.join('')}concat=n=${activeIntervals.length}:v=1:a=0[stitchedv]`);
-      filterComplexParts.push(`[stitchedv]fps=15,${scaleArg}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`);
+      filterComplexParts.push(buildGifPaletteFilter('[stitchedv]', gifFrameRate, scaleArg));
       
-      args.push('-filter_complex', filterComplexParts.join('; '), '-loop', '0');
+      args.push('-filter_complex', filterComplexParts.join('; '), '-map', '[gif_output]', '-loop', '0', '-f', 'gif');
     } else {
       // Single segment GIF
       const scaleArg = options.scale !== 'no-scale' ? `scale=${options.scale.split(':')[0]}:-1` : 'scale=480:-1';
-      args.push('-vf', `fps=15,${scaleArg}:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`, '-loop', '0');
+      args.push(
+        '-filter_complex',
+        buildGifPaletteFilter('[0:v]', gifFrameRate, scaleArg),
+        '-map', '[gif_output]',
+        '-loop', '0',
+        '-f', 'gif'
+      );
     }
   } else if (['mp3', 'aac', 'wav', 'm4a', 'flac', 'ogg'].includes(options.format)) {
     // Audio extraction mode (Video to Audio)
     args.push('-vn'); // Disable video stream
     if (options.format === 'mp3') {
-      args.push('-acodec', 'libmp3lame', '-b:a', options.audioBitrate || '192k');
+      args.push('-acodec', 'libmp3lame', '-b:a', options.audioBitrate || '192k', '-ar', '44100', '-af', 'aresample=async=1:first_pts=0');
     } else if (options.format === 'aac' || options.format === 'm4a') {
-      args.push('-acodec', 'aac', '-b:a', options.audioBitrate || '192k');
+      args.push('-acodec', 'aac', '-b:a', options.audioBitrate || '192k', '-ar', '44100', '-af', 'aresample=async=1:first_pts=0');
     } else if (options.format === 'wav') {
-      args.push('-acodec', 'pcm_s16le');
+      args.push('-acodec', 'pcm_s16le', '-ar', '44100');
     } else {
-      args.push('-b:a', options.audioBitrate || '192k');
+      args.push('-b:a', options.audioBitrate || '192k', '-ar', '44100');
     }
   } else {
     // Video standard encoding configurations
@@ -237,18 +255,16 @@ export const compressVideo = async (
         '-vcodec', 'libvpx-vp9',
         '-crf', options.crf.toString(),
         '-b:v', `${targetBitrateKbps}k`,
-        '-maxrate', `${targetBitrateKbps}k`,
-        '-bufsize', `${targetBitrateKbps * 2}k`
+        '-pix_fmt', 'yuv420p'
       );
     } else {
-      // Standard H.264 MP4 / MOV / MKV / AVI
+      // Standard universally compatible H.264 MP4 / MOV / MKV / AVI
       args.push(
         '-vcodec', 'libx264',
         '-crf', options.crf.toString(),
-        '-maxrate', `${targetBitrateKbps}k`,
-        '-bufsize', `${targetBitrateKbps * 2}k`,
-        '-preset', options.preset || 'fast',
-        '-pix_fmt', 'yuv420p'
+        '-preset', options.preset || 'veryfast',
+        '-pix_fmt', 'yuv420p',
+        '-profile:v', 'high'
       );
       if (options.format === 'mp4') {
         args.push('-movflags', '+faststart');
@@ -258,7 +274,11 @@ export const compressVideo = async (
     if (options.removeAudio) {
       args.push('-an');
     } else {
-      args.push('-acodec', 'aac', '-b:a', options.audioBitrate || '96k');
+      args.push(
+        '-acodec', 'aac',
+        '-b:a', options.audioBitrate || '128k',
+        '-af', 'aresample=async=1:first_pts=0'
+      );
     }
   }
 
@@ -266,9 +286,15 @@ export const compressVideo = async (
   args.push(outputName);
   
   onLog(`Executing FFmpeg: ffmpeg ${args.join(' ')}`);
-  await ffmpeg.exec(args);
+  const exitCode = await ffmpeg.exec(args);
+  if (exitCode !== 0) {
+    throw new Error(`FFmpeg export failed with exit code ${exitCode}. No output file was created.`);
+  }
 
   let data = await ffmpeg.readFile(outputName);
+  if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+    throw new Error('FFmpeg finished without producing a valid output file. Please retry with a shorter clip or smaller output size.');
+  }
   const isAudio = ['mp3', 'aac', 'wav', 'm4a', 'flac', 'ogg'].includes(options.format);
   const mimeType = options.format === 'gif' 
     ? 'image/gif' 
@@ -401,15 +427,34 @@ export const remuxVideoBlob = async (
   
   await ffmpeg.writeFile(inputName, await fetchFile(webmBlob));
   
-  // Build arguments: remux video stream (copy), and convert audio stream to aac (standard compatibility)
+  // Build arguments: encode to universally supported H.264 with AAC audio and zero timestamp alignment
   const args = ['-i', inputName];
   
   if (targetFormat === 'mp4') {
-    // Copy video and transcode audio to aac for max compatibility (Opus is unsupported in standard MP4 containers by some players)
-    args.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k');
+    args.push(
+      '-vcodec', 'libx264',
+      '-crf', '22',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      '-profile:v', 'high',
+      '-level:v', '4.1',
+      '-movflags', '+faststart',
+      '-acodec', 'aac',
+      '-b:a', '128k',
+      '-ar', '44100',
+      '-ac', '2',
+      '-af', 'aresample=async=1:first_pts=0',
+      '-avoid_negative_ts', 'make_zero'
+    );
   } else {
-    // Standard copy for other formats (like mkv, mov, avi)
-    args.push('-c', 'copy');
+    // Standard encoding for other target formats (like mkv, mov, avi)
+    args.push(
+      '-vcodec', 'libx264',
+      '-crf', '22',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      '-avoid_negative_ts', 'make_zero'
+    );
   }
   
   args.push(outputName);
@@ -463,9 +508,9 @@ export const transcodeFormatLossless = async (
     // Copy video and transcode audio to aac (since standard mp4 doesn't support Opus/vorbis audio tracks natively)
     copyArgs.push('-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k');
   } else if (targetFormat === 'mp3') {
-    copyArgs.push('-vn', '-c:a', 'libmp3lame', '-q:a', '0'); // highest quality VBR mp3
+    copyArgs.push('-vn', '-c:a', 'libmp3lame', '-q:a', '0', '-ar', '44100'); // highest quality VBR mp3 at standard 44.1kHz
   } else if (targetFormat === 'wav') {
-    copyArgs.push('-vn', '-c:a', 'pcm_s16le'); // lossless WAV PCM
+    copyArgs.push('-vn', '-c:a', 'pcm_s16le', '-ar', '44100'); // lossless WAV PCM
   } else {
     copyArgs.push('-c', 'copy');
   }
@@ -484,14 +529,22 @@ export const transcodeFormatLossless = async (
     const fallbackArgs = ['-i', inputName];
     if (['mp4', 'mov', 'mkv', 'avi'].includes(targetFormat)) {
       fallbackArgs.push('-c:v', 'libx264', '-crf', '18', '-preset', 'fast', '-c:a', 'aac', '-b:a', '192k');
+    } else if (['mpeg', 'mpg', 'vob', 'ts', 'm2ts'].includes(targetFormat)) {
+      fallbackArgs.push('-c:v', 'mpeg2video', '-q:v', '2', '-c:a', 'mp2', '-b:a', '192k');
+    } else if (targetFormat === 'gif') {
+      fallbackArgs.push('-vf', 'fps=15,scale=480:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse');
     } else if (targetFormat === 'webm') {
       fallbackArgs.push('-c:v', 'libvpx-vp9', '-crf', '20', '-b:v', '0', '-c:a', 'libopus');
     } else if (targetFormat === 'mp3') {
-      fallbackArgs.push('-vn', '-c:a', 'libmp3lame', '-q:a', '0');
+      fallbackArgs.push('-vn', '-c:a', 'libmp3lame', '-q:a', '0', '-ar', '44100', '-af', 'aresample=async=1:first_pts=0');
     } else if (targetFormat === 'wav') {
-      fallbackArgs.push('-vn', '-c:a', 'pcm_s16le');
+      fallbackArgs.push('-vn', '-c:a', 'pcm_s16le', '-ar', '44100');
     } else if (targetFormat === 'aac') {
-      fallbackArgs.push('-vn', '-c:a', 'aac', '-b:a', '256k');
+      fallbackArgs.push('-vn', '-c:a', 'aac', '-b:a', '256k', '-ar', '44100');
+    } else if (targetFormat === 'flac') {
+      fallbackArgs.push('-vn', '-c:a', 'flac');
+    } else if (targetFormat === 'ogg' || targetFormat === 'opus') {
+      fallbackArgs.push('-vn', '-c:a', 'libopus', '-b:a', '160k');
     } else {
       // standard fallback
       fallbackArgs.push('-c', 'copy');
@@ -506,9 +559,10 @@ export const transcodeFormatLossless = async (
   await ffmpeg.deleteFile(outputName);
 
   let mimeType = `video/${targetFormat}`;
-  if (['mp3', 'wav', 'aac', 'ogg'].includes(targetFormat)) mimeType = `audio/${targetFormat}`;
-  if (targetFormat === 'mov') mimeType = 'video/quicktime';
-  if (targetFormat === 'mkv') mimeType = 'video/x-matroska';
+  if (targetFormat === 'mp3') mimeType = 'audio/mpeg';
+  else if (['wav', 'aac', 'ogg', 'flac', 'opus', 'm4a'].includes(targetFormat)) mimeType = `audio/${targetFormat}`;
+  else if (targetFormat === 'mov') mimeType = 'video/quicktime';
+  else if (targetFormat === 'mkv') mimeType = 'video/x-matroska';
 
   const blob = new Blob([data as any], { type: mimeType });
   const url = URL.createObjectURL(blob);

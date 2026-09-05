@@ -92,3 +92,48 @@ export const isEditableShortcutTarget = (target: EventTarget | null): boolean =>
   const element = target as HTMLElement | null;
   return Boolean(element?.closest('input, textarea, select, [contenteditable="true"]'));
 };
+
+/**
+ * Packs all provided results into a ZIP file and triggers a download.
+ * Uses fflate for zero-dependency, tree-shakeable compression.
+ */
+export const downloadAsZip = async (
+  results: DownloadableResult[],
+  zipName: string = 'compactor-results.zip'
+): Promise<void> => {
+  const { zip } = await import('fflate');
+  const names = makeUniqueNames(results.map(r => r.name));
+
+  // Gather all ArrayBuffers concurrently
+  const buffers = await Promise.all(
+    results.map(async (r, i) => {
+      if (r.blob) return { name: names[i], buf: new Uint8Array(await r.blob.arrayBuffer()) };
+      // Fallback: fetch from object URL
+      const resp = await fetch(r.url);
+      const ab = await resp.arrayBuffer();
+      return { name: names[i], buf: new Uint8Array(ab) };
+    })
+  );
+
+  const files: Record<string, Uint8Array> = {};
+  for (const { name, buf } of buffers) {
+    files[name] = buf;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    zip(files, { level: 0 }, (err, data) => {
+      if (err) { reject(err); return; }
+      const blob = new Blob([data], { type: 'application/zip' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = zipName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      resolve();
+    });
+  });
+};

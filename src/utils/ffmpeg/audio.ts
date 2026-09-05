@@ -10,6 +10,13 @@ export interface AudioCompressOptions {
   compileMode?: 'keep-selected' | 'cut-selected';
   duration?: number;  // Optional preloaded duration to skip metadata dry-run
   removeMetadata?: boolean;
+  normalizeAudio?: boolean;
+  fadeInDuration?: number;  // Fade-in duration in seconds
+  fadeOutDuration?: number; // Fade-out duration in seconds
+  channels?: 'original' | 'mono' | 'stereo';
+  removeSilence?: boolean;
+  noiseReduction?: boolean;
+  bassBoost?: boolean;
 }
 
 export interface MetadataTags {
@@ -20,6 +27,29 @@ export interface MetadataTags {
   genre?: string;
   comment?: string;
 }
+
+export const parseMediaTagsFromFFmpegLog = (log: string): MetadataTags => {
+  const inputSection = log.match(/Input #0[\s\S]*?(?=Duration:|Stream #0:)/i)?.[0] || log;
+  const metadataSection = inputSection.match(/Metadata:\s*([\s\S]*)/i)?.[1] || '';
+
+  const parseTag = (keys: string[]): string | undefined => {
+    for (const key of keys) {
+      const match = metadataSection.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, 'im'));
+      if (match) return match[1].trim();
+    }
+    return undefined;
+  };
+
+  const year = parseTag(['date', 'year', 'creation_time']);
+  return {
+    title: parseTag(['title']),
+    artist: parseTag(['artist', 'author', 'composer']),
+    album: parseTag(['album']),
+    year: year?.includes('T') ? year.split('T')[0] : year,
+    genre: parseTag(['genre']),
+    comment: parseTag(['comment', 'description']),
+  };
+};
 
 /**
  * Compress, trim or convert an audio file using FFmpeg WASM
@@ -72,6 +102,33 @@ export const compressAudio = async (
     throw new Error("No portions selected to keep. Adjust your trim settings.");
   }
 
+  const effectiveDuration = activeIntervals.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
+  const audioFilters: string[] = [];
+  if (options.normalizeAudio) {
+    audioFilters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+  }
+  if (options.fadeInDuration && options.fadeInDuration > 0) {
+    audioFilters.push(`afade=t=in:ss=0:d=${options.fadeInDuration}`);
+  }
+  if (options.fadeOutDuration && options.fadeOutDuration > 0 && effectiveDuration > options.fadeOutDuration) {
+    const fadeStart = Math.max(0, effectiveDuration - options.fadeOutDuration);
+    audioFilters.push(`afade=t=out:st=${fadeStart.toFixed(2)}:d=${options.fadeOutDuration}`);
+  }
+  if (options.removeSilence) {
+    audioFilters.push('silenceremove=stop_periods=-1:stop_duration=0.8:stop_threshold=-40dB');
+  }
+  if (options.noiseReduction) {
+    audioFilters.push('highpass=f=75,lowpass=f=12000');
+  }
+  if (options.bassBoost) {
+    audioFilters.push('bass=g=5:f=110:w=0.6');
+  }
+  if (options.channels === 'mono') {
+    audioFilters.push('aformat=channel_layouts=mono');
+  } else if (options.channels === 'stereo') {
+    audioFilters.push('aformat=channel_layouts=stereo');
+  }
+
   const args: string[] = [];
 
   if (activeIntervals.length === 1) {
@@ -79,7 +136,10 @@ export const compressAudio = async (
     const isTrimmed = start > 0.05 || (duration > 0 && Math.abs(end - duration) > 0.1);
     args.push('-i', inputName, '-vn');
     if (isTrimmed) {
-      args.push('-ss', start.toString(), '-to', end.toString());
+      args.push('-ss', start.toString(), '-to', end.toString(), '-avoid_negative_ts', 'make_zero');
+    }
+    if (audioFilters.length > 0) {
+      args.push('-af', audioFilters.join(','));
     }
   } else {
     args.push('-i', inputName, '-vn');
@@ -93,28 +153,38 @@ export const compressAudio = async (
       concatInputs.push(`[a${idx}]`);
     });
 
-    const concatFilter = `${concatInputs.join('')}concat=n=${activeIntervals.length}:v=0:a=1[outa]`;
-    filterComplexParts.push(concatFilter);
+    if (audioFilters.length > 0) {
+      const chained = `${concatInputs.join('')}concat=n=${activeIntervals.length}:v=0:a=1[c_out];[c_out]${audioFilters.join(',')}[outa]`;
+      filterComplexParts.push(chained);
+    } else {
+      const concatFilter = `${concatInputs.join('')}concat=n=${activeIntervals.length}:v=0:a=1[outa]`;
+      filterComplexParts.push(concatFilter);
+    }
 
     args.push('-filter_complex', filterComplexParts.join('; '), '-map', '[outa]');
   }
 
   // Set encoder based on format
   if (options.format === 'mp3') {
-    args.push('-acodec', 'libmp3lame');
+    args.push('-acodec', 'libmp3lame', '-ar', '44100');
   } else if (options.format === 'ogg') {
-    args.push('-acodec', 'libvorbis');
+    args.push('-acodec', 'libvorbis', '-ar', '44100');
   } else if (options.format === 'm4a') {
-    args.push('-acodec', 'aac');
+    args.push('-acodec', 'aac', '-ar', '44100');
   } else if (options.format === 'flac') {
     args.push('-acodec', 'flac');
   } else {
     // wav - uncompressed pcm
-    args.push('-acodec', 'pcm_s16le');
+    args.push('-acodec', 'pcm_s16le', '-ar', '44100');
   }
 
   if (options.format !== 'wav' && options.format !== 'flac') {
     args.push('-ab', options.bitrate);
+  }
+  if (options.channels === 'mono') {
+    args.push('-ac', '1');
+  } else if (options.channels === 'stereo') {
+    args.push('-ac', '2');
   }
   if (options.removeMetadata) args.push('-map_metadata', '-1');
 
@@ -176,24 +246,7 @@ export const readMediaMetadata = async (
   }
   ffmpeg.off('log', logListener);
   
-  const tags: MetadataTags = {};
-  
-  const parseTag = (key: string): string | undefined => {
-    const regex = new RegExp(`\\b${key}\\s*:\\s*(.+)`, 'i');
-    const match = regex.exec(accumulatedLogs);
-    return match ? match[1].trim() : undefined;
-  };
-  
-  tags.title = parseTag('title');
-  tags.artist = parseTag('artist') || parseTag('author') || parseTag('composer');
-  tags.album = parseTag('album');
-  tags.year = parseTag('date') || parseTag('year') || parseTag('creation_time');
-  tags.genre = parseTag('genre');
-  tags.comment = parseTag('comment') || parseTag('description');
-  
-  if (tags.year && tags.year.includes('T')) {
-    tags.year = tags.year.split('T')[0];
-  }
+  const tags = parseMediaTagsFromFFmpegLog(accumulatedLogs);
 
   let coverUrl: string | null = null;
   let coverBlob: Blob | null = null;
@@ -247,13 +300,16 @@ export const writeMediaMetadata = async (
     args.push('-i', coverName);
     args.push('-map', '0:a', '-map', '1:0', '-c', 'copy', '-disposition:v:0', 'attached_pic');
     if (inputExt === 'mp3') {
-      args.push('-id3v2_version', '3', '-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
+      args.push('-metadata:s:v', 'title=Album cover', '-metadata:s:v', 'comment=Cover (front)');
     }
   } else if (newCoverBlob === null && isAudio) {
     args.push('-map', '0:a', '-c', 'copy');
   } else {
     args.push('-map', '0', '-c', 'copy');
   }
+
+  // The editor form is authoritative. Do not retain stale or duplicate source tags.
+  args.push('-map_metadata', '-1');
   
   const addMeta = (field: string, val?: string) => {
     if (val !== undefined) {
@@ -267,6 +323,10 @@ export const writeMediaMetadata = async (
   addMeta('date', tags.year);
   addMeta('genre', tags.genre);
   addMeta('comment', tags.comment);
+
+  if (inputExt === 'mp3') {
+    args.push('-id3v2_version', '3', '-write_id3v1', '1');
+  }
   
   args.push('-y', outputName);
   

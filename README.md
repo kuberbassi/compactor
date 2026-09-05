@@ -109,7 +109,7 @@ src/
 ## 🚀 Quick Start & Development
 
 For short copy-paste update checks and GitHub dependency notifications, see
-[MAINTENANCE.md](MAINTENANCE.md).
+[docs/maintenance.md](docs/maintenance.md).
 
 ```bash
 # 1. Clone repository

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { BrandMark } from '../Common/BrandMark';
+import { pathForTool } from '../../config/toolRoutes';
 import { 
   ChevronDown, 
   Video, 
@@ -12,17 +13,14 @@ import {
   Tag, 
   Zap,
   VolumeX,
-  FileCode,
   Lock,
-  Stamp,
-  Crop,
   Layers,
   Scissors,
-  Key,
   FilePlus,
   Sliders,
   Disc,
   ShieldOff,
+  Search,
   Menu,
   X
 } from 'lucide-react';
@@ -32,6 +30,7 @@ export interface SimpleNavProps {
   onLinkClick?: (href: string) => void;
   forceBg?: boolean;
   activeToolId?: string | null;
+  onOpenSearch?: () => void;
 }
 
 interface NavGroup {
@@ -57,26 +56,17 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'pdf',
-    defaultHref: 'pdf-organize',
+    defaultHref: 'pdf-edit',
     items: [
       { label: 'Edit PDF', href: 'pdf-edit', icon: FileText },
-      { label: 'Page Organizer', href: 'pdf-organize', icon: Layers },
+      { label: 'Compress PDF', href: 'pdf-compress', icon: Sliders },
       { label: 'Merge PDF', href: 'pdf-merge', icon: FilePlus },
       { label: 'Split PDF', href: 'pdf-split', icon: Scissors },
-      { label: 'Crop Margins', href: 'pdf-crop-tool', icon: Crop },
-      { label: 'Compress PDF', href: 'pdf-compress', icon: Sliders },
-      { label: 'Document Stamps', href: 'pdf-stamps', icon: Stamp },
       { label: 'Redact & Annotate', href: 'pdf-redact', icon: ShieldOff },
-      { label: 'Flatten Forms', href: 'pdf-flatten', icon: Lock },
-      { label: 'Sign Document', href: 'pdf-sign', icon: Stamp },
-      { label: 'Add Watermark', href: 'pdf-watermark', icon: FileText },
+      { label: 'Flatten PDF', href: 'pdf-flatten', icon: Lock },
+      { label: 'OCR & Searchable PDF', href: 'pdf-ocr', icon: FileText },
       { label: 'Protect Password', href: 'pdf-protect', icon: Lock },
-      { label: 'Unlock PDF', href: 'pdf-unlock', icon: Key },
-      { label: 'Page Numbers', href: 'pdf-page-numbers', icon: FileCode },
-      { label: 'PDF to Images', href: 'pdf-to-image', icon: ImageIcon },
-      { label: 'Images to PDF', href: 'pdf-jpg-to-pdf', icon: ImageIcon },
-      { label: 'Markdown Workspace', href: 'pdf-word-to-pdf', icon: FileCode },
-      { label: 'PDF to Markdown', href: 'pdf-to-word', icon: FileText }
+      { label: 'Organize Pages', href: 'pdf-organize', icon: Layers },
     ]
   },
   {
@@ -101,13 +91,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'convert',
     defaultHref: 'universal-converter',
     items: [
-      { label: 'Universal Converter', href: 'universal-converter', icon: RefreshCw }
-    ]
-  },
-  {
-    label: 'metadata',
-    defaultHref: 'metadata-editor',
-    items: [
+      { label: 'Universal Converter', href: 'universal-converter', icon: RefreshCw },
       { label: 'Edit Metadata', href: 'metadata-editor', icon: Tag }
     ]
   }
@@ -116,13 +100,11 @@ const NAV_GROUPS: NavGroup[] = [
 const Logo: React.FC<{ onClick?: () => void }> = ({ onClick }) => (
   <button
     onClick={onClick}
-    className="flex items-center gap-2 group focus:outline-none cursor-pointer shrink-0"
+    className="nav-brand group"
     aria-label="Compactor home"
   >
     <BrandMark className="brand-mark" />
-    <span className="text-sm font-black tracking-tight text-white group-hover:text-zinc-300 transition-colors">
-      compactor
-    </span>
+    <span><strong>compactor</strong><small>FILE WORKSPACE</small></span>
   </button>
 );
 
@@ -130,6 +112,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
   onBrandClick,
   onLinkClick,
   activeToolId,
+  onOpenSearch,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuState, setMenuState] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed');
@@ -245,15 +228,15 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
       <div
         id="simple-nav"
         ref={navRef}
-        className="fixed top-4 left-1/2 -translate-x-1/2 z-[999] w-[94%] max-w-4xl h-12 rounded-full border border-zinc-800 bg-zinc-900/95 backdrop-blur-xl flex items-center justify-between px-4 sm:px-5 transition-all duration-300 shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+        className="app-nav"
         onMouseLeave={() => setActiveDesktopGroup(null)}
       >
         <Logo onClick={onBrandClick} />
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-0.5" aria-label="Tools navigation">
+        <nav className="nav-desktop hidden md:flex" aria-label="Primary tools navigation">
           {NAV_GROUPS.map((group) => {
-            const isActive = (activeToolId && NAV_GROUPS.find(g => g.label === group.label)?.items.some(i => i.href === activeToolId)) || activeDesktopGroup === group.label;
+            const isActive = Boolean(activeToolId && group.items.some(item => item.href === activeToolId));
             const hasMultipleItems = group.items.length > 1;
             const isOpen = activeDesktopGroup === group.label;
 
@@ -261,18 +244,14 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
               <div
                 key={group.label}
                 className="relative"
-                onMouseEnter={() => hasMultipleItems && setActiveDesktopGroup(group.label)}
+                onMouseEnter={() => setActiveDesktopGroup(null)}
               >
                 <button
                   onClick={() => {
-                    if (hasMultipleItems) {
-                      setActiveDesktopGroup(prev => prev === group.label ? null : group.label);
-                    } else {
-                      onLinkClick?.(group.defaultHref);
-                      setActiveDesktopGroup(null);
-                    }
+                    onLinkClick?.(group.defaultHref);
+                    setActiveDesktopGroup(null);
                   }}
-                  className={`px-3 py-1.5 rounded-full text-[11px] font-bold lowercase tracking-wider transition-all duration-150 flex items-center gap-1 cursor-pointer ${
+                  className={`nav-desktop__trigger ${
                     isActive
                       ? 'text-white bg-zinc-800 border border-zinc-700 shadow-sm'
                       : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50'
@@ -288,18 +267,20 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
 
                 {/* Desktop Dropdown â€” site charcoal colors */}
                 {hasMultipleItems && isOpen && (
-                  <div data-nav-group-items={group.label} className="absolute top-[calc(100%+6px)] left-1/2 -translate-x-1/2 min-w-[11rem] p-1.5 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] shadow-[0_16px_40px_rgba(0,0,0,0.25)] space-y-0.5 z-[1000] animate-in fade-in zoom-in-95 duration-150">
+                  <div data-nav-group-items={group.label} className="nav-dropdown">
                     {group.items.map((item) => {
                       const ItemIcon = item.icon;
                       const isItemActive = activeToolId === item.href;
                       return (
-                        <button
+                        <a
                           key={item.href}
-                          onClick={() => {
+                          href={pathForTool(item.href)}
+                          onClick={(event) => {
+                            event.preventDefault();
                             onLinkClick?.(item.href);
                             setActiveDesktopGroup(null);
                           }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all duration-100 flex items-center gap-2 cursor-pointer ${
+                          className={`nav-dropdown__item ${
                             isItemActive
                               ? 'bg-[var(--surface-hover)] text-[var(--text-primary)] font-bold border border-[var(--border-color)]'
                               : 'text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)]'
@@ -307,7 +288,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
                         >
                           <ItemIcon className="w-3.5 h-3.5 shrink-0 opacity-60" />
                           <span className="truncate">{item.label}</span>
-                        </button>
+                        </a>
                       );
                     })}
                   </div>
@@ -318,16 +299,21 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
         </nav>
 
         {/* Right Privacy Badge */}
-        <div className="hidden md:flex items-center gap-2">
-          <div className="px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-[10px] font-mono font-bold text-zinc-300 flex items-center gap-1.5 shadow-sm">
-            <span className="dot-glow-white shrink-0" />
-            <span>100% Client-Side</span>
+        <div className="nav-actions hidden md:flex">
+          <button type="button" onClick={onOpenSearch} className="app-nav__search" aria-label="Search all tools">
+            <Search aria-hidden="true" />
+            <span>Find a tool</span>
+            <kbd>Ctrl K</kbd>
+          </button>
+          <div className="nav-private">
+            <Lock className="w-3.5 h-3.5" />
+            <span>Private</span>
           </div>
         </div>
 
         {/* Mobile Hamburger â€” perfectly centered */}
         <button
-          className="md:hidden w-8 h-8 rounded-lg hover:bg-zinc-800/70 flex items-center justify-center text-zinc-200 transition-colors cursor-pointer shrink-0"
+          className="nav-mobile-toggle md:hidden"
           onClick={() => menuOpen ? closeMenu() : openMenu()}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
         >
@@ -358,10 +344,10 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
               : 'translateY(-10px) scale(0.96)',
             transition: 'opacity 220ms cubic-bezier(0.16,1,0.3,1), transform 220ms cubic-bezier(0.16,1,0.3,1)',
           }}
-          className="max-h-[78vh] overflow-y-auto overscroll-contain rounded-3xl border border-zinc-800 bg-zinc-900/95 backdrop-blur-xl shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+          className="nav-mobile-sheet max-h-[78vh] overflow-y-auto overscroll-contain"
         >
           {/* Header â€” sticky, same glass as pill */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 sticky top-0 bg-zinc-900/95 backdrop-blur-xl rounded-t-3xl">
+          <div className="nav-mobile-sheet__header">
             <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
               All Tools
             </span>
@@ -370,6 +356,8 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
               <span>100% Private</span>
             </div>
           </div>
+
+          <button type="button" className="nav-mobile-sheet__search" onClick={() => { closeMenu(); onOpenSearch?.(); }}><Search /><span>Search every tool</span><kbd>Ctrl K</kbd></button>
 
           {/* Accordion Groups */}
           <div className="p-2 flex flex-col gap-1 pb-3">
@@ -409,9 +397,11 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
                           const ItemIcon = item.icon;
                           const isItemActive = activeToolId === item.href;
                           return (
-                            <button
+                            <a
                               key={item.href}
-                              onClick={() => {
+                              href={pathForTool(item.href)}
+                              onClick={(event) => {
+                                event.preventDefault();
                                 onLinkClick?.(item.href);
                                 closeMenu();
                               }}
@@ -423,7 +413,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
                             >
                               <ItemIcon className="w-4 h-4 shrink-0 text-zinc-500" />
                               <span className="truncate">{item.label}</span>
-                            </button>
+                            </a>
                           );
                         })}
                       </div>

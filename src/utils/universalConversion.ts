@@ -19,6 +19,11 @@ import {
   pdfToText,
   textToDocx,
 } from './documentConverters';
+import {
+  xlsxToHtml,
+  xlsxToPdf,
+  pptxToPdf,
+} from './officeConverters';
 import type { PdfDocxMode } from './documentConverters';
 
 export interface UniversalConversionResult {
@@ -129,7 +134,7 @@ export const convertUniversalFile = async (
     return { blob: await textToPdf(await file.text(), file.name), name: outputName(file, 'pdf') };
   }
 
-  if (target === 'wav' && ['mp3', 'aac', 'm4a', 'flac', 'ogg', 'opus', 'weba', 'wav'].includes(ext)) {
+  if (target === 'wav' && ['mp3', 'aac', 'm4a', 'flac', 'ogg', 'opus', 'weba', 'wav', 'aiff', 'aif'].includes(ext)) {
     onProgress(40, 'Decoding audio samples into WAV...');
     return { blob: await audioFileToWav(file), name: outputName(file, 'wav') };
   }
@@ -151,8 +156,32 @@ export const convertUniversalFile = async (
     return { blob: new Blob([html], { type: 'text/html' }), name: outputName(file, 'html') };
   }
 
-  if (['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a', 'gif'].includes(target)
-    && ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'mp3', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'weba', 'flac'].includes(ext)) {
+  if (['xlsx', 'xls'].includes(ext) && target === 'pdf') {
+    onProgress(30, 'Converting spreadsheet sheets into high-fidelity PDF tables...');
+    const blob = await xlsxToPdf(file, (percent, status) => onProgress(percent, status));
+    return { blob, name: outputName(file, 'pdf') };
+  }
+
+  if (['xlsx', 'xls'].includes(ext) && target === 'html') {
+    onProgress(35, 'Converting spreadsheet into HTML tables...');
+    const html = await xlsxToHtml(file);
+    return { blob: new Blob([html], { type: 'text/html;charset=utf-8' }), name: outputName(file, 'html') };
+  }
+
+  if (['pptx', 'ppt'].includes(ext) && target === 'pdf') {
+    onProgress(30, 'Rendering presentation slides into PDF...');
+    const blob = await pptxToPdf(file, (percent, status) => onProgress(percent, status));
+    return { blob, name: outputName(file, 'pdf') };
+  }
+
+  if ([
+    'mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'vob', 'mpeg', 'mpg', 'ts', 'm2ts', 'wmv', 'asf', 'ogv', '3gp', '3g2', 'm4v', 'f4v',
+    'mp3', 'wav', 'aac', 'ogg', 'flac', 'm4a', 'opus', 'weba', 'wma', 'aiff', 'aif', 'alac', 'mka', 'ac3', 'dts', 'amr', 'gif'
+  ].includes(target)
+    && [
+    'mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'vob', 'mpeg', 'mpg', 'ts', 'm2ts', 'wmv', 'asf', 'ogv', '3gp', '3g2', 'm4v', 'f4v',
+    'mp3', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'weba', 'flac', 'wma', 'aiff', 'aif', 'alac', 'mka', 'ac3', 'dts', 'amr'
+  ].includes(ext)) {
     onProgress(20, 'Initializing the FFmpeg media engine...');
     await getFFmpeg(() => {}, percent => onProgress(percent, 'Initializing the FFmpeg media engine...'));
     const result = await transcodeFormatLossless(

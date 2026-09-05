@@ -1,10 +1,10 @@
 import { Document, ImageRun, Packer, Paragraph, PageBreak, TextRun } from 'docx';
 import { renderAsync } from 'docx-preview';
-import html2canvas from 'html2canvas';
 import mammoth from 'mammoth/mammoth.browser';
 import { PDFDocument, rgb } from 'pdf-lib';
 import type { Worker as TesseractWorker } from 'tesseract.js';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { safeHtml2Canvas } from './domSanitizer';
 
 type PdfTextItem = { str: string; transform: number[]; width: number; height: number };
 export type ConversionProgress = (percent: number, status: string) => void;
@@ -392,13 +392,14 @@ export const docxToPdf = async (file: File, onProgress?: ConversionProgress): Pr
       const scale = Math.max(1, Math.min(requestedScale, Math.sqrt(pixelBudget / (width * captureHeight))));
       const previousOverflow = pageElement.style.overflow;
       pageElement.style.overflow = 'visible';
-      const canvas = await html2canvas(pageElement, {
+
+      const canvas = await safeHtml2Canvas(pageElement, {
         allowTaint: false,
         backgroundColor: '#ffffff',
         foreignObjectRendering: false,
         imageTimeout: 8000,
         logging: false,
-        onclone: clonedDocument => {
+        onclone: (clonedDocument: globalThis.Document) => {
           const clonedHost = clonedDocument.querySelector<HTMLElement>('[data-compactor-docx-render-host="true"]');
           if (clonedHost) clonedHost.style.opacity = '1';
         },

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, AlertCircle } from 'lucide-react';
+import { FileUp, AlertCircle, ClipboardPaste, HardDrive, ShieldCheck } from 'lucide-react';
 
 interface FileUploaderProps {
   accept: string;
@@ -113,6 +113,14 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     fileInputRef.current?.click();
   };
 
+  const acceptedLabel = accept
+    .split(',')
+    .map(value => value.trim().replace(/^\./, '').replace('/*', ''))
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(' · ')
+    .toUpperCase();
+
   React.useEffect(() => {
     if (!enableClipboard) return;
     const handlePaste = (event: ClipboardEvent) => {
@@ -152,6 +160,15 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         onDragLeave={handleDrag}
         onDrop={handleDrop}
         onClick={onButtonClick}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onButtonClick();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label={label}
       >
         <input 
           ref={fileInputRef}
@@ -163,19 +180,28 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           onClick={(e) => e.stopPropagation()}
         />
         
+        <div className="upload-dropzone__eyebrow"><ShieldCheck aria-hidden="true" /> Local document workspace</div>
+
         <div className="upload-dropzone__icon">
-          <UploadCloud className="w-9 h-9" />
+          <FileUp aria-hidden="true" />
         </div>
-        
-        <div className="space-y-1.5">
+
+        <div className="upload-dropzone__copy">
           <h3>{label}</h3>
           <p>{subLabel}</p>
-          {enableClipboard && <p className="upload-dropzone__hint">Tip: press Ctrl/Cmd + V to paste files</p>}
         </div>
-        
-        <button type="button" className="button" onClick={onButtonClick}>
-          Browse Files
+
+        <button type="button" className="button upload-dropzone__primary" onClick={onButtonClick}>
+          <HardDrive aria-hidden="true" /> Choose {multiple ? 'files' : 'file'}
         </button>
+
+        <div className="upload-dropzone__meta">
+          {acceptedLabel ? <span>{acceptedLabel}</span> : null}
+          {maxSizeMB !== Infinity ? <span>Up to {maxSizeMB} MB</span> : null}
+          {enableClipboard ? <span><ClipboardPaste aria-hidden="true" /> Paste supported</span> : null}
+        </div>
+
+        <p className="upload-dropzone__privacy">Nothing is uploaded. Processing starts only after you choose a file.</p>
       </div>
     </div>
   );

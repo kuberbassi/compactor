@@ -6,17 +6,21 @@ import { PDFDocument } from 'pdf-lib';
 import {
   MousePointer, Type, Square, Circle, Minus, ArrowRight,
   Trash2, RotateCw, Eye, EyeOff, ArrowUp, ArrowDown,
-  ZoomIn, ZoomOut, ShieldAlert, RefreshCw, Layers, Pipette,
-  Shield, AlignLeft, AlignCenter, AlignRight, Bold, Italic, AlertTriangle
+  ShieldAlert, RefreshCw, Layers, Pipette,
+  Shield, AlignLeft, AlignCenter, AlignRight, Bold, Italic, AlertTriangle, FileText,
+  PanelLeftClose, PanelLeft,
+  Stamp, Signature, Highlighter, CheckCircle
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
+import { ErrorBanner } from '../../components/Common/ErrorBanner';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 export interface AnnotationItem {
   id: string;
   pageIndex: number; // 0-indexed
-  type: 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'redact';
+  type: 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'redact' | 'stamp' | 'signature' | 'watermark' | 'highlight';
   name: string;
   x: number; // relative percentage (0 to 100)
   y: number; // relative percentage (0 to 100)
@@ -37,6 +41,9 @@ export interface AnnotationItem {
   points?: { x: number; y: number }[];
   isVisible: boolean;
   redactStyle?: 'blackout' | 'whiteout' | 'custom-text';
+  stampType?: string;
+  signerName?: string;
+  signDate?: string;
 }
 
 interface PdfEditorProps {
@@ -44,21 +51,110 @@ interface PdfEditorProps {
   mode?: 'edit' | 'redact';
   onGoHome?: () => void;
   onSaveSuccess?: () => void;
+  onSelectTool?: (toolId: string) => void;
 }
 
-export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSaveSuccess }) => {
+export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSaveSuccess, onSelectTool }) => {
   const [numPages, setNumPages] = useState<number>(1);
   const [currentPage, setCurrentPage] = useState<number>(0); // 0-indexed
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number }[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   // Default PDF zoom set to 75% for optimal page fitting & accuracy
-  const [zoom, setZoom] = useState<number>(75);
+  const [zoom, setZoom] = useState<number>(85);
+  const [showToolDrawer, setShowToolDrawer] = useState(true);
   const [activeTool, setActiveTool] = useState<
-    'select' | 'text' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'redact'
+    'select' | 'text' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'redact' | 'highlight'
   >(mode === 'redact' ? 'redact' : 'select');
+
+  // Stamp / Watermark / Signature Quick Options
+  const STAMP_PRESETS = [
+    { label: 'APPROVED', color: '#16a34a', bg: 'rgba(22, 163, 74, 0.1)' },
+    { label: 'CONFIDENTIAL', color: '#dc2626', bg: 'rgba(220, 38, 38, 0.1)' },
+    { label: 'FINAL DRAFT', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.1)' },
+    { label: 'CANCELLED', color: '#991b1b', bg: 'rgba(153, 27, 27, 0.1)' },
+    { label: 'COMPLETED', color: '#059669', bg: 'rgba(5, 150, 105, 0.1)' },
+    { label: 'VOID', color: '#d97706', bg: 'rgba(217, 119, 6, 0.1)' },
+  ];
+
+  const addStampItem = (preset: { label: string; color: string; bg: string }) => {
+    const id = `stamp_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newAnnot: AnnotationItem = {
+      id,
+      pageIndex: currentPage,
+      type: 'stamp',
+      name: `Stamp (${preset.label})`,
+      x: 35,
+      y: 40,
+      width: 30,
+      height: 10,
+      strokeColor: preset.color,
+      fillColor: preset.bg,
+      strokeWidth: 3,
+      opacity: 0.95,
+      rotation: -12,
+      text: preset.label,
+      stampType: preset.label,
+      isVisible: true,
+    };
+    setAnnotations(prev => [...prev, newAnnot]);
+    setSelectedId(id);
+    setActiveTool('select');
+  };
+
+  const addSignatureItem = (signerName: string = 'Verified Signature') => {
+    const id = `sig_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const newAnnot: AnnotationItem = {
+      id,
+      pageIndex: currentPage,
+      type: 'signature',
+      name: `Signature (${signerName})`,
+      x: 55,
+      y: 75,
+      width: 35,
+      height: 14,
+      strokeColor: '#3b82f6',
+      fillColor: 'rgba(59, 130, 246, 0.05)',
+      strokeWidth: 1.5,
+      opacity: 1,
+      rotation: 0,
+      signerName,
+      signDate: dateStr,
+      isVisible: true,
+    };
+    setAnnotations(prev => [...prev, newAnnot]);
+    setSelectedId(id);
+    setActiveTool('select');
+  };
+
+  const addWatermarkItem = (text: string = 'CONFIDENTIAL') => {
+    const id = `watermark_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const newAnnot: AnnotationItem = {
+      id,
+      pageIndex: currentPage,
+      type: 'watermark',
+      name: `Watermark (${text})`,
+      x: 10,
+      y: 35,
+      width: 80,
+      height: 30,
+      strokeColor: 'transparent',
+      fillColor: 'transparent',
+      strokeWidth: 0,
+      opacity: 0.25,
+      rotation: -45,
+      text,
+      textColor: '#dc2626',
+      isVisible: true,
+    };
+    setAnnotations(prev => [...prev, newAnnot]);
+    setSelectedId(id);
+    setActiveTool('select');
+  };
 
   // Annotation state
   const [annotations, setAnnotations] = useState<AnnotationItem[]>([]);
@@ -125,20 +221,31 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   // Ref for canvas viewport container
   const viewportRef = React.useRef<HTMLDivElement>(null);
 
-  // Non-passive wheel event listener to intercept Ctrl+Scroll and prevent browser tab zoom
+  // Cursor-anchored Ctrl/Cmd + wheel zoom. Keep ordinary wheel movement for page scrolling.
   useEffect(() => {
     const elem = viewportRef.current;
     if (!elem) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        if (e.deltaY < 0) {
-          setZoom(z => Math.min(200, z + 5));
-        } else {
-          setZoom(z => Math.max(40, z - 5));
-        }
-      }
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+
+      const rect = elem.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left + elem.scrollLeft;
+      const cursorY = e.clientY - rect.top + elem.scrollTop;
+      const direction = e.deltaY < 0 ? 1 : -1;
+
+      setZoom(currentZoom => {
+        const nextZoom = Math.max(40, Math.min(200, currentZoom + direction * 5));
+        if (nextZoom === currentZoom) return currentZoom;
+
+        const ratio = nextZoom / currentZoom;
+        requestAnimationFrame(() => {
+          elem.scrollLeft = cursorX * ratio - (e.clientX - rect.left);
+          elem.scrollTop = cursorY * ratio - (e.clientY - rect.top);
+        });
+        return nextZoom;
+      });
     };
 
     elem.addEventListener('wheel', handleWheel, { passive: false });
@@ -437,6 +544,30 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       setAnnotations(prev => [...prev, newAnnot]);
       setSelectedId(id);
       setEditingTextId(id);
+    } else if (activeTool === 'highlight') {
+      const x = Math.min(drawStart.x, coords.x);
+      const y = Math.min(drawStart.y, coords.y);
+      const w = Math.max(3, Math.abs(coords.x - drawStart.x));
+      const h = Math.max(1.5, Math.abs(coords.y - drawStart.y));
+
+      const newAnnot: AnnotationItem = {
+        id,
+        pageIndex: currentPage,
+        type: 'highlight',
+        name: `Highlight`,
+        x,
+        y,
+        width: w,
+        height: h,
+        strokeColor: 'transparent',
+        fillColor: '#facc15', // Vibrant yellow highlight
+        strokeWidth: 0,
+        opacity: 0.45,
+        rotation: 0,
+        isVisible: true,
+      };
+      setAnnotations(prev => [...prev, newAnnot]);
+      setSelectedId(id);
     } else if (activeTool === 'rectangle' || activeTool === 'circle' || activeTool === 'line' || activeTool === 'arrow') {
       const x = Math.min(drawStart.x, coords.x);
       const y = Math.min(drawStart.y, coords.y);
@@ -766,6 +897,61 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             const align = item.textAlign || 'left';
             drawWrappedText(ctx, item.text || '', rx + pad, ry + pad, maxW, fSize * 1.25, align);
+          } else if (item.type === 'highlight') {
+            ctx.fillStyle = item.fillColor || '#facc15';
+            ctx.fillRect(rx, ry, rw, rh);
+          } else if (item.type === 'stamp') {
+            // Background fill
+            ctx.fillStyle = item.fillColor || 'rgba(22, 163, 74, 0.1)';
+            ctx.fillRect(rx, ry, rw, rh);
+
+            // Double border stamp frame
+            ctx.strokeStyle = item.strokeColor || '#16a34a';
+            ctx.lineWidth = Math.max(2, 3 * scaleFactor);
+            ctx.strokeRect(rx, ry, rw, rh);
+
+            ctx.lineWidth = Math.max(1, 1 * scaleFactor);
+            ctx.strokeRect(rx + 3 * scaleFactor, ry + 3 * scaleFactor, rw - 6 * scaleFactor, rh - 6 * scaleFactor);
+
+            // Stamp text
+            ctx.fillStyle = item.strokeColor || '#16a34a';
+            const stampFontSize = Math.max(10, Math.min(rh * 0.45, rw * 0.15));
+            ctx.font = `bold ${stampFontSize}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(item.text || item.stampType || 'APPROVED', rx + rw / 2, ry + rh / 2);
+          } else if (item.type === 'signature') {
+            // Signature background card
+            if (hasFill) {
+              ctx.fillStyle = item.fillColor;
+              ctx.fillRect(rx, ry, rw, rh);
+            }
+            if (hasStroke) {
+              ctx.strokeStyle = item.strokeColor;
+              ctx.lineWidth = scaledStrokeWidth;
+              ctx.strokeRect(rx, ry, rw, rh);
+            }
+
+            // Cursive / Calligraphic Signer Name
+            ctx.fillStyle = item.strokeColor || '#2563eb';
+            const sigFontSize = Math.max(12, Math.min(24, rh * 0.38));
+            ctx.font = `italic 600 ${sigFontSize}px "Brush Script MT", "Caveat", "Segoe Script", cursive, sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(item.signerName || 'Verified Signature', rx + 12 * scaleFactor, ry + rh * 0.38);
+
+            // Verified subline
+            ctx.fillStyle = '#64748b';
+            ctx.font = `bold ${Math.max(7, sigFontSize * 0.45)}px monospace`;
+            const dateDisplay = item.signDate || new Date().toLocaleDateString();
+            ctx.fillText(`✓ DIGITALLY SIGNED · ${dateDisplay}`, rx + 12 * scaleFactor, ry + rh * 0.75);
+          } else if (item.type === 'watermark') {
+            ctx.fillStyle = item.textColor || '#dc2626';
+            const wmFontSize = Math.max(14, Math.min(rh * 0.7, rw * 0.2));
+            ctx.font = `bold ${wmFontSize}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(item.text || 'CONFIDENTIAL', rx + rw / 2, ry + rh / 2);
           }
 
           ctx.restore();
@@ -794,9 +980,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       URL.revokeObjectURL(url);
 
       if (onSaveSuccess) onSaveSuccess();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving edited PDF:', err);
-      alert('Failed to save document. Please try again.');
+      setErrorMessage(`Failed to save document: ${err?.message || 'Please check console for details and try again.'}`);
     } finally {
       setSaving(false);
     }
@@ -804,14 +990,31 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
   return (
     <div className="pdf-editor flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]">
+      {errorMessage && (
+        <div className="p-3 bg-zinc-950/80 border-b border-zinc-800">
+          <ErrorBanner 
+            message={errorMessage} 
+            onDismiss={() => setErrorMessage(null)} 
+            onRetry={handleSaveChanges} 
+          />
+        </div>
+      )}
+
       {/* Top Main Toolbar */}
-      <div className="pdf-editor__toolbar border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-4 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-30">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="pdf-editor__toolbar border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-4 py-2.5 flex items-center justify-between gap-3 sticky top-0 z-30 overflow-x-auto flex-nowrap scrollbar-thin">
+        <div className="pdf-editor__document shrink-0" title={file.name}>
+          <FileText aria-hidden="true" />
+          <span>
+            <strong>{file.name}</strong>
+            <small>{numPages || pageImages.length || 1} {(numPages || pageImages.length) === 1 ? 'page' : 'pages'} · Local document</small>
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
           {/* Mode Switcher */}
-          <div className="bg-[var(--surface-color)] border border-[var(--border-color)] rounded-xl p-1 flex items-center gap-1">
+          <div className="bg-[var(--surface-color)] border border-[var(--border-color)] rounded-xl p-1 flex items-center gap-1 shrink-0">
             <button
               onClick={() => { setActiveTool('select'); setEditingTextId(null); }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                 activeTool === 'select'
                   ? 'bg-white text-zinc-950 font-bold shadow-sm border border-white'
                   : 'text-[var(--text-secondary)] hover:text-white'
@@ -824,7 +1027,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             {mode === 'redact' && (
               <button
                 onClick={() => { setActiveTool('redact'); setEditingTextId(null); }}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                   activeTool === 'redact'
                     ? 'bg-white text-zinc-950 font-bold shadow-sm border border-white'
                     : 'text-[var(--text-secondary)] hover:text-white'
@@ -837,7 +1040,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             <button
               onClick={() => { setActiveTool('text'); setEditingTextId(null); }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                 activeTool === 'text'
                   ? 'bg-white text-zinc-950 font-bold shadow-sm border border-white'
                   : 'text-[var(--text-secondary)] hover:text-white'
@@ -848,60 +1051,114 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             </button>
           </div>
 
-          <div className="h-6 w-px bg-[var(--border-color)] mx-1 hidden sm:block" />
+          <div className="h-6 w-px bg-[var(--border-color)] mx-0.5 hidden sm:block shrink-0" />
 
           {/* Vector Shapes Toolbar */}
-          <div className="flex items-center gap-1 bg-[var(--surface-color)] p-1 rounded-xl border border-[var(--border-color)]">
+          <div className="flex items-center gap-1 bg-[var(--surface-color)] p-1 rounded-xl border border-[var(--border-color)] shrink-0">
+            <button
+              title="Highlighter"
+              onClick={() => { setActiveTool('highlight'); setEditingTextId(null); }}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${activeTool === 'highlight' ? 'bg-amber-400 text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
+            >
+              <Highlighter className="w-4 h-4" />
+            </button>
             <button
               title="Rectangle Shape"
               onClick={() => { setActiveTool('rectangle'); setEditingTextId(null); }}
-              className={`p-2 rounded-lg transition cursor-pointer ${activeTool === 'rectangle' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${activeTool === 'rectangle' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
             >
               <Square className="w-4 h-4" />
             </button>
             <button
               title="Circle / Ellipse Shape"
               onClick={() => { setActiveTool('circle'); setEditingTextId(null); }}
-              className={`p-2 rounded-lg transition cursor-pointer ${activeTool === 'circle' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${activeTool === 'circle' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
             >
               <Circle className="w-4 h-4" />
             </button>
             <button
               title="Straight Line"
               onClick={() => { setActiveTool('line'); setEditingTextId(null); }}
-              className={`p-2 rounded-lg transition cursor-pointer ${activeTool === 'line' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${activeTool === 'line' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
             >
               <Minus className="w-4 h-4" />
             </button>
             <button
               title="Arrow Line"
               onClick={() => { setActiveTool('arrow'); setEditingTextId(null); }}
-              className={`p-2 rounded-lg transition cursor-pointer ${activeTool === 'arrow' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${activeTool === 'arrow' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)]'}`}
             >
               <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="h-6 w-px bg-[var(--border-color)] mx-0.5 hidden sm:block shrink-0" />
+
+          {/* Quick Document Elements (Stamps, Digital Signatures, Watermark) */}
+          <div className="flex items-center gap-1 bg-[var(--surface-color)] p-1 rounded-xl border border-[var(--border-color)] shrink-0">
+            <Select onValueChange={val => {
+              const p = STAMP_PRESETS.find(preset => preset.label === val);
+              if (p) addStampItem(p);
+            }}>
+              <SelectTrigger className="h-8 w-auto min-w-0 text-xs font-semibold px-2.5 bg-transparent border-none text-[var(--text-secondary)] hover:text-white cursor-pointer shadow-none focus-visible:ring-0">
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <Stamp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Stamp</span>
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {STAMP_PRESETS.map(p => (
+                  <SelectItem key={p.label} value={p.label} className="cursor-pointer">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                      <span className="font-bold text-xs">{p.label}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <button
+              type="button"
+              onClick={() => addSignatureItem()}
+              className="h-8 px-2.5 text-xs font-semibold flex items-center gap-1.5 rounded-lg text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)] transition cursor-pointer whitespace-nowrap shrink-0"
+              title="Insert Digital Signature"
+            >
+              <Signature className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span>Signature</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => addWatermarkItem()}
+              className="h-8 px-2.5 text-xs font-semibold flex items-center gap-1.5 rounded-lg text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)] transition cursor-pointer whitespace-nowrap shrink-0"
+              title="Insert Diagonal Watermark"
+            >
+              <span className="font-bold text-rose-400 text-xs">WM</span>
+              <span>Watermark</span>
             </button>
           </div>
         </div>
 
         {/* Selected Element Controls */}
-        {mode === 'redact' && activeTool === 'redact' && (
+        {mode === 'redact' && activeTool === 'redact' && !selectedItem && (
           <div className="flex items-center gap-2 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-[var(--text-secondary)] font-bold">Redaction Style:</span>
+            <span className="text-[var(--text-secondary)] font-bold">Default Style:</span>
             <button
               onClick={() => setRedactStyle('blackout')}
-              className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'blackout' ? 'bg-black text-white' : 'text-[var(--text-secondary)]'}`}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'blackout' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'}`}
             >
               Blackout
             </button>
             <button
               onClick={() => setRedactStyle('whiteout')}
-              className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'whiteout' ? 'bg-zinc-200 text-zinc-900' : 'text-[var(--text-secondary)]'}`}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'whiteout' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'}`}
             >
               Whiteout
             </button>
             <button
               onClick={() => setRedactStyle('custom-text')}
-              className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'custom-text' ? 'bg-white text-zinc-950 font-bold' : 'text-[var(--text-secondary)]'}`}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'custom-text' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'}`}
             >
               Label
             </button>
@@ -909,6 +1166,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               <input
                 type="text"
                 value={redactText}
+                placeholder="Label text..."
                 onChange={e => setRedactText(e.target.value)}
                 className="bg-transparent border border-[var(--border-color)] px-2 py-0.5 rounded text-xs text-[var(--text-primary)] w-28 font-mono"
               />
@@ -916,7 +1174,113 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
           </div>
         )}
 
-        {selectedItem && (
+        {selectedItem && selectedItem.type === 'redact' && (
+          <div className="flex items-center gap-2.5 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs shadow-sm flex-wrap">
+            <span className="text-[var(--text-secondary)] font-bold">Redaction:</span>
+            <div className="flex items-center gap-1 bg-[var(--surface-hover)] p-0.5 rounded-lg border border-[var(--border-color)]">
+              <button
+                type="button"
+                onClick={() => updateSelectedItem({ redactStyle: 'blackout', fillColor: '#000000', strokeColor: '#000000', text: '[REDACTED]' })}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                  selectedItem.redactStyle !== 'whiteout' && selectedItem.redactStyle !== 'custom-text'
+                    ? 'bg-white text-zinc-950 shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-white'
+                }`}
+              >
+                Blackout
+              </button>
+              <button
+                type="button"
+                onClick={() => updateSelectedItem({ redactStyle: 'whiteout', fillColor: '#ffffff', strokeColor: '#ffffff', text: '' })}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                  selectedItem.redactStyle === 'whiteout'
+                    ? 'bg-white text-zinc-950 shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-white'
+                }`}
+              >
+                Whiteout
+              </button>
+              <button
+                type="button"
+                onClick={() => updateSelectedItem({ redactStyle: 'custom-text', text: selectedItem.text && selectedItem.text !== '[REDACTED]' ? selectedItem.text : 'CONFIDENTIAL' })}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                  selectedItem.redactStyle === 'custom-text'
+                    ? 'bg-white text-zinc-950 shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-white'
+                }`}
+              >
+                Label
+              </button>
+            </div>
+
+            {selectedItem.redactStyle === 'custom-text' && (
+              <input
+                type="text"
+                value={selectedItem.text || ''}
+                placeholder="Label text..."
+                onChange={e => updateSelectedItem({ text: e.target.value })}
+                className="bg-[var(--surface-hover)] border border-[var(--border-color)] px-2 py-1 rounded-lg text-xs text-[var(--text-primary)] w-32 font-mono font-bold"
+              />
+            )}
+
+            <div className="w-px h-4 bg-[var(--border-color)]" />
+
+            {/* Redaction Fill Color */}
+            <div className="flex items-center gap-1.5" title="Redaction Fill Color">
+              <span className="text-[var(--text-secondary)] font-medium">Color:</span>
+              <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
+                <input
+                  type="color"
+                  value={selectedItem.fillColor || (selectedItem.redactStyle === 'whiteout' ? '#ffffff' : '#000000')}
+                  onChange={e => updateSelectedItem({ fillColor: e.target.value, strokeColor: e.target.value })}
+                  className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
+                />
+                <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] uppercase">
+                  {selectedItem.fillColor || (selectedItem.redactStyle === 'whiteout' ? '#FFFFFF' : '#000000')}
+                </span>
+              </div>
+              {hasEyeDropper && (
+                <button
+                  onClick={() => pickColorFromPage('fill')}
+                  className="p-1 rounded hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-white transition cursor-pointer"
+                  title="Pick Fill Color from Page"
+                >
+                  <Pipette className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="w-px h-4 bg-[var(--border-color)]" />
+
+            {/* Opacity */}
+            <div className="flex items-center gap-1.5" title="Opacity">
+              <span className="text-[var(--text-secondary)] font-medium">Opacity:</span>
+              <input
+                type="range"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={selectedItem.opacity}
+                onChange={e => updateSelectedItem({ opacity: Number(e.target.value) })}
+                className="w-14 accent-white"
+              />
+              <span className="w-7 text-right font-mono text-[11px]">{Math.round(selectedItem.opacity * 100)}%</span>
+            </div>
+
+            <div className="w-px h-4 bg-[var(--border-color)]" />
+
+            {/* Delete button */}
+            <button
+              onClick={() => deleteAnnotation(selectedItem.id)}
+              className="p-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
+              title="Delete Selected Redaction (Delete / Backspace)"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {selectedItem && selectedItem.type !== 'redact' && (
           <div className="flex items-center gap-2.5 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs shadow-sm flex-wrap">
             {/* Text Specific Formatting */}
             {selectedItem.type === 'text' && (
@@ -1099,7 +1463,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               </div>
             )}
 
-            {selectedItem.type !== 'text' && selectedItem.type !== 'redact' && (
+            {selectedItem.type !== 'text' && (
               <>
                 <div className="w-px h-4 bg-[var(--border-color)]" />
                 <div className="flex items-center gap-1.5" title="Thickness">
@@ -1164,21 +1528,269 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         )}
 
         {/* Zoom Controls */}
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-[var(--surface-color)] px-2.5 py-1 rounded-xl border border-[var(--border-color)] text-xs">
-            <button onClick={() => setZoom(z => Math.max(40, z - 10))} className="p-1 hover:text-white text-[var(--text-secondary)] cursor-pointer">
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="w-12 text-center font-mono font-bold text-[var(--text-primary)]">{zoom}%</span>
-            <button onClick={() => setZoom(z => Math.min(200, z + 10))} className="p-1 hover:text-white text-[var(--text-secondary)] cursor-pointer">
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+        <WorkspaceZoomControls value={zoom} onChange={setZoom} min={40} max={200} />
       </div>
 
       {/* Main Workspace (Viewport + Side Layer Panel) */}
       <div className="pdf-editor__workspace flex-1 flex overflow-hidden relative">
+        {/* ═══ LEFT SIDEBAR (ImageTools Pattern) ═══ */}
+        <aside className={`shrink-0 border-r border-white/10 bg-[#18191e] transition-[width] duration-200 ease-out select-none flex flex-col z-10 ${showToolDrawer ? 'w-64' : 'w-14'}`}>
+          {!showToolDrawer ? (
+            /* Collapsed Icon Rail with Tooltips */
+            <div className="h-full flex flex-col items-center py-3 bg-[#18191e] justify-between w-full select-none">
+              <div className="flex flex-col items-center gap-1.5 w-full px-2">
+                {/* Expand button */}
+                <button
+                  type="button"
+                  onClick={() => setShowToolDrawer(true)}
+                  className="w-9 h-9 rounded-lg hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer mb-1"
+                  title="Expand sidebar"
+                >
+                  <PanelLeft className="w-4 h-4" />
+                </button>
+
+                <div className="w-6 h-[1px] bg-white/10 mb-1" />
+
+                {/* Canvas tool icons with hover tooltips */}
+                <div className="flex flex-col items-center gap-1 w-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('select'); setEditingTextId(null); }}
+                    title="Select / Move (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'select'
+                        ? 'bg-white text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <MousePointer className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Select / Move
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('text'); setEditingTextId(null); }}
+                    title="Add Text (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'text'
+                        ? 'bg-white text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Type className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Add Text
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('highlight'); setEditingTextId(null); }}
+                    title="Highlighter (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'highlight'
+                        ? 'bg-amber-400 text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Highlighter className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Highlighter
+                    </div>
+                  </button>
+
+                  <div className="w-5 h-[1px] bg-white/10 my-1" />
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('rectangle'); setEditingTextId(null); }}
+                    title="Rectangle (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'rectangle'
+                        ? 'bg-white text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Square className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Rectangle
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('circle'); setEditingTextId(null); }}
+                    title="Circle (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'circle'
+                        ? 'bg-white text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Circle className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Circle
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('line'); setEditingTextId(null); }}
+                    title="Line (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'line'
+                        ? 'bg-white text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Minus className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Line
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTool('arrow'); setEditingTextId(null); }}
+                    title="Arrow (Click to activate)"
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                      activeTool === 'arrow'
+                        ? 'bg-white text-zinc-950 font-bold shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                      Arrow
+                    </div>
+                  </button>
+
+                  {mode === 'redact' && (
+                    <button
+                      type="button"
+                      onClick={() => { setActiveTool('redact'); setEditingTextId(null); }}
+                      title="Redact Box (Click to activate)"
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                        activeTool === 'redact'
+                          ? 'bg-white text-zinc-950 font-bold shadow-md'
+                          : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      <Shield className="w-4 h-4" />
+                      <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                        Redact Box
+                      </div>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Page Counter Indicator at bottom */}
+              <div className="pt-2 border-t border-white/10 w-full flex justify-center px-1">
+                <span className="text-[10px] font-mono font-bold text-zinc-400">
+                  {currentPage + 1}/{numPages || 1}
+                </span>
+              </div>
+            </div>
+          ) : (
+            /* Expanded Compact Sidebar */
+            <div className="h-full flex flex-col min-h-0 bg-[#18191e]">
+              {/* Compact Header with Collapse button */}
+              <div className="h-10 px-3.5 border-b border-white/10 flex items-center justify-between bg-transparent shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Tools</span>
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400">
+                    Page {currentPage + 1} of {numPages || 1}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowToolDrawer(false)}
+                  className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                  title="Collapse to icon rail"
+                >
+                  <PanelLeftClose className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Tool Navigation & Canvas Selection */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2 px-1">
+                    Document Modes
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => onSelectTool?.('pdf-edit')}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                        mode === 'edit'
+                          ? 'bg-white text-zinc-950 border-white font-bold shadow-sm'
+                          : 'bg-zinc-900/60 hover:bg-zinc-800/80 text-zinc-300 hover:text-white border-zinc-800'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Edit PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectTool?.('pdf-redact')}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                        mode === 'redact'
+                          ? 'bg-white text-zinc-950 border-white font-bold shadow-sm'
+                          : 'bg-zinc-900/60 hover:bg-zinc-800/80 text-zinc-300 hover:text-white border-zinc-800'
+                      }`}
+                    >
+                      <Shield className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Redact PDF</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2 px-1">
+                    Canvas Tools
+                  </div>
+                  <div className="space-y-1">
+                    {[
+                      { id: 'select', label: 'Select / Move', icon: MousePointer },
+                      { id: 'text', label: 'Add Text', icon: Type },
+                      { id: 'highlight', label: 'Highlighter', icon: Highlighter },
+                      { id: 'rectangle', label: 'Rectangle', icon: Square },
+                      { id: 'circle', label: 'Circle / Ellipse', icon: Circle },
+                      { id: 'line', label: 'Straight Line', icon: Minus },
+                      { id: 'arrow', label: 'Arrow', icon: ArrowRight },
+                      ...(mode === 'redact' ? [{ id: 'redact', label: 'Redact Box', icon: Shield }] : []),
+                    ].map(tool => {
+                      const Icon = tool.icon;
+                      const isActive = activeTool === tool.id;
+                      return (
+                        <button
+                          key={tool.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveTool(tool.id as any);
+                            setEditingTextId(null);
+                          }}
+                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                            isActive
+                              ? 'bg-white text-zinc-950 border-white font-bold shadow-sm'
+                              : 'bg-zinc-900/40 hover:bg-zinc-800/80 text-zinc-300 hover:text-white border-transparent'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                          <span>{tool.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </aside>
         {/* PDF Document Canvas Viewport with Non-Passive Wheel Zoom */}
         <div
           ref={viewportRef}
@@ -1413,6 +2025,70 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                       {item.text || 'Type text here...'}
                                     </span>
                                   )}
+                                </div>
+                              )}
+
+                              {/* Highlighter Box */}
+                              {item.type === 'highlight' && (
+                                <div
+                                  className="w-full h-full rounded-sm pointer-events-none"
+                                  style={{
+                                    backgroundColor: item.fillColor || '#facc15',
+                                    mixBlendMode: 'multiply',
+                                  }}
+                                />
+                              )}
+
+                              {/* Official Document Stamp */}
+                              {item.type === 'stamp' && (
+                                <div
+                                  className="w-full h-full rounded-lg flex items-center justify-center p-2 font-black uppercase tracking-wider text-center select-none shadow-sm"
+                                  style={{
+                                    border: `3px solid ${item.strokeColor || '#16a34a'}`,
+                                    outline: `1px solid ${item.strokeColor || '#16a34a'}`,
+                                    outlineOffset: '-5px',
+                                    color: item.strokeColor || '#16a34a',
+                                    backgroundColor: item.fillColor || 'rgba(22, 163, 74, 0.1)',
+                                    fontSize: `${Math.max(10, Math.min(22, (item.fontSize || 14)))}px`,
+                                  }}
+                                >
+                                  {item.text || item.stampType || 'APPROVED'}
+                                </div>
+                              )}
+
+                              {/* Digital Signature Badge */}
+                              {item.type === 'signature' && (
+                                <div
+                                  className="w-full h-full rounded-xl flex flex-col justify-center px-3.5 py-2 border shadow-md select-none backdrop-blur-xs"
+                                  style={{
+                                    borderColor: item.strokeColor || '#3b82f6',
+                                    backgroundColor: item.fillColor || 'rgba(59, 130, 246, 0.05)',
+                                    color: item.strokeColor || '#3b82f6',
+                                  }}
+                                >
+                                  <div
+                                    className="font-semibold italic text-base leading-tight truncate"
+                                    style={{ fontFamily: '"Brush Script MT", "Caveat", "Segoe Script", cursive, sans-serif' }}
+                                  >
+                                    {item.signerName || 'Verified Signature'}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-zinc-500 mt-1 uppercase tracking-wider">
+                                    <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                                    <span>Digitally Signed · {item.signDate || new Date().toLocaleDateString()}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Watermark Diagonal Label */}
+                              {item.type === 'watermark' && (
+                                <div
+                                  className="w-full h-full flex items-center justify-center font-black uppercase tracking-widest select-none pointer-events-none text-center"
+                                  style={{
+                                    color: item.textColor || '#dc2626',
+                                    fontSize: `${Math.max(16, Math.min(56, (item.fontSize || 36)))}px`,
+                                  }}
+                                >
+                                  {item.text || 'CONFIDENTIAL'}
                                 </div>
                               )}
 

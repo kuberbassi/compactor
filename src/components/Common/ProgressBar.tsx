@@ -1,4 +1,5 @@
 import React from 'react';
+import { LoaderCircle, ShieldCheck } from 'lucide-react';
 
 interface ProgressBarProps {
   progress: number; // 0 to 100
@@ -17,40 +18,16 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     : 0;
 
   return (
-    <div className="flex flex-col items-center justify-center p-8 border border-[var(--border-color)] bg-[var(--surface-color)] rounded-2xl max-w-lg mx-auto w-full shadow-lg transition-all duration-300">
-      {/* Outer Spinner */}
-      <div className="relative w-16 h-16 flex items-center justify-center mb-6">
-        <div className="w-14 h-14 border-2 border-[var(--border-color)] border-t-[var(--text-primary)] rounded-full animate-spin" />
-        <span className="absolute text-[12px] font-extrabold text-[var(--text-primary)] font-sans tabular-nums">
-          {safeProgress}%
-        </span>
+    <div className="process-card" role="status" aria-live="polite" aria-label={`${statusText} ${safeProgress}% complete`}>
+      <div className="process-card__icon"><LoaderCircle aria-hidden="true" /></div>
+      <div className="process-card__copy">
+        <span className="process-card__eyebrow"><ShieldCheck aria-hidden="true" /> Local processing</span>
+        <strong>{statusText}</strong>
+        {subText ? <p>{subText}</p> : null}
       </div>
-      
-      {/* Status Title */}
-      <div className="text-sm font-bold tracking-tight text-[var(--text-primary)] text-center mb-2">
-        {statusText}
-      </div>
-      
-      {/* Smooth Progress Bar Container */}
-      <div className="w-full bg-[var(--bg-color)] h-2.5 rounded-full relative my-3 border border-[var(--border-color)] overflow-hidden p-0.5">
-        <div 
-          className="h-full bg-[var(--text-primary)] rounded-full transition-all duration-300 ease-out relative opacity-90"
-          style={{ width: `${safeProgress}%` }}
-        />
-      </div>
-      
-      {/* Progress metrics */}
-      <div className="flex justify-between w-full text-[11px] font-bold text-[var(--text-secondary)] px-1 mt-1">
-        <span>Processing</span>
-        <span className="text-[var(--text-primary)] font-sans font-bold tabular-nums">{safeProgress}% Complete</span>
-      </div>
-      
-      {subText && (
-        <div className="text-xs text-[var(--text-secondary)] max-w-xs text-center leading-relaxed mt-3 font-medium">
-          {subText}
-        </div>
-      )}
+      <strong className="process-card__value">{safeProgress}%</strong>
+      <div className="process-card__track" aria-hidden="true"><i style={{ width: `${safeProgress}%` }} /></div>
+      <div className="process-card__meta"><span>Processing on this device</span><span>{safeProgress === 100 ? 'Ready' : 'Please keep this tab open'}</span></div>
     </div>
   );
 };
-

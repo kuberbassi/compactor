@@ -1,38 +1,42 @@
-import { useState } from 'react';
-import { PDFDocument, rgb } from 'pdf-lib';
+import React, { useEffect, useRef, useState } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { ToolHeader } from '../../components/Common/ToolHeader';
+import { ToolModeSwitcher } from '../../components/Common/ToolModeSwitcher';
 import { ProgressBar } from '../../components/Common/ProgressBar';
+import { WorkspaceToolNav, WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
+import type { WorkspaceToolItem } from '../../components/Workspace/WorkspaceControls';
 import {
-  RefreshCw,
-  CheckCircle, Download,
-  Printer as PrinterIcon, Ruler as RulerIcon,
-  Grid3X3 as GridIcon
+  Printer as PrinterIcon,
+  LayoutGrid,
+  Palette,
+  PanelLeft,
+  PanelLeftClose,
 } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { Card, CardTitle, CardDescription } from '../../components/ui/card';
-import { Input } from '../../components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
-import { Switch } from '../../components/ui/switch';
+import { PAGE_SIZES, HALFTONE_CELL_SIZE, generatePosterPdfBlob } from '../../utils/posterEngine';
+import { PosterSettingsPanel, type PosterTabId } from './components/PosterSettingsPanel';
+import { PosterPreviewStage } from './components/PosterPreviewStage';
+import { PosterResultCard } from './components/PosterResultCard';
+import { formatBytes } from '../../utils/image';
 
 interface RasterbatorProps {
   onGoHome: () => void;
+  onSelectTool: (toolId: string) => void;
   onUploadSuccess: () => void;
 }
 
-const PAGE_SIZES = {
-  A4: { width: 595.28, height: 841.89, label: 'A4 (210 × 297 mm)', mmW: 210, mmH: 297 },
-  A3: { width: 841.89, height: 1190.55, label: 'A3 (297 × 420 mm)', mmW: 297, mmH: 420 },
-  A2: { width: 1190.55, height: 1683.78, label: 'A2 (420 × 594 mm)', mmW: 420, mmH: 594 },
-  Letter: { width: 612.00, height: 792.00, label: 'Letter (8.5 × 11 in)', mmW: 215.9, mmH: 279.4 },
-  Legal: { width: 612.00, height: 1008.00, label: 'Legal (8.5 × 14 in)', mmW: 215.9, mmH: 355.6 },
-  Tabloid: { width: 792.00, height: 1224.00, label: 'Tabloid (11 × 17 in)', mmW: 279.4, mmH: 431.8 }
-};
+const POSTER_TABS: WorkspaceToolItem<PosterTabId>[] = [
+  { id: 'grid', label: 'Page Setup', Icon: LayoutGrid },
+  { id: 'style', label: 'Style & Rotate', Icon: Palette },
+];
 
-export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSuccess }) => {
+export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onSelectTool, onUploadSuccess }) => {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
+
+  // Workbench layout states
+  const [activeTab, setActiveTab] = useState<PosterTabId>('grid');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
   // Page & Print settings
   const [pageSize, setPageSize] = useState<keyof typeof PAGE_SIZES>('A4');
@@ -42,6 +46,14 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
   const [styleMode, setStyleMode] = useState<'color' | 'bw' | 'halftone'>('color');
   const [lockAspect, setLockAspect] = useState<boolean>(true);
   const [showCropMarks, setShowCropMarks] = useState<boolean>(true);
+  const [showSheetNumbers, setShowSheetNumbers] = useState<boolean>(true);
+
+  // Transforms & Halftone settings
+  const [rotation, setRotation] = useState<number>(0);
+  const [flipH, setFlipH] = useState<boolean>(false);
+  const [flipV, setFlipV] = useState<boolean>(false);
+  const [dotSize, setDotSize] = useState<number>(HALFTONE_CELL_SIZE);
+  const [invertHalftone, setInvertHalftone] = useState<boolean>(false);
 
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -49,27 +61,46 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
 
   const [resultUrl, setResultUrl] = useState<string | null>(null);
   const [resultName, setResultName] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [posterZoom, setPosterZoom] = useState(100);
+  const posterViewportRef = useRef<HTMLDivElement>(null);
 
-  const getPaperLabel = (key: keyof typeof PAGE_SIZES, orient: 'Portrait' | 'Landscape') => {
-    const p = PAGE_SIZES[key];
-    const mmW = orient === 'Portrait' ? p.mmW : p.mmH;
-    const mmH = orient === 'Portrait' ? p.mmH : p.mmW;
-    if (key === 'Letter') {
-      return orient === 'Portrait' ? 'Letter (8.5 × 11 in)' : 'Letter (11 × 8.5 in)';
-    }
-    if (key === 'Legal') {
-      return orient === 'Portrait' ? 'Legal (8.5 × 14 in)' : 'Legal (14 × 8.5 in)';
-    }
-    if (key === 'Tabloid') {
-      return orient === 'Portrait' ? 'Tabloid (11 × 17 in)' : 'Tabloid (17 × 11 in)';
-    }
-    return `${key} (${mmW} × ${mmH} mm)`;
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
+    };
+  }, [previewUrl, resultUrl]);
+
+  useEffect(() => {
+    const viewport = posterViewportRef.current;
+    if (!viewport) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      setPosterZoom(value => Math.max(40, Math.min(200, value + (event.deltaY < 0 ? 10 : -10))));
+    };
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', handleWheel);
+  }, [file]);
+
+  const getEffectiveImageDims = () => {
+    if (!imageDims) return null;
+    const isPerp = rotation === 90 || rotation === 270;
+    return {
+      width: isPerp ? imageDims.height : imageDims.width,
+      height: isPerp ? imageDims.width : imageDims.height,
+    };
   };
 
   const handleFileSelected = (selectedFiles: File[]) => {
     if (selectedFiles.length === 0) return;
     const f = selectedFiles[0];
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
     setFile(f);
+    setResultUrl(null);
+    setErrorMessage(null);
     const url = URL.createObjectURL(f);
     setPreviewUrl(url);
 
@@ -88,41 +119,117 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
     const pW = orient === 'Portrait' ? p.mmW : p.mmH;
     const pH = orient === 'Portrait' ? p.mmH : p.mmW;
     const imgAspect = imgW / imgH;
-    const calculated = Math.max(1, Math.round((cols * pW) / (imgAspect * pH)));
+    const calculated = Math.max(1, Math.min(20, Math.round((cols * pW) / (imgAspect * pH))));
     setRows(calculated);
   };
 
   const handleColumnsChange = (newCols: number) => {
-    const cols = Math.max(1, newCols);
+    const cols = Math.max(1, Math.min(20, newCols));
     setColumns(cols);
-    if (lockAspect && imageDims) {
-      recalcRows(cols, imageDims.width, imageDims.height, pageSize, orientation);
+    const eff = getEffectiveImageDims();
+    if (lockAspect && eff) {
+      recalcRows(cols, eff.width, eff.height, pageSize, orientation);
     }
   };
 
   const handlePageSizeChange = (newSize: keyof typeof PAGE_SIZES) => {
     setPageSize(newSize);
-    if (lockAspect && imageDims) {
-      recalcRows(columns, imageDims.width, imageDims.height, newSize, orientation);
+    const eff = getEffectiveImageDims();
+    if (lockAspect && eff) {
+      recalcRows(columns, eff.width, eff.height, newSize, orientation);
     }
   };
 
   const handleOrientationChange = (newOrient: 'Portrait' | 'Landscape') => {
     setOrientation(newOrient);
+    const eff = getEffectiveImageDims();
+    if (lockAspect && eff) {
+      recalcRows(columns, eff.width, eff.height, pageSize, newOrient);
+    }
+  };
+
+  const handleSwapGrid = () => {
+    const nextCols = rows;
+    const nextRows = columns;
+    setColumns(nextCols);
+    setRows(nextRows);
+  };
+
+  const handleApplyPhysicalWidthPreset = (targetWidthM: number) => {
+    const p = PAGE_SIZES[pageSize];
+    const pageW = orientation === 'Portrait' ? p.mmW : p.mmH;
+    const targetCols = Math.max(1, Math.min(20, Math.round((targetWidthM * 1000) / pageW)));
+    setColumns(targetCols);
+    const eff = getEffectiveImageDims();
+    if (lockAspect && eff) {
+      recalcRows(targetCols, eff.width, eff.height, pageSize, orientation);
+    }
+  };
+
+  const handleRotateCW = () => {
+    const nextRot = (rotation + 90) % 360;
+    setRotation(nextRot);
     if (lockAspect && imageDims) {
-      recalcRows(columns, imageDims.width, imageDims.height, pageSize, newOrient);
+      const isPerp = nextRot === 90 || nextRot === 270;
+      const w = isPerp ? imageDims.height : imageDims.width;
+      const h = isPerp ? imageDims.width : imageDims.height;
+      recalcRows(columns, w, h, pageSize, orientation);
+    }
+  };
+
+  const handleRotateCCW = () => {
+    const nextRot = (rotation + 270) % 360;
+    setRotation(nextRot);
+    if (lockAspect && imageDims) {
+      const isPerp = nextRot === 90 || nextRot === 270;
+      const w = isPerp ? imageDims.height : imageDims.width;
+      const h = isPerp ? imageDims.width : imageDims.height;
+      recalcRows(columns, w, h, pageSize, orientation);
+    }
+  };
+
+  const handleRotate180 = () => {
+    setRotation(r => (r + 180) % 360);
+  };
+
+  const handleToggleFlipH = () => setFlipH(f => !f);
+  const handleToggleFlipV = () => setFlipV(f => !f);
+
+  const handleResetTransforms = () => {
+    setRotation(0);
+    setFlipH(false);
+    setFlipV(false);
+    if (lockAspect && imageDims) {
+      recalcRows(columns, imageDims.width, imageDims.height, pageSize, orientation);
     }
   };
 
   const reset = () => {
     setFile(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
     setPreviewUrl(null);
     setImageDims(null);
     setResultUrl(null);
     setResultName('');
+    setErrorMessage(null);
     setProgress(0);
     setProcessing(false);
+    setPageSize('A4');
+    setOrientation('Portrait');
+    setColumns(5);
+    setRows(3);
+    setStyleMode('color');
+    setLockAspect(true);
+    setShowCropMarks(true);
+    setShowSheetNumbers(true);
+    setRotation(0);
+    setFlipH(false);
+    setFlipV(false);
+    setDotSize(HALFTONE_CELL_SIZE);
+    setInvertHalftone(false);
+    setPosterZoom(100);
+    setActiveTab('grid');
   };
 
   // Physical Poster Total Dimensions
@@ -138,6 +245,13 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
 
   const generatePoster = async () => {
     if (!file || !previewUrl) return;
+    const totalPages = columns * rows;
+    if (totalPages > 100) {
+      setErrorMessage('Total poster sheets exceed the safety limit of 100 pages. Please reduce the number of columns or rows.');
+      return;
+    }
+
+    setErrorMessage(null);
     setProcessing(true);
     setProgress(5);
     setStatusText('Initializing high-precision poster engine...');
@@ -150,185 +264,54 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
         img.onerror = reject;
       });
 
-      const pdfDoc = await PDFDocument.create();
-      const dims = PAGE_SIZES[pageSize];
-
-      const pageWidth = orientation === 'Portrait' ? dims.width : dims.height;
-      const pageHeight = orientation === 'Portrait' ? dims.height : dims.width;
-
-      const tileWidthPx = 1200;
-      const tileHeightPx = Math.round(1200 * (pageHeight / pageWidth));
-
-      const masterW = columns * tileWidthPx;
-      const masterH = rows * tileHeightPx;
-
-      const masterAspect = masterW / masterH;
-      const imgAspect = img.naturalWidth / img.naturalHeight;
-
-      let drawW = masterW;
-      let drawH = masterH;
-      let drawX = 0;
-      let drawY = 0;
-
-      if (imgAspect > masterAspect) {
-        drawW = masterH * imgAspect;
-        drawX = (masterW - drawW) / 2;
-      } else {
-        drawH = masterW / imgAspect;
-        drawY = (masterH - drawH) / 2;
-      }
-
-      const scaleX = img.naturalWidth / drawW;
-      const scaleY = img.naturalHeight / drawH;
-
-      const tileCanvas = document.createElement('canvas');
-      tileCanvas.width = tileWidthPx;
-      tileCanvas.height = tileHeightPx;
-      const tCtx = tileCanvas.getContext('2d');
-      if (!tCtx) throw new Error('Could not instantiate tile canvas context');
-
-      const totalPages = columns * rows;
-
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < columns; c++) {
-          const idx = r * columns + c + 1;
-          setStatusText(`Processing sheet ${idx} of ${totalPages} (Row ${r + 1}, Col ${c + 1})...`);
-          setProgress(Math.round(10 + (idx / totalPages) * 75));
-
-          tCtx.fillStyle = '#ffffff';
-          tCtx.fillRect(0, 0, tileWidthPx, tileHeightPx);
-
-          const tileX = c * tileWidthPx;
-          const tileY = r * tileHeightPx;
-
-          const rawSrcX = (tileX - drawX) * scaleX;
-          const rawSrcY = (tileY - drawY) * scaleY;
-          const rawSrcW = tileWidthPx * scaleX;
-          const rawSrcH = tileHeightPx * scaleY;
-
-          const srcX = Math.max(0, rawSrcX);
-          const srcY = Math.max(0, rawSrcY);
-          const srcRight = Math.min(img.naturalWidth, rawSrcX + rawSrcW);
-          const srcBottom = Math.min(img.naturalHeight, rawSrcY + rawSrcH);
-
-          const srcW = Math.max(0, srcRight - srcX);
-          const srcH = Math.max(0, srcBottom - srcY);
-
-          if (srcW > 0 && srcH > 0) {
-            const dstX = (srcX - rawSrcX) / scaleX;
-            const dstY = (srcY - rawSrcY) / scaleY;
-            const dstW = srcW / scaleX;
-            const dstH = srcH / scaleY;
-
-            tCtx.drawImage(img, srcX, srcY, srcW, srcH, dstX, dstY, dstW, dstH);
-          }
-
-          if (styleMode === 'bw') {
-            const tileImgData = tCtx.getImageData(0, 0, tileWidthPx, tileHeightPx);
-            const d = tileImgData.data;
-            for (let i = 0; i < d.length; i += 4) {
-              const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-              d[i] = d[i + 1] = d[i + 2] = lum;
-            }
-            tCtx.putImageData(tileImgData, 0, 0);
-          } else if (styleMode === 'halftone') {
-            const tileImgData = tCtx.getImageData(0, 0, tileWidthPx, tileHeightPx);
-            const d = tileImgData.data;
-
-            tCtx.fillStyle = '#ffffff';
-            tCtx.fillRect(0, 0, tileWidthPx, tileHeightPx);
-            tCtx.fillStyle = '#000000';
-
-            const dotSize = 14;
-            for (let y = 0; y < tileHeightPx; y += dotSize) {
-              for (let x = 0; x < tileWidthPx; x += dotSize) {
-                const sampleY = Math.min(y + Math.floor(dotSize / 2), tileHeightPx - 1);
-                const sampleX = Math.min(x + Math.floor(dotSize / 2), tileWidthPx - 1);
-                const i = (sampleY * tileWidthPx + sampleX) * 4;
-                const lum = 1 - (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255;
-                const radius = lum * (dotSize / 2) * 0.95;
-                if (radius > 0.5) {
-                  tCtx.beginPath();
-                  tCtx.arc(x + dotSize / 2, y + dotSize / 2, radius, 0, Math.PI * 2);
-                  tCtx.fill();
-                }
-              }
-            }
-          }
-
-          const dataUrl = tileCanvas.toDataURL('image/jpeg', 0.94);
-          const base64Data = dataUrl.split(',')[1];
-          const binaryData = atob(base64Data);
-          const bytes = new Uint8Array(binaryData.length);
-          for (let i = 0; i < binaryData.length; i++) {
-            bytes[i] = binaryData.charCodeAt(i);
-          }
-
-          const embeddedJpg = await pdfDoc.embedJpg(bytes);
-          const page = pdfDoc.addPage([pageWidth, pageHeight]);
-          page.drawImage(embeddedJpg, {
-            x: 0,
-            y: 0,
-            width: pageWidth,
-            height: pageHeight
-          });
-
-          // Draw Crop Marks and Coordinates
-          if (showCropMarks) {
-            const m = 18; // 18pt (~6mm margin)
-            const len = 10;
-            const strokeColor = rgb(0.5, 0.5, 0.5);
-
-            // Top-Left
-            page.drawLine({ start: { x: m, y: pageHeight - m - len }, end: { x: m, y: pageHeight - m + len }, thickness: 0.5, color: strokeColor });
-            page.drawLine({ start: { x: m - len, y: pageHeight - m }, end: { x: m + len, y: pageHeight - m }, thickness: 0.5, color: strokeColor });
-            // Top-Right
-            page.drawLine({ start: { x: pageWidth - m, y: pageHeight - m - len }, end: { x: pageWidth - m, y: pageHeight - m + len }, thickness: 0.5, color: strokeColor });
-            page.drawLine({ start: { x: pageWidth - m - len, y: pageHeight - m }, end: { x: pageWidth - m + len, y: pageHeight - m }, thickness: 0.5, color: strokeColor });
-            // Bottom-Left
-            page.drawLine({ start: { x: m, y: m - len }, end: { x: m, y: m + len }, thickness: 0.5, color: strokeColor });
-            page.drawLine({ start: { x: m - len, y: m }, end: { x: m + len, y: m }, thickness: 0.5, color: strokeColor });
-            // Bottom-Right
-            page.drawLine({ start: { x: pageWidth - m, y: m - len }, end: { x: pageWidth - m, y: m + len }, thickness: 0.5, color: strokeColor });
-            page.drawLine({ start: { x: pageWidth - m - len, y: m }, end: { x: pageWidth - m + len, y: m }, thickness: 0.5, color: strokeColor });
-
-            // Tile label
-            page.drawText(`Tile R${r + 1}-C${c + 1} (${idx}/${totalPages}) • ${pageSize} (${orientation})`, {
-              x: m + 15,
-              y: m / 2,
-              size: 7,
-              color: rgb(0.5, 0.5, 0.5)
-            });
-          }
-
-          await new Promise(res => setTimeout(res, 10));
+      const pdfBlob = await generatePosterPdfBlob(
+        img,
+        {
+          imageWidth: img.naturalWidth,
+          imageHeight: img.naturalHeight,
+          pageSize,
+          orientation,
+          columns,
+          rows,
+          styleMode,
+          showCropMarks,
+          showSheetNumbers,
+          rotation,
+          flipH,
+          flipV,
+          dotSize,
+          invertHalftone,
+          maxSheetsCap: 100,
+        },
+        (prog, status) => {
+          setProgress(prog);
+          setStatusText(status);
         }
-      }
+      );
 
-      setStatusText('Compiling precision PDF poster document...');
-      setProgress(92);
-
-      const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
-      const pdfBlob = new Blob([pdfBytes as any], { type: 'application/pdf' });
-
+      if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultUrl(URL.createObjectURL(pdfBlob));
-      setResultName(file.name.replace(/\.[^/.]+$/, "") + '_tiled_poster.pdf');
+      setResultName(`${file.name.replace(/\.[^/.]+$/, '')}_tiled_poster_${columns}x${rows}_${pageSize}.pdf`);
       onUploadSuccess();
     } catch (e: any) {
       console.error(e);
-      alert('Tiled poster printing failed: ' + (e.message || e));
+      setErrorMessage(e.message || 'Tiled poster printing failed.');
+    } finally {
+      setProgress(100);
+      setProcessing(false);
     }
-
-    setProgress(100);
-    setProcessing(false);
   };
 
+  const effDims = getEffectiveImageDims();
+
   return (
-    <div className="tool-layout">
+    <div className={`tool-layout rasterbator-tool-layout ${file || resultUrl || processing ? 'has-active-session' : 'is-empty-session'}`}>
       <ToolHeader
-        title="Tiled Poster Printer"
+        title="Poster Printer"
         description="Turn any image into a multi-page printable wall poster with precision cut guides."
         icon={PrinterIcon}
+        fileName={file?.name}
+        fileMeta={file ? `${effDims ? `${effDims.width} × ${effDims.height}px` : 'Loading image'} · ${columns * rows} sheets` : undefined}
         onGoHome={() => {
           if (file || resultUrl || processing) {
             reset();
@@ -336,337 +319,266 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onUploadSucc
             onGoHome();
           }
         }}
+        actions={!resultUrl && !processing ? (
+          <ToolModeSwitcher
+            label="Image tools"
+            activeId="rasterbator"
+            options={[
+              { id: 'image-optimizer', label: 'Optimize' },
+              { id: 'rasterbator', label: 'Poster' },
+            ]}
+            onSelect={onSelectTool}
+          />
+        ) : undefined}
       />
 
+      {errorMessage && (
+        <div className="max-w-2xl mx-auto my-4 p-4 border border-rose-500/30 bg-rose-500/10 text-rose-300 rounded-xl text-xs flex items-center justify-between">
+          <span>{errorMessage}</span>
+          <button onClick={() => setErrorMessage(null)} className="text-rose-400 hover:text-rose-200 font-bold ml-3 cursor-pointer">✕</button>
+        </div>
+      )}
+
+      {!file && !processing && !resultUrl && (
+        <div className="tool-upload-frame max-w-2xl mx-auto py-10">
+          <FileUploader
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            label="Select your image for poster printing"
+            subLabel="Drag & drop high-resolution JPEG, PNG, or WebP images"
+            onFilesSelected={handleFileSelected}
+            maxSizeMB={500}
+          />
+        </div>
+      )}
+
+      {/* Processing State - Full Center Screen */}
       {processing && (
-        <div className="max-w-2xl mx-auto py-12">
-          <ProgressBar progress={progress} statusText={statusText} subText="Generating ultra high-resolution tiled vector PDF sheets" />
+        <div className="flex-1 flex flex-col items-center justify-center p-12 bg-zinc-950/40 z-30">
+          <div className="max-w-md w-full flex flex-col items-center gap-6">
+            <ProgressBar
+              progress={progress}
+              statusText={statusText}
+              subText="Generating ultra high-resolution tiled vector PDF sheets"
+            />
+          </div>
         </div>
       )}
 
-      {!processing && !resultUrl && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Main Visualizer Area */}
-          <div className="lg:col-span-8 space-y-6">
-            {!file ? (
-              <FileUploader
-                accept="image/*"
-                label="Select your image for poster printing"
-                subLabel="Drag & drop high-resolution JPEG, PNG, or WebP images"
-                onFilesSelected={handleFileSelected}
-                maxSizeMB={500}
-              />
-            ) : (
-              <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm p-6 space-y-5">
-                <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
-                  <div className="flex items-center gap-2">
-                    <GridIcon className="w-4 h-4 text-zinc-400" />
-                    <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Poster Layout Preview</span>
-                  </div>
-                  <Button variant="ghost" onClick={reset} className="text-rose-500 hover:text-rose-600 text-xs h-7 px-2">Change Image</Button>
-                </div>
+      {/* Active Workspace State */}
+      {file && !resultUrl && !processing && (
+        <div className={`image-workbench ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} flex-1 flex h-full overflow-hidden`}>
+          {/* ═══ LEFT SIDEBAR ═══════════════════════════════════════════════════ */}
+          <aside className={`image-workbench__sidebar ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+              {sidebarCollapsed ? (
+                /* Collapsed Icon Rail */
+                <div className="h-full flex flex-col items-center py-3 bg-[#18191e] justify-between w-full select-none">
+                  <div className="flex flex-col items-center gap-1.5 w-full px-2">
+                    {/* Expand button */}
+                    <button
+                      type="button"
+                      onClick={() => setSidebarCollapsed(false)}
+                      className="w-9 h-9 rounded-lg hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer mb-1"
+                      title="Expand sidebar"
+                    >
+                      <PanelLeft className="w-4 h-4" />
+                    </button>
 
-                {/* Full Source Image Preview with Brightened Active Printable Region & Dimmed Crop Margins */}
-                {(() => {
-                  const imgW = imageDims?.width || 1000;
-                  const imgH = imageDims?.height || 600;
-                  const imgAspect = imgW / imgH;
-                  const gridAspect = (columns * pageMMW) / (rows * pageMMH);
+                    <div className="w-6 h-[1px] bg-white/10 mb-1" />
 
-                  // Compute active printable grid box position inside full image container
-                  let gridStyle: React.CSSProperties = {};
-
-                  if (gridAspect > imgAspect) {
-                    // Grid is wider than image -> width = 100%, height = (imgAspect / gridAspect) * 100%
-                    const hPct = (imgAspect / gridAspect) * 100;
-                    const topPct = (100 - hPct) / 2;
-                    gridStyle = {
-                      left: '0%',
-                      top: `${topPct}%`,
-                      width: '100%',
-                      height: `${hPct}%`
-                    };
-                  } else {
-                    // Grid is taller than image -> height = 100%, width = (gridAspect / imgAspect) * 100%
-                    const wPct = (gridAspect / imgAspect) * 100;
-                    const leftPct = (100 - wPct) / 2;
-                    gridStyle = {
-                      left: `${leftPct}%`,
-                      top: '0%',
-                      width: `${wPct}%`,
-                      height: '100%'
-                    };
-                  }
-
-                  return (
-                    <div className="w-full flex flex-col items-center bg-zinc-950/80 p-5 border border-zinc-900 rounded-xl overflow-hidden shadow-inner space-y-4">
-                      {/* Outer Wrapper Box to strictly constrain height & center aspect-ratio box */}
-                      <div className="w-full max-h-[420px] flex items-center justify-center">
-                        {/* Inner Box matching Full Source Image Aspect Ratio */}
-                        <div
-                          className="relative rounded-lg overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-950 select-none flex items-center justify-center"
-                          style={{
-                            aspectRatio: `${imgW} / ${imgH}`,
-                            maxHeight: '420px',
-                            maxWidth: '100%',
-                            width: `min(100%, calc(420px * ${imgAspect}))`
-                          }}
-                        >
-                          {/* 1. Single Master Source Image - Always 100% aligned */}
-                          <img
-                            src={previewUrl!}
-                            alt="Source poster"
-                            onLoad={(e) => {
-                              const target = e.currentTarget;
-                              if (target.naturalWidth > 0 && target.naturalHeight > 0) {
-                                if (!imageDims || imageDims.width !== target.naturalWidth || imageDims.height !== target.naturalHeight) {
-                                  setImageDims({ width: target.naturalWidth, height: target.naturalHeight });
-                                  if (lockAspect) {
-                                    recalcRows(columns, target.naturalWidth, target.naturalHeight, pageSize, orientation);
-                                  }
-                                }
-                              }
+                    {/* Tool icons with tooltip */}
+                    <div className="flex flex-col items-center gap-1 w-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+                      {POSTER_TABS.map((tab) => {
+                        const Icon = tab.Icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(tab.id);
+                              setSidebarCollapsed(false);
                             }}
-                            className="w-full h-full object-cover select-none pointer-events-none"
-                          />
-
-                          {/* 2. Active Printable Sheet Grid (100% Bright, 70% Dark Box Shadow outside) */}
-                          <div
-                            className="absolute border-2 border-white rounded-sm pointer-events-none transition-all duration-300 z-10"
-                            style={{
-                              ...gridStyle,
-                              boxShadow: '0 0 0 9999px rgba(4, 6, 10, 0.70)'
-                            }}
+                            title={`${tab.label} Settings`}
+                            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                              isActive
+                                ? 'bg-white text-zinc-950 font-bold shadow-md'
+                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                            }`}
                           >
-                            {/* Grid Overlay with Sheet Numbers & A4/A3 Badges */}
-                            <div
-                              className="absolute inset-0 grid pointer-events-none z-20"
-                              style={{
-                                gridTemplateColumns: `repeat(${columns}, 1fr)`,
-                                gridTemplateRows: `repeat(${rows}, 1fr)`
-                              }}
-                            >
-                              {[...Array(columns * rows)].map((_, i) => (
-                                <div key={i} className="border border-dashed border-white/70 bg-white/5 flex flex-col items-center justify-center p-1">
-                                  <span className="text-[10px] font-mono text-zinc-950 font-black bg-zinc-100 px-1.5 py-0.5 rounded shadow-md select-none">{i + 1}</span>
-                                  <span className="text-[8px] font-mono text-zinc-300 font-bold mt-1 bg-black/80 px-1 rounded select-none uppercase tracking-wider border border-white/10">
-                                    {pageSize} &bull; {orientation} ({pageMMW}×{pageMMH}mm)
-                                  </span>
-                                </div>
-                              ))}
+                            <Icon className="w-4 h-4" />
+                            {/* Hover Tooltip */}
+                            <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                              {tab.label}
                             </div>
-                          </div>
-                        </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Collapsed CTA button */}
+                  <div className="pt-2 border-t border-white/10 w-full flex justify-center px-2">
+                    <button
+                      type="button"
+                      onClick={generatePoster}
+                      disabled={processing}
+                      title="Generate Poster PDF"
+                      className="w-9 h-9 rounded-lg bg-white text-zinc-950 hover:bg-zinc-200 flex items-center justify-center shadow-md cursor-pointer transition-all hover:scale-105 active:scale-95 group relative font-bold disabled:opacity-50"
+                    >
+                      <span className="text-sm leading-none font-black">→</span>
+                      <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                        Generate PDF
                       </div>
-
-                      {/* Legend & Quick Tips Bar */}
-                      <div className="w-full flex flex-col sm:flex-row items-center justify-between px-1 gap-3 text-xs">
-                        <div className="flex items-center gap-5 text-zinc-400">
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded bg-white border border-zinc-200 shadow-sm inline-block" />
-                            <span className="font-bold text-zinc-200">Printable Area</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="w-3 h-3 rounded bg-zinc-900 border border-zinc-700 opacity-60 inline-block" />
-                            <span className="font-medium text-zinc-400">Cropped Overflow</span>
-                          </div>
-                        </div>
-                        {Math.abs(gridAspect - imgAspect) > 0.05 && (
-                          <div className="flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 px-3 py-1.5 rounded-lg text-zinc-300">
-                            <span className="text-[11px] font-medium">
-                              💡 <strong className="text-zinc-100">Tip:</strong> Turn on <span className="text-white font-bold underline decoration-zinc-500">Auto Aspect Ratio</span> to cover 100% of the image.
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Physical Dimension Banner */}
-                <div className="p-3.5 bg-zinc-950/40 border border-[var(--border-color)] rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2 text-zinc-300">
-                    <RulerIcon className="w-4 h-4 text-zinc-300" />
-                    <span className="font-bold">Total Poster Dimensions:</span>
-                    <span className="text-zinc-100 font-extrabold">{posterMeterW}m × {posterMeterH}m</span>
-                    <span className="text-zinc-500 font-medium">({posterInchW}″ × {posterInchH}″)</span>
-                  </div>
-                  <div className="text-[11px] text-zinc-300 font-bold bg-zinc-900 px-3 py-1 rounded-md border border-zinc-800">
-                    {columns * rows} Total {pageSize} Pages ({columns} cols × {rows} rows) &bull; {orientation} ({pageMMW}×{pageMMH}mm / sheet)
+                    </button>
                   </div>
                 </div>
-              </Card>
-            )}
-          </div>
+              ) : (
+                /* Expanded Compact Sidebar */
+                <div className="h-full flex flex-col min-h-0 bg-[#18191e]">
+                  {/* Compact Header with Collapse button */}
+                  <div className="h-10 px-3.5 border-b border-white/10 flex items-center justify-between bg-transparent shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Poster Setup</span>
+                      <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400">
+                        {columns * rows} sheets
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarCollapsed(true)}
+                      className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                      title="Collapse to icon rail"
+                    >
+                      <PanelLeftClose className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
-          {/* Controls Sidebar */}
-          <div className="lg:col-span-4 space-y-6">
-            {file && (
-              <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm p-5 space-y-5">
-                <CardTitle className="text-sm font-bold text-[var(--text-primary)]">Poster Configuration</CardTitle>
+                  {/* Tool navigation tabs */}
+                  <WorkspaceToolNav items={POSTER_TABS} activeId={activeTab} onChange={setActiveTab} label="Poster settings" />
 
-                {/* Tile Dimensions */}
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Paper Size & Orientation</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Select value={pageSize} onValueChange={(v) => handlePageSizeChange(v as any)}>
-                      <SelectTrigger className="h-9 text-xs bg-transparent border-[var(--border-color)]">
-                        <SelectValue placeholder="Paper Size">{getPaperLabel(pageSize, orientation)}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.keys(PAGE_SIZES).map((key) => (
-                          <SelectItem key={key} value={key}>
-                            {getPaperLabel(key as keyof typeof PAGE_SIZES, orientation)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  {/* Scrollable settings content */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                    <PosterSettingsPanel
+                      activeTab={activeTab}
+                      pageSize={pageSize}
+                      orientation={orientation}
+                      columns={columns}
+                      rows={rows}
+                      styleMode={styleMode}
+                      lockAspect={lockAspect}
+                      showCropMarks={showCropMarks}
+                      showSheetNumbers={showSheetNumbers}
+                      rotation={rotation}
+                      flipH={flipH}
+                      flipV={flipV}
+                      dotSize={dotSize}
+                      invertHalftone={invertHalftone}
+                      onPageSizeChange={handlePageSizeChange}
+                      onOrientationChange={handleOrientationChange}
+                      onColumnsChange={handleColumnsChange}
+                      onRowsChange={(r) => setRows(r)}
+                      onSwapGrid={handleSwapGrid}
+                      onApplyPhysicalWidthPreset={handleApplyPhysicalWidthPreset}
+                      setStyleMode={setStyleMode}
+                      setLockAspect={(val) => {
+                        setLockAspect(val);
+                        const eff = getEffectiveImageDims();
+                        if (val && eff) recalcRows(columns, eff.width, eff.height, pageSize, orientation);
+                      }}
+                      setShowCropMarks={setShowCropMarks}
+                      setShowSheetNumbers={setShowSheetNumbers}
+                      onRotateCW={handleRotateCW}
+                      onRotateCCW={handleRotateCCW}
+                      onRotate180={handleRotate180}
+                      onToggleFlipH={handleToggleFlipH}
+                      onToggleFlipV={handleToggleFlipV}
+                      onResetTransforms={handleResetTransforms}
+                      setDotSize={setDotSize}
+                      setInvertHalftone={setInvertHalftone}
+                    />
+                  </div>
 
-                    <Select value={orientation} onValueChange={(v) => handleOrientationChange(v as any)}>
-                      <SelectTrigger className="h-9 text-xs bg-transparent border-[var(--border-color)]">
-                        <SelectValue placeholder="Orientation">{orientation}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Portrait">Portrait</SelectItem>
-                        <SelectItem value="Landscape">Landscape</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  {/* Sticky Footer CTA */}
+                  <div className="p-3 border-t border-white/10 bg-[#18191e] shrink-0">
+                    <button
+                      type="button"
+                      onClick={generatePoster}
+                      disabled={processing}
+                      className="w-full h-10 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] disabled:opacity-50"
+                    >
+                      <span>{processing ? 'Generating…' : `Generate Poster (${columns * rows} Pages)`}</span>
+                      <span className="text-sm">→</span>
+                    </button>
                   </div>
                 </div>
+              )}
+            </aside>
 
-                {/* Columns & Rows Grid */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Poster Grid Count</label>
-                    <label className="flex items-center gap-1.5 text-[10px] text-zinc-400 cursor-pointer">
-                      <Switch
-                        checked={lockAspect}
-                        onCheckedChange={(val) => {
-                          setLockAspect(val);
-                          if (val && imageDims) recalcRows(columns, imageDims.width, imageDims.height, pageSize, orientation);
-                        }}
-                      />
-                      <span>Auto Aspect Ratio</span>
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-[var(--text-secondary)] uppercase font-semibold">Columns</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={columns}
-                        onChange={e => handleColumnsChange(parseInt(e.target.value) || 1)}
-                        className="h-9 text-xs bg-transparent border-[var(--border-color)] text-[var(--text-primary)] font-bold"
-                      />
+            {/* ═══ MAIN AREA ══════════════════════════════════════════════════════ */}
+            <div className="image-workbench__main">
+              {/* File info bar & Zoom controls */}
+              <div className="image-filebar h-10 border-b border-[var(--border-color)] bg-[var(--surface-color)] flex items-center px-4 gap-3 text-xs text-[var(--text-secondary)] shrink-0 justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[200px]">{file.name}</span>
+                      <span className="text-zinc-500">{formatBytes(file.size)}</span>
+                      {effDims && (
+                        <span className="text-zinc-500 hidden sm:inline">{effDims.width} × {effDims.height}px</span>
+                      )}
+                      {rotation !== 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-300">
+                          {rotation}°
+                        </span>
+                      )}
                     </div>
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-[var(--text-secondary)] uppercase font-semibold">Rows</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={rows}
-                        disabled={lockAspect}
-                        onChange={e => setRows(Math.max(1, parseInt(e.target.value) || 1))}
-                        className="h-9 text-xs bg-transparent border-[var(--border-color)] text-[var(--text-primary)] font-bold disabled:opacity-50"
-                      />
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <WorkspaceZoomControls value={posterZoom} onChange={setPosterZoom} min={40} max={200} />
                     </div>
                   </div>
-                </div>
 
-                {/* Print Style Mode */}
-                <div className="space-y-1.5 border-t border-[var(--border-color)]/40 pt-4">
-                  <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Print Style Mode</label>
-                  <Select value={styleMode} onValueChange={(v) => setStyleMode(v as any)}>
-                    <SelectTrigger className="h-9 text-xs bg-transparent border-[var(--border-color)]">
-                      <SelectValue placeholder="Style">
-                        {styleMode === 'color' ? 'Full Color HD Photo' : styleMode === 'bw' ? 'Monochrome Black & White' : 'Classic Halftone Dots'}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="color">Full Color HD Photo</SelectItem>
-                      <SelectItem value="bw">Monochrome Black & White</SelectItem>
-                      <SelectItem value="halftone">Classic Halftone Dot Art</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Precision Crop Marks Toggle */}
-                <div className="flex items-center justify-between border-t border-[var(--border-color)]/40 pt-4">
-                  <div>
-                    <span className="text-xs font-bold text-[var(--text-primary)] block">Corner Crop Marks</span>
-                    <span className="text-[10px] text-[var(--text-secondary)] block">Print alignment crosshairs on sheets</span>
-                  </div>
-                  <Switch
-                    checked={showCropMarks}
-                    onCheckedChange={setShowCropMarks}
+                  {/* Main Preview Stage */}
+                  <PosterPreviewStage
+                    file={file}
+                    previewUrl={previewUrl!}
+                    imageDims={imageDims}
+                    columns={columns}
+                    rows={rows}
+                    pageSize={pageSize}
+                    orientation={orientation}
+                    pageMMW={pageMMW}
+                    pageMMH={pageMMH}
+                    posterMeterW={posterMeterW}
+                    posterMeterH={posterMeterH}
+                    posterInchW={posterInchW}
+                    posterInchH={posterInchH}
+                    styleMode={styleMode}
+                    posterZoom={posterZoom}
+                    rotation={rotation}
+                    flipH={flipH}
+                    flipV={flipV}
+                    dotSize={dotSize}
+                    invertHalftone={invertHalftone}
+                    posterViewportRef={posterViewportRef}
                   />
-                </div>
-
-                <div className="border-t border-[var(--border-color)]/40 pt-4">
-                  <Button
-                    onClick={generatePoster}
-                    className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs shadow-sm cursor-pointer"
-                  >
-                    Generate Printable PDF ({columns * rows} Pages)
-                  </Button>
-                </div>
-              </Card>
-            )}
-
-            <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-4 space-y-2.5">
-              <CardTitle className="text-xs font-bold text-[var(--text-primary)]">Printing & Assembly Instructions</CardTitle>
-              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                Print PDF pages at <strong>100% Scale</strong> (Actual Size, no shrink to fit). Use the corner crosshair crop marks and tile coordinates (R1-C1) to trim white borders and align sheets seamlessly.
-              </p>
-            </Card>
+            </div>
           </div>
-        </div>
       )}
 
-      {/* RESULT PAGE */}
+      {/* Results State */}
       {resultUrl && !processing && (
-        <div className="max-w-xl mx-auto space-y-6">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm text-center p-6 space-y-5">
-            <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800/60 text-zinc-900 dark:text-zinc-100 rounded-full flex items-center justify-center mx-auto shadow-inner border border-[var(--border-color)]">
-              <CheckCircle className="w-7 h-7" />
-            </div>
-
-            <div>
-              <CardTitle className="text-xl font-black text-[var(--text-primary)]">Poster Package Ready!</CardTitle>
-              <CardDescription className="text-xs text-[var(--text-secondary)] mt-1">Multi-page vector PDF compiled with precision crop guides.</CardDescription>
-            </div>
-
-            <div className="flex items-center gap-3 p-4 bg-zinc-950/20 border border-[var(--border-color)] rounded-xl text-left">
-              <div className="p-2.5 bg-zinc-900/10 dark:bg-white/5 border border-[var(--border-color)] rounded-lg">
-                <PrinterIcon className="w-6 h-6 text-[var(--text-primary)]" />
-              </div>
-              <div className="truncate flex-1 min-w-0">
-                <span className="block text-xs font-bold truncate text-[var(--text-primary)]">{resultName}</span>
-                <span className="text-[10px] text-[var(--text-secondary)] uppercase mt-0.5 block font-semibold">
-                  {columns}×{rows} Grid Poster ({columns * rows} {pageSize} Sheets) &bull; {posterMeterW}m × {posterMeterH}m
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-              <a
-                href={resultUrl}
-                download={resultName}
-                className="inline-flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold px-6 py-3 rounded-full text-xs shadow-sm cursor-pointer"
-              >
-                <Download className="w-4 h-4" /> Download Poster PDF
-              </a>
-              <Button variant="outline" onClick={reset} className="rounded-full h-10 text-xs border-[var(--border-color)]">
-                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Create Another Poster
-              </Button>
-            </div>
-          </Card>
+        <div className="flex-1 flex items-center justify-center p-6">
+          <PosterResultCard
+            resultUrl={resultUrl}
+            resultName={resultName}
+            columns={columns}
+            rows={rows}
+            pageSize={pageSize}
+            posterMeterW={posterMeterW}
+            posterMeterH={posterMeterH}
+            onReset={reset}
+          />
         </div>
       )}
     </div>
   );
 };
-

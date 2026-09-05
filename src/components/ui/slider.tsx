@@ -18,13 +18,13 @@ function Slider({
 
   return (
     <SliderPrimitive.Root
-      className={cn("data-horizontal:w-full data-vertical:h-full cursor-pointer py-1.5", className)}
+      className={cn("data-horizontal:w-full data-vertical:h-full cursor-pointer py-1.5 px-1", className)}
       data-slot="slider"
       defaultValue={defaultValue}
       value={value}
       min={min}
       max={max}
-      thumbAlignment="center"
+      thumbAlignment="edge"
       {...props}
     >
       <SliderPrimitive.Control className="relative flex w-full touch-none items-center select-none data-vertical:h-full">

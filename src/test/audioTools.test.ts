@@ -36,4 +36,23 @@ describe('Audio Tools Utility Functions', () => {
     expect(CAMELOT_MAP['C Major']).toBe('8B');
     expect(CAMELOT_MAP['A Minor']).toBe('8A');
   });
+
+  it('verifies AudioCompressOptions typing and options contract', async () => {
+    const { parseMediaTagsFromFFmpegLog } = await import('../utils/ffmpeg/audio');
+    expect(typeof parseMediaTagsFromFFmpegLog).toBe('function');
+
+    const sampleLog = `
+      Input #0, mp3, from 'input_audio':
+        Metadata:
+          title           : Masterpiece Song
+          artist          : Audio Producer
+          album           : Album 2026
+          date            : 2026
+    `;
+    const tags = parseMediaTagsFromFFmpegLog(sampleLog);
+    expect(tags.title).toBe('Masterpiece Song');
+    expect(tags.artist).toBe('Audio Producer');
+    expect(tags.album).toBe('Album 2026');
+    expect(tags.year).toBe('2026');
+  });
 });

@@ -1,6 +1,34 @@
 import { describe, it, expect } from 'vitest';
+import { parseMediaTagsFromFFmpegLog } from '../utils/ffmpeg/audio';
 
 describe('Metadata & PDF Utilities', () => {
+  it('reads file tags without confusing attached-cover stream tags', () => {
+    const tags = parseMediaTagsFromFFmpegLog(`
+Input #0, mp3, from 'track.mp3':
+  Metadata:
+    title           : Correct title
+    artist          : Correct artist
+    album           : Correct album
+    date            : 2026
+    genre           : Electronic
+    comment         : File comment
+  Duration: 00:03:10.00
+  Stream #0:1: Video: mjpeg
+    Metadata:
+      title         : Album cover
+      comment       : Cover (front)
+`);
+
+    expect(tags).toEqual({
+      title: 'Correct title',
+      artist: 'Correct artist',
+      album: 'Correct album',
+      year: '2026',
+      genre: 'Electronic',
+      comment: 'File comment',
+    });
+  });
+
   it('page range parser correctly expands dash and comma ranges', () => {
     const rangeInput = '1-3, 5, 8-10';
     const pages: number[] = [];

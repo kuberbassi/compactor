@@ -83,4 +83,26 @@ describe('PDF Tools & Manipulation Utilities', () => {
     const pages = parsePageRange('1-3, 5, 7-8', 10);
     expect(pages).toEqual([0, 1, 2, 4, 6, 7]);
   });
+
+  it('strips all metadata from a PDF file with removePdfMetadata', async () => {
+    const { removePdfMetadata } = await import('../utils/pdfMetadata');
+    const doc = await PDFDocument.create();
+    doc.setTitle('Sensitive Title');
+    doc.setAuthor('John Doe');
+    doc.setSubject('Classified');
+    doc.setKeywords(['secret', 'project']);
+    doc.addPage([595, 842]);
+    const bytes = await doc.save();
+    const mockFile = new File([bytes as any], 'sensitive.pdf', { type: 'application/pdf' });
+
+    const cleanBlob = await removePdfMetadata(mockFile);
+    expect(cleanBlob).toBeDefined();
+    expect(cleanBlob.type).toBe('application/pdf');
+
+    const cleanDoc = await PDFDocument.load(await cleanBlob.arrayBuffer());
+    expect(cleanDoc.getTitle()).toBeFalsy();
+    expect(cleanDoc.getAuthor()).toBeFalsy();
+    expect(cleanDoc.getSubject()).toBeFalsy();
+    expect(cleanDoc.getKeywords()).toBeFalsy();
+  });
 });

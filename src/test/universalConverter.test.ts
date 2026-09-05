@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getCommonSupportedTargets,
   getFileExtension,
+  getFileFormatLabel,
   getSupportedTargets,
   isSupportedSourceFormat,
   SUPPORTED_SOURCE_FORMATS,
@@ -9,23 +10,29 @@ import {
 import { docxToText, textToDocx } from '../utils/documentConverters';
 
 describe('universal converter capability registry', () => {
+  it('shows the actual extension instead of its generic MIME family', () => {
+    expect(getFileFormatLabel(new File([], 'track.mp3', { type: 'audio/mpeg' }))).toBe('MP3');
+    expect(getFileFormatLabel(new File([], 'photo.jpg', { type: 'image/jpeg' }))).toBe('JPG');
+    expect(getFileFormatLabel(new File([], 'recording', { type: 'audio/mpeg' }))).toBe('MP3');
+  });
+
   it('only exposes implemented PDF and Word targets', () => {
     expect([...getSupportedTargets('pdf')]).toEqual(['docx', 'txt']);
     expect([...getSupportedTargets('docx')]).toEqual(['pdf', 'txt', 'html']);
     expect(getSupportedTargets('pdf').has('doc')).toBe(false);
-    expect(getSupportedTargets('pptx').size).toBe(0);
+    expect([...getSupportedTargets('pptx')]).toEqual(['pdf', 'txt']);
   });
 
   it('removes formats that have no installed source conversion path', () => {
-    expect(isSupportedSourceFormat('pptx')).toBe(false);
     expect(isSupportedSourceFormat('heic')).toBe(false);
     expect(isSupportedSourceFormat('zip')).toBe(false);
+    expect(isSupportedSourceFormat('exe')).toBe(false);
     expect(SUPPORTED_SOURCE_FORMATS.every(format => getSupportedTargets(format).size > 0)).toBe(true);
   });
 
   it('dims targets without a reliable fallback instead of enabling them', () => {
-    expect(getSupportedTargets('mp4').has('flv')).toBe(false);
-    expect(getSupportedTargets('mp4').has('gif')).toBe(false);
+    expect(getSupportedTargets('mp4').has('docx')).toBe(false);
+    expect(getSupportedTargets('mp4').has('pdf')).toBe(false);
     expect(getSupportedTargets('avif').has('svg')).toBe(false);
   });
 

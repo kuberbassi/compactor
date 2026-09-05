@@ -18,7 +18,8 @@ async function redis(command) {
   const response = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(command),
+    body: JSON.stringify(command.map(arg => String(arg))),
+    signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined,
   });
   if (!response.ok) throw new Error(`Redis request failed (${response.status})`);
   const payload = await response.json();
@@ -33,17 +34,23 @@ async function getPersistentCount() {
 }
 
 const allowedOrigins = (request) => {
-  const host = request.headers.host ? `https://${request.headers.host}` : '';
+  const host = request.headers?.host ? `https://${request.headers.host}` : '';
   return new Set([
     host,
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5174',
+    'http://localhost:4173',
+    'http://127.0.0.1:4173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
     ...(process.env.COUNTER_ALLOWED_ORIGINS || '').split(',').map(origin => origin.trim()),
   ].filter(Boolean));
 };
 
 const applyCors = (request, response) => {
-  const origin = request.headers.origin;
+  const origin = request.headers?.origin;
   if (origin && allowedOrigins(request).has(origin)) {
     response.setHeader('Access-Control-Allow-Origin', origin);
     response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -53,7 +60,7 @@ const applyCors = (request, response) => {
 };
 
 const getClientIp = (request) => {
-  const forwarded = request.headers['x-forwarded-for'];
+  const forwarded = request.headers?.['x-forwarded-for'];
   return (Array.isArray(forwarded) ? forwarded[0] : forwarded || request.socket?.remoteAddress || 'unknown')
     .split(',')[0]
     .trim()
@@ -78,8 +85,23 @@ export default async function handler(request, response) {
       return response.status(200).json({ count: await getPersistentCount() });
     }
 
-    const eventIds = Array.isArray(request.body?.eventIds)
-      ? [...new Set(request.body.eventIds)]
+    let body = request.body;
+    if (typeof body === 'string') {
+      try {
+        body = JSON.parse(body);
+      } catch {
+        return response.status(400).json({ error: 'Invalid JSON body' });
+      }
+    } else if (typeof Buffer !== 'undefined' && Buffer.isBuffer(body)) {
+      try {
+        body = JSON.parse(body.toString('utf-8'));
+      } catch {
+        return response.status(400).json({ error: 'Invalid JSON body' });
+      }
+    }
+
+    const eventIds = Array.isArray(body?.eventIds)
+      ? [...new Set(body.eventIds)]
           .filter(id => typeof id === 'string' && /^[a-zA-Z0-9-]{16,80}$/.test(id))
           .slice(0, MAX_EVENTS_PER_REQUEST)
       : [];
@@ -87,20 +109,20 @@ export default async function handler(request, response) {
 
     const hourBucket = Math.floor(Date.now() / 3_600_000);
     const rateKey = `${RATE_PREFIX}${getClientIp(request)}:${hourBucket}`;
-    const rateCount = Number(await redis(['INCRBY', rateKey, eventIds.length]));
-    if (rateCount === eventIds.length) await redis(['EXPIRE', rateKey, 3700]);
+    const rateCount = Number(await redis(['INCRBY', rateKey, eventIds.length.toString()]));
+    if (rateCount === eventIds.length) await redis(['EXPIRE', rateKey, '3700']);
     if (rateCount > MAX_EVENTS_PER_IP_PER_HOUR) {
       return response.status(429).json({ error: 'Metric rate limit exceeded' });
     }
 
     let accepted = 0;
     for (const eventId of eventIds) {
-      const stored = await redis(['SET', `${EVENT_PREFIX}${eventId}`, '1', 'NX', 'EX', 2_592_000]);
+      const stored = await redis(['SET', `${EVENT_PREFIX}${eventId}`, '1', 'NX', 'EX', '2592000']);
       if (stored === 'OK') accepted += 1;
     }
     await redis(['SET', COUNT_KEY, INITIAL_MIGRATION_COUNT.toString(), 'NX']);
     const rawCount = accepted > 0
-      ? await redis(['INCRBY', COUNT_KEY, accepted])
+      ? await redis(['INCRBY', COUNT_KEY, accepted.toString()])
       : await redis(['GET', COUNT_KEY]);
     return response.status(200).json({ count: Number.parseInt(rawCount || '0', 10), accepted });
   } catch (error) {

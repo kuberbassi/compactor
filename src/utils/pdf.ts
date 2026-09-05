@@ -1,6 +1,6 @@
-import { PDFDocument, rgb, StandardFonts, PDFPage } from 'pdf-lib';
-import html2canvas from 'html2canvas';
-import { extractRealPdfMarkdown } from './pdfRenderer';
+import { PDFDocument, rgb, StandardFonts, PDFPage, degrees as pdfLibDegrees } from 'pdf-lib';
+import { extractRealPdfMarkdown, renderPdfPagesToImages } from './pdfRenderer';
+import { safeHtml2Canvas } from './domSanitizer';
 
 export interface PageOrganizeSpec {
   originalIndex: number;
@@ -21,9 +21,9 @@ export const renderedElementToPdf = async (element: HTMLElement, title = 'Markdo
     Math.sqrt(pixelBudget / Math.max(1, element.scrollWidth * element.scrollHeight))
   ));
 
-  const canvas = await html2canvas(element, {
+  const canvas = await safeHtml2Canvas(element, {
     allowTaint: false,
-    backgroundColor: getComputedStyle(element).backgroundColor || '#ffffff',
+    backgroundColor: '#ffffff',
     imageTimeout: 4000,
     logging: false,
     scale: safeScale,
@@ -125,6 +125,24 @@ export const mergePdfs = async (files: File[]): Promise<Blob> => {
 };
 
 /**
+ * Rotates ALL pages in a PDF document by a fixed degree clockwise (90, 180, 270)
+ */
+export const rotatePdfAllPages = async (
+  file: File,
+  degrees: 90 | 180 | 270
+): Promise<Blob> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+  pdf.getPages().forEach((page) => {
+    const current = (page.getRotation().angle || 0) as number;
+    const newAngle = (current + degrees) % 360;
+    page.setRotation(pdfLibDegrees(newAngle));
+  });
+  const pdfBytes = await pdf.save({ useObjectStreams: true });
+  return new Blob([pdfBytes as any], { type: 'application/pdf' });
+};
+
+/**
  * Reorganizes, rotates, and extracts selected pages from a single PDF
  */
 export const reorganizePdfPages = async (
@@ -142,7 +160,7 @@ export const reorganizePdfPages = async (
     const rot = specs[i].rotation || 0;
     if (rot !== 0) {
       const currentRot = page.getRotation().angle;
-      page.setRotation((currentRot + rot) % 360 as any);
+      page.setRotation(pdfLibDegrees((currentRot + rot) % 360));
     }
     newPdf.addPage(page);
   });
@@ -539,6 +557,8 @@ export const addPageNumbersToPdf = async (
   return new Blob([pdfBytes as any], { type: 'application/pdf' });
 };
 
+export { removePdfMetadata } from './pdfMetadata';
+
 /**
  * Crops margins off PDF pages
  */
@@ -552,6 +572,90 @@ export const cropPdfMargins = async (file: File, marginPct: number): Promise<Blo
     const dy = height * (marginPct / 100);
     page.setCropBox(dx, dy, width - dx * 2, height - dy * 2);
   });
+  const pdfBytes = await pdf.save({ useObjectStreams: true });
+  return new Blob([pdfBytes as any], { type: 'application/pdf' });
+};
+
+export interface PdfFormFieldInfo {
+  name: string;
+  type: 'text' | 'checkbox' | 'dropdown' | 'radio' | 'button' | 'unknown';
+  value: string | boolean;
+}
+
+/**
+ * Inspects all interactive form fields within a PDF.
+ */
+export const getPdfFormFields = async (file: File): Promise<PdfFormFieldInfo[]> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+  const form = pdf.getForm();
+  const fields = form.getFields();
+
+  return fields.map((f) => {
+    const name = f.getName();
+    const constructorName = f.constructor.name;
+    let type: PdfFormFieldInfo['type'] = 'unknown';
+    let value: string | boolean = '';
+
+    if (constructorName.includes('PDFTextField')) {
+      type = 'text';
+      try { value = (f as any).getText() || ''; } catch {}
+    } else if (constructorName.includes('PDFCheckBox')) {
+      type = 'checkbox';
+      try { value = (f as any).isChecked(); } catch {}
+    } else if (constructorName.includes('PDFDropdown')) {
+      type = 'dropdown';
+      try { value = (f as any).getSelected()?.[0] || ''; } catch {}
+    } else if (constructorName.includes('PDFRadioGroup')) {
+      type = 'radio';
+      try { value = (f as any).getSelected() || ''; } catch {}
+    } else if (constructorName.includes('PDFButton')) {
+      type = 'button';
+    }
+
+    return { name, type, value };
+  });
+};
+
+/**
+ * Populates interactive PDF form fields with user-provided data.
+ */
+export const fillPdfFormFields = async (
+  file: File,
+  values: Record<string, string | boolean>,
+  flattenAfterFill: boolean = false
+): Promise<Blob> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+  const form = pdf.getForm();
+
+  for (const [name, val] of Object.entries(values)) {
+    try {
+      const field = form.getField(name);
+      if (!field) continue;
+      const cName = field.constructor.name;
+
+      if (cName.includes('PDFTextField')) {
+        (field as any).setText(String(val));
+      } else if (cName.includes('PDFCheckBox')) {
+        if (val) (field as any).check();
+        else (field as any).uncheck();
+      } else if (cName.includes('PDFDropdown')) {
+        (field as any).select(String(val));
+      } else if (cName.includes('PDFRadioGroup')) {
+        (field as any).select(String(val));
+      }
+    } catch (e) {
+      console.warn(`Could not set field "${name}":`, e);
+    }
+  }
+
+  if (flattenAfterFill) {
+    try {
+      form.flatten();
+    } catch {}
+  }
+
   const pdfBytes = await pdf.save({ useObjectStreams: true });
   return new Blob([pdfBytes as any], { type: 'application/pdf' });
 };
@@ -589,6 +693,38 @@ export const flattenPdfForm = async (file: File): Promise<Blob> => {
 
   const pdfBytes = await pdf.save({ useObjectStreams: true });
   return new Blob([pdfBytes as any], { type: 'application/pdf' });
+};
+
+/**
+ * Renders every page into a new image-only PDF. Unlike form flattening, this
+ * intentionally removes the selectable text layer and all interactive objects.
+ */
+export const flattenPdfCompletely = async (
+  file: File,
+  quality: 'standard' | 'high' | 'print' = 'high',
+): Promise<Blob> => {
+  const scale = quality === 'standard' ? 1.5 : quality === 'print' ? 3 : 2.25;
+  const renderedPages = await renderPdfPagesToImages(file, 'jpg', scale);
+  const source = await PDFDocument.load(await file.arrayBuffer(), { ignoreEncryption: true });
+  const output = await PDFDocument.create();
+
+  try {
+    for (let index = 0; index < renderedPages.length; index += 1) {
+      const rendered = renderedPages[index];
+      const sourcePage = source.getPage(index);
+      const { width, height } = sourcePage.getSize();
+      const image = await output.embedJpg(await rendered.blob.arrayBuffer());
+      const page = output.addPage([width, height]);
+      page.drawImage(image, { x: 0, y: 0, width, height });
+    }
+
+    output.setTitle(file.name.replace(/\.pdf$/i, ''));
+    output.setCreator('Compactor');
+    output.setProducer('Compactor complete PDF flattener');
+    return new Blob([new Uint8Array(await output.save({ useObjectStreams: true }))], { type: 'application/pdf' });
+  } finally {
+    renderedPages.forEach(page => URL.revokeObjectURL(page.url));
+  }
 };
 
 /**

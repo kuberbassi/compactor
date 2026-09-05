@@ -1,60 +1,34 @@
-import React from 'react';
+import type { MouseEvent } from 'react';
+import { ArrowUpRight, Check, LockKeyhole } from 'lucide-react';
+import { BrandMark } from './BrandMark';
+import { pathForTool } from '../../config/toolRoutes';
 
-interface FooterProps {
-  onNavigate?: (href: string) => void;
-}
+interface FooterProps { onNavigate?: (href: string) => void }
 
-export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
-  return (
-    <footer className="site-footer w-full py-6 sm:py-8 px-4 sm:px-6 border-t border-[var(--border-color)] text-center text-xs text-[var(--text-secondary)] space-y-2.5 mt-12">
-      <p className="font-medium text-[11px] sm:text-xs">Made for simpler, 100% private client-side file work.</p>
+const FOOTER_GROUPS = [
+  { title: 'Popular', links: [['Compress PDF', 'pdf-compress'], ['Edit PDF', 'pdf-edit'], ['Convert files', 'universal-converter'], ['Compress video', 'video-compressor']] },
+  { title: 'Create', links: [['Edit an image', 'image-optimizer'], ['Markdown workspace', 'pdf-word-to-pdf'], ['Make a poster', 'rasterbator'], ['Join audio', 'audio-joiner']] },
+  { title: 'Utilities', links: [['Organize PDF', 'pdf-organize'], ['PDF to Markdown', 'pdf-to-word'], ['Edit metadata', 'metadata-editor'], ['Key & BPM finder', 'audio-bpm-finder']] },
+] as const;
 
-      <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-[11px] font-medium text-zinc-400">
-        <button 
-          onClick={() => {
-            window.location.hash = 'privacy';
-            onNavigate?.('privacy');
-          }}
-          className="hover:text-white transition-colors cursor-pointer py-1 px-2 rounded hover:bg-zinc-800/50 min-h-[32px] flex items-center"
-        >
-          Privacy Policy
-        </button>
-        <span className="text-zinc-600">&bull;</span>
-        <button 
-          onClick={() => {
-            window.location.hash = 'terms';
-            onNavigate?.('terms');
-          }}
-          className="hover:text-white transition-colors cursor-pointer py-1 px-2 rounded hover:bg-zinc-800/50 min-h-[32px] flex items-center"
-        >
-          Terms &amp; Conditions
-        </button>
+export function Footer({ onNavigate }: FooterProps) {
+  const navigate = (event: MouseEvent<HTMLAnchorElement>, id: string) => { event.preventDefault(); onNavigate?.(id); };
+  return <footer className="footer-v2">
+    <div className="footer-v2__inner">
+      <div className="footer-v2__lead">
+        <div className="footer-v2__logo"><BrandMark /><strong>compactor</strong></div>
+        <h2>File work, without<br />the busywork.</h2>
+        <p>A focused suite of browser-based tools for everyday documents and media.</p>
+        <div className="footer-v2__local"><LockKeyhole /><div><strong>Private by default</strong><span>Supported files are processed on your device.</span></div></div>
       </div>
-
-      <p className="font-mono pt-0.5 text-[10px] sm:text-[11px] leading-relaxed">
-        &copy; {new Date().getFullYear()} Compactor &bull; Designed &amp; Developed by{' '}
-        <span className="relative inline-block group/author">
-          <a 
-            href="https://kuberbassi.com" 
-            target="_blank" 
-            rel="noopener noreferrer" 
-            aria-label="Visit Kuber Bassi's portfolio website"
-            className="text-[var(--text-primary)] font-bold underline underline-offset-4 transition-all duration-300 hover:text-white hover:[text-shadow:0_0_8px_rgba(255,255,255,0.9),0_0_20px_rgba(255,255,255,0.5),0_0_40px_rgba(255,255,255,0.2)]"
-          >
-            Kuber Bassi
-          </a>
-          {/* Tooltip */}
-          <span
-            role="tooltip"
-            aria-hidden="true"
-            className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 whitespace-nowrap rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-1.5 text-[10px] font-medium text-zinc-200 shadow-xl backdrop-blur-sm opacity-0 scale-95 translate-y-1 transition-all duration-200 group-hover/author:opacity-100 group-hover/author:scale-100 group-hover/author:translate-y-0"
-          >
-            🌐 Visit kuberbassi.com
-            {/* Arrow */}
-            <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-zinc-700/80" />
-          </span>
-        </span>
-      </p>
-    </footer>
-  );
-};
+      <nav className="footer-v2__nav" aria-label="Footer tools">
+        {FOOTER_GROUPS.map(group => <div key={group.title}><h3>{group.title}</h3>{group.links.map(([label, id]) => <a key={id} href={pathForTool(id)} onClick={event => navigate(event, id)}>{label}<ArrowUpRight /></a>)}</div>)}
+      </nav>
+    </div>
+    <div className="footer-v2__bottom">
+      <p>© {new Date().getFullYear()} Compactor</p>
+      <div><span><Check /> No uploads</span><span><Check /> No account</span></div>
+      <nav aria-label="Legal"><a href="/privacy" onClick={event => navigate(event, 'privacy')}>Privacy</a><a href="/terms" onClick={event => navigate(event, 'terms')}>Terms</a><a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">Built by Kuber Bassi <ArrowUpRight /></a></nav>
+    </div>
+  </footer>;
+}

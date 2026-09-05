@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { getBrowserVideoProcessingLimitBytes, isGifFile } from '../utils/mediaFiles';
+import { buildGifPaletteFilter } from '../utils/ffmpeg/video';
 
 describe('Video Tools Utilities & Presets', () => {
   it('WhatsApp target preset enforces ≤ 16MB file limit', () => {
@@ -31,5 +33,25 @@ describe('Video Tools Utilities & Presets', () => {
     const fps = 15;
     expect(fps).toBeGreaterThanOrEqual(5);
     expect(fps).toBeLessThanOrEqual(30);
+  });
+
+  it('builds a mapped complex GIF palette graph', () => {
+    const filter = buildGifPaletteFilter('[0:v]', 15, 'scale=480:-1');
+
+    expect(filter).toContain('[0:v]fps=15,scale=480:-1:flags=lanczos');
+    expect(filter).toContain('palettegen[gif_palette]');
+    expect(filter).toContain('paletteuse[gif_output]');
+  });
+
+  it('recognizes GIF sources from either MIME type or extension', () => {
+    expect(isGifFile({ name: 'animation.bin', type: 'image/gif' })).toBe(true);
+    expect(isGifFile({ name: 'animation.GIF', type: '' })).toBe(true);
+    expect(isGifFile({ name: 'clip.mp4', type: 'video/mp4' })).toBe(false);
+  });
+
+  it('keeps browser FFmpeg input limits below unsafe in-memory sizes', () => {
+    expect(getBrowserVideoProcessingLimitBytes()).toBe(512 * 1024 * 1024);
+    expect(getBrowserVideoProcessingLimitBytes(2)).toBe(256 * 1024 * 1024);
+    expect(getBrowserVideoProcessingLimitBytes(16)).toBe(768 * 1024 * 1024);
   });
 });

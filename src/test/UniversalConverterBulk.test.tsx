@@ -37,8 +37,8 @@ describe('UniversalConverter bulk queue', () => {
 
     fireEvent.change(input, { target: { files: [markdown, text] } });
 
-    expect(await screen.findByText('2 files · 13 Bytes')).toBeInTheDocument();
-    const convertButton = screen.getByRole('button', { name: 'Convert 2 files to PDF' });
+    expect((await screen.findAllByText(/2 files · 13 Bytes/i)).length).toBeGreaterThanOrEqual(1);
+    const convertButton = screen.getByRole('button', { name: /Convert to PDF/i });
     fireEvent.click(convertButton);
 
     expect(await screen.findByText('Batch conversion complete')).toBeInTheDocument();

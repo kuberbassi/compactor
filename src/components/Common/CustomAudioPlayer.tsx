@@ -12,6 +12,10 @@ interface CustomAudioPlayerProps {
   pitchSemitones?: number;
   speedRatio?: number;
   className?: string;
+  onTimeUpdate?: (time: number) => void;
+  onDurationChange?: (duration: number) => void;
+  onPlayStateChange?: (isPlaying: boolean) => void;
+  seekToTime?: number | null;
 }
 
 export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
@@ -22,6 +26,10 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   pitchSemitones = 0,
   speedRatio = 1.0,
   className = '',
+  onTimeUpdate,
+  onDurationChange,
+  onPlayStateChange,
+  seekToTime,
 }) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -31,12 +39,36 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
+  useEffect(() => {
+    onPlayStateChange?.(isPlaying);
+  }, [isPlaying, onPlayStateChange]);
+
+  useEffect(() => {
+    onTimeUpdate?.(currentTime);
+  }, [currentTime, onTimeUpdate]);
+
+  useEffect(() => {
+    if (duration > 0) {
+      onDurationChange?.(duration);
+    }
+  }, [duration, onDurationChange]);
+
+  useEffect(() => {
+    if (seekToTime !== undefined && seekToTime !== null && Number.isFinite(seekToTime)) {
+      setCurrentTime(seekToTime);
+      if (audioRef.current) {
+        audioRef.current.currentTime = seekToTime;
+      }
+    }
+  }, [seekToTime]);
+
   // SoundTouch Web Audio Engine State
   const audioCtxRef = useRef<AudioContext | null>(null);
   const pitchShifterRef = useRef<PitchShifter | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const decodedBufferRef = useRef<AudioBuffer | null>(null);
+  const playbackEndedRef = useRef(false);
 
   const isPitchOrSpeedActive = pitchSemitones !== 0 || speedRatio !== 1.0;
 
@@ -108,13 +140,26 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
 
   // Synchronize progress bar during SoundTouch playback
   const updateProgressLoop = () => {
-    if (pitchShifterRef.current && audioCtxRef.current && audioCtxRef.current.state === 'running') {
+    if (!playbackEndedRef.current && pitchShifterRef.current && audioCtxRef.current && audioCtxRef.current.state === 'running') {
       const time = pitchShifterRef.current.timePlayed;
       if (isFinite(time) && time >= 0) {
-        setCurrentTime(time);
+        setCurrentTime(Math.min(time, duration || time));
       }
       animationFrameRef.current = requestAnimationFrame(updateProgressLoop);
     }
+  };
+
+  const finishPlayback = (finalDuration?: number) => {
+    playbackEndedRef.current = true;
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    setIsPlaying(false);
+    setCurrentTime(currentDuration => {
+      const endTime = finalDuration ?? duration;
+      return Number.isFinite(endTime) && endTime > 0 ? endTime : currentDuration;
+    });
   };
 
   // Start SoundTouch Web Audio playback at given timestamp
@@ -143,8 +188,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
       }
 
       const shifter = new PitchShifter(ctx, buffer, 4096, () => {
-        setIsPlaying(false);
-        setCurrentTime(0);
+        finishPlayback(buffer.duration);
       });
 
       shifter.pitchSemitones = pitchSemitones;
@@ -163,6 +207,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
       audioCtxRef.current = ctx;
       pitchShifterRef.current = shifter;
       gainNodeRef.current = gain;
+      playbackEndedRef.current = false;
 
       // Pause HTML5 audio if playing
       if (audioRef.current && !audioRef.current.paused) {
@@ -197,6 +242,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   useEffect(() => {
     setIsPlaying(false);
     setCurrentTime(0);
+    playbackEndedRef.current = false;
     cleanupWebAudio();
     if (audioRef.current) {
       audioRef.current.pause();
@@ -216,12 +262,16 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         }
         setIsPlaying(false);
       } else {
+        const restartFromBeginning = duration > 0 && currentTime >= duration - 0.05;
+        const startTime = restartFromBeginning ? 0 : currentTime;
+        if (restartFromBeginning) setCurrentTime(0);
         if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
           await audioCtxRef.current.resume();
           setIsPlaying(true);
+          playbackEndedRef.current = false;
           updateProgressLoop();
         } else {
-          await startSoundTouchPlayback(currentTime);
+          await startSoundTouchPlayback(startTime);
         }
       }
     } else {
@@ -232,6 +282,10 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         setIsPlaying(false);
       } else {
         try {
+          if (duration > 0 && audioRef.current.currentTime >= duration - 0.05) {
+            audioRef.current.currentTime = 0;
+            setCurrentTime(0);
+          }
           await audioRef.current.play();
           setIsPlaying(true);
         } catch (e) {
@@ -253,6 +307,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
+    playbackEndedRef.current = false;
     setCurrentTime(val);
 
     if (pitchShifterRef.current && duration > 0) {
@@ -306,7 +361,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         src={src}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
-        onEnded={() => { setIsPlaying(false); setCurrentTime(0); }}
+        onEnded={() => finishPlayback(audioRef.current?.duration)}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
       />

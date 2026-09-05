@@ -1,96 +1,56 @@
-import { useState, useMemo } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
+import { ArrowRight, Check, Clock3, Command, LockKeyhole, Search, ShieldCheck, Sparkles, Zap } from 'lucide-react';
 import type { CategoryType } from './Dashboard/types';
 import { CATEGORIES } from './Dashboard/types';
 import { TOOLS } from './Dashboard/data';
 import { ToolCard } from './Dashboard/ToolCard';
 import type { ProcessedCountSnapshot } from '../utils/counterStorage';
 
-export function Dashboard({ 
-  onSelectTool, 
-  processedCount
-}: { 
-  onSelectTool: (toolId: string) => void; 
-  processedCount: ProcessedCountSnapshot;
-}) {
+const POPULAR_TOOL_IDS = ['pdf-compress', 'universal-converter', 'pdf-edit', 'image-optimizer', 'video-compressor', 'pdf-to-word'];
+
+export function Dashboard({ onSelectTool, processedCount, recentToolIds = [], onOpenSearch = () => undefined }: { onSelectTool: (toolId: string) => void; processedCount: ProcessedCountSnapshot; recentToolIds?: string[]; onOpenSearch?: () => void }) {
   const [selectedCat, setSelectedCat] = useState<CategoryType>('ALL');
-
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAllTools, setShowAllTools] = useState(false);
+  const deferredQuery = useDeferredValue(searchQuery);
   const filteredTools = useMemo(() => {
-    if (selectedCat === 'ALL') return TOOLS;
-    return TOOLS.filter(t => t.category === selectedCat);
-  }, [selectedCat]);
+    const query = deferredQuery.trim().toLowerCase();
+    const matches = query ? TOOLS.filter(tool => [tool.title, tool.subtitle, tool.description, tool.category, ...tool.tags].join(' ').toLowerCase().includes(query)) : TOOLS;
+    return selectedCat === 'ALL' ? matches : matches.filter(tool => tool.category === selectedCat);
+  }, [deferredQuery, selectedCat]);
+  const visibleTools = useMemo(() => {
+    if (deferredQuery.trim() || showAllTools || selectedCat !== 'ALL') return filteredTools;
+    return POPULAR_TOOL_IDS.map(id => TOOLS.find(tool => tool.id === id)).filter((tool): tool is (typeof TOOLS)[number] => Boolean(tool));
+  }, [deferredQuery, filteredTools, selectedCat, showAllTools]);
+  const recentTools = recentToolIds.map(id => TOOLS.find(tool => tool.id === id)).filter((tool): tool is (typeof TOOLS)[number] => Boolean(tool));
+  const isLibraryOpen = showAllTools || Boolean(searchQuery.trim()) || selectedCat !== 'ALL';
 
-  return (
-    <div className="max-w-6xl mx-auto px-2 xs:px-3 sm:px-6 py-4 xs:py-6 sm:py-8 space-y-4 xs:space-y-6 sm:space-y-8">
-      
-      {/* HERO HEADER */}
-      <header className="text-center space-y-2.5 xs:space-y-3 sm:space-y-4 pt-18 xs:pt-20 sm:pt-20 px-1">
-        <div className="inline-flex items-center gap-1.5 xs:gap-2 px-2 xs:px-2.5 sm:px-3 py-1 rounded-full border border-zinc-800 bg-zinc-900 shadow-sm max-w-full">
-          <span className="status-dot-glow shrink-0" />
-          <span className="text-[8.5px] xs:text-[9px] sm:text-[10px] md:text-xs font-mono font-medium text-zinc-300 uppercase tracking-wider truncate">
-            EVERYTHING IN ONE PLACE
-          </span>
-        </div>
-
-        <h1 className="text-[clamp(1.5rem,7.5vw,4rem)] sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[0.95] px-1">
-          Less file fuss.<br />
-          <em className="not-italic text-zinc-400 font-serif italic">More flow.</em>
-        </h1>
-
-        <p className="text-[10.5px] xs:text-[11px] sm:text-sm md:text-base text-zinc-400 max-w-xs xs:max-w-sm sm:max-w-xl mx-auto leading-relaxed px-1">
-          Compress, organize, and convert files with verified private engines - including editable PDF-to-DOCX and precise multi-color SVG tracing.
-        </p>
-
-        <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs font-mono text-zinc-400 pt-0.5 max-w-full px-1">
-          <div className="px-2 xs:px-2.5 sm:px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 font-medium text-zinc-200 flex items-center gap-1.5 max-w-[240px] xs:max-w-[260px] sm:max-w-full truncate">
-            <span className="dot-glow-white shrink-0" />
-            <span className="truncate text-[9.5px] xs:text-[10px] sm:text-xs">
-              {processedCount.count.toLocaleString()} files finished {processedCount.scope === 'global' ? 'globally' : 'on this device'}
-            </span>
-          </div>
-          <span className="text-zinc-600 font-bold hidden sm:inline">&bull;</span>
-          <div className="px-2.5 sm:px-3 py-1 rounded-full bg-zinc-900/60 border border-zinc-800 text-zinc-400 text-[10px] sm:text-xs truncate hidden xs:block">
-            Pick a tool to begin
-          </div>
-        </div>
-      </header>
-
-      {/* CONCENTRIC RADII CATEGORY TABS */}
-      <div className="w-full flex justify-center my-2.5 sm:my-6">
-        <div className="dashboard-category-tabs flex items-center gap-0.5 sm:gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm w-full overflow-x-auto no-scrollbar scrollbar-none" style={{WebkitOverflowScrolling: 'touch'}}>
-          {CATEGORIES.map((cat) => {
-            const isActive = selectedCat === cat;
-            const count = cat === 'ALL' ? TOOLS.length : TOOLS.filter(t => t.category === cat).length;
-            return (
-              <button
-                key={cat}
-                onClick={() => setSelectedCat(cat)}
-                className={`px-1.5 xs:px-2.5 sm:px-3.5 py-1.5 rounded-lg text-[9px] xs:text-[10px] sm:text-xs font-bold transition-all duration-150 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer shrink-0 min-h-[32px] xs:min-h-[36px] ${
-                  isActive
-                    ? 'bg-zinc-800 text-white font-extrabold shadow-sm'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
-                }`}
-              >
-                <span className="whitespace-nowrap">{cat === 'ALL' ? 'ALL' : cat === 'AUDIO & CONVERT' ? 'AUDIO' : cat}</span>
-                <span className={`text-[8px] xs:text-[9px] sm:text-[10px] font-mono px-1 sm:px-1.5 rounded-md font-bold ${
-                  isActive ? 'bg-zinc-950 text-white' : 'bg-zinc-900 text-zinc-400'
-                }`}>
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+  return <div className="dashboard-v2">
+    <section className="dashboard-v2__hero" aria-labelledby="home-title">
+      <div className="dashboard-v2__ambient" aria-hidden="true"><span /><span /><span /></div>
+      <div className="dashboard-v2__hero-copy">
+        <div className="dashboard-v2__kicker"><Sparkles /> Your private file workspace</div>
+        <h1 id="home-title">Every file.<br /><span>Under control.</span></h1>
+        <p>Professional tools for documents, images, video, and audio — processed privately in your browser.</p>
+        <div className="dashboard-v2__hero-actions"><button type="button" className="dashboard-v2__primary" onClick={() => document.getElementById('tool-library')?.scrollIntoView({ behavior: 'smooth' })}>Explore tools <ArrowRight /></button><button type="button" className="dashboard-v2__secondary" onClick={onOpenSearch}><Search /> Find anything <kbd>Ctrl K</kbd></button></div>
+        <div className="dashboard-v2__proof" aria-label="Product benefits"><span><Check /> No uploads</span><span><Check /> No account</span><span><Check /> Works locally</span></div>
       </div>
-
-      {/* SHOWCASE GRID SECTION */}
-      <section aria-label="Media Tools Suite">
-        <h2 className="sr-only">Available Media Tools</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
-          {filteredTools.map((tool) => (
-            <ToolCard key={tool.id} tool={tool} onSelectTool={onSelectTool} />
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+      <div className="dashboard-v2__stage" aria-hidden="true">
+        <div className="stage-orbit stage-orbit--one" /><div className="stage-orbit stage-orbit--two" />
+        <div className="stage-file stage-file--back"><span>WAV</span><i /></div><div className="stage-file stage-file--side"><span>MP4</span><i /></div>
+        <div className="stage-file stage-file--main"><div className="stage-file__top"><span>PDF</span><small>12.8 MB</small></div><div className="stage-file__lines"><i /><i /><i /><i /></div><div className="stage-file__result"><Zap /> Optimized <b>2.4 MB</b></div></div>
+        <div className="stage-security"><ShieldCheck /><div><b>Processed locally</b><span>Your file never leaves this device</span></div></div>
+      </div>
+    </section>
+    <section className="dashboard-v2__metrics" aria-label="Compactor statistics"><div><strong>{processedCount.count.toLocaleString()}</strong><span>files finished {processedCount.scope === 'global' ? 'globally' : 'on this device'}</span></div><div><strong>{TOOLS.length}</strong><span>focused file tools</span></div><div><strong>100%</strong><span>client-side privacy</span></div><div><strong>0</strong><span>accounts required</span></div></section>
+    <section className="dashboard-v2__finder" aria-labelledby="finder-title"><div><span><Command /> QUICK FINDER</span><h2 id="finder-title">What are you working on?</h2><p>Describe the task. We’ll take you straight to the right tool.</p></div><label className="dashboard-v2__search"><Search /><span className="sr-only">Search all tools</span><input type="search" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Try “compress a PDF” or “remove metadata”" />{searchQuery ? <button type="button" onClick={() => setSearchQuery('')}>Clear</button> : <kbd>⌘ K</kbd>}</label></section>
+    {recentTools.length > 0 && !searchQuery && selectedCat === 'ALL' ? <section className="dashboard-v2__recent" aria-label="Recently used tools"><span><Clock3 /> Recent</span>{recentTools.map(tool => <button key={tool.id} type="button" onClick={() => onSelectTool(tool.id)}>{tool.title}</button>)}</section> : null}
+    <section id="tool-library" className="dashboard-v2__library" aria-labelledby="library-title">
+      <div className="dashboard-v2__section-heading"><div><span>THE TOOLKIT</span><h2 id="library-title">{searchQuery ? `${visibleTools.length} results` : isLibraryOpen ? 'All tools' : 'Start with the essentials'}</h2><p>{isLibraryOpen ? 'Everything you need, organized by the job.' : 'The tools people reach for most.'}</p></div><button type="button" onClick={() => { setSelectedCat('ALL'); setShowAllTools(value => !value); }}>{showAllTools ? 'Show essentials' : `View all ${TOOLS.length}`} <ArrowRight /></button></div>
+      {isLibraryOpen ? <div className="dashboard-v2__filters" role="group" aria-label="Filter tools by category">{CATEGORIES.map(cat => <button key={cat} type="button" aria-pressed={selectedCat === cat} onClick={() => setSelectedCat(cat)}>{cat === 'AUDIO & CONVERT' ? 'AUDIO' : cat}<span>{cat === 'ALL' ? TOOLS.length : TOOLS.filter(tool => tool.category === cat).length}</span></button>)}</div> : null}
+      <div className="dashboard-v2__grid">{visibleTools.map((tool, index) => <ToolCard key={tool.id} tool={tool} index={index} onSelectTool={onSelectTool} />)}</div>
+      {visibleTools.length === 0 ? <div className="dashboard-v2__empty"><Search /><h3>No tool found</h3><p>Try a shorter task like “PDF”, “audio”, or “compress”.</p></div> : null}
+    </section>
+    <section className="dashboard-v2__privacy"><div className="dashboard-v2__privacy-mark"><LockKeyhole /></div><div><span>PRIVACY, BUILT IN</span><h2>Your files stay yours.</h2><p>Compactor runs supported processing directly in your browser. No silent uploads, no waiting in a server queue, and no account holding your history.</p></div><div className="dashboard-v2__privacy-list"><span><Check /> Local processing</span><span><Check /> No file retention</span><span><Check /> Clear output controls</span></div></section>
+  </div>;
 }

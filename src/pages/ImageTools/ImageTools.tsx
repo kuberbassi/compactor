@@ -1,212 +1,164 @@
 import { useState, useEffect, useRef } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
-import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
-import { processImage, formatBytes, loadImage } from '../../utils/image';
+import { ToolModeSwitcher } from '../../components/Common/ToolModeSwitcher';
+import { WorkspaceShell } from '../../components/Workspace/WorkspaceShell';
+import { WorkspaceToolNav, WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
+import { processImage, formatBytes, loadImage, watermarkImage } from '../../utils/image';
 import type { ImageProcessResult } from '../../utils/image';
-import { appendUniqueFiles, downloadAll, getSizeSummary, isEditableShortcutTarget, loadSetting, saveSetting, shareResult } from '../../utils/batch';
+import { appendUniqueFiles, downloadAll, isEditableShortcutTarget, loadSetting, saveSetting } from '../../utils/batch';
 import type { CompressionPreset } from '../../utils/batch';
 import { 
-  Image as ImageIcon, Download, RefreshCw, 
+  Image as ImageIcon,
   CheckCircle,
-  Sliders, Eye, Plus as PlusIcon,
-  Crop as CropIcon, Expand as ResizeIcon, ArrowLeftRight as MirrorIcon,
-  Palette as FilterIcon, FolderOpen as FormatIcon, ArrowLeft
+  PanelLeftClose,
+  PanelLeft,
+  Plus,
+  X,
 } from 'lucide-react';
-import { Slider } from '../../components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
-import { Input } from '../../components/ui/input';
 
-interface FileSettings {
-  quality: number;
-  format: string;
-  maxWidth: string;
-  maxHeight: string;
-  compressMethod: 'auto' | 'target';
-  targetSize: string;
-  targetUnit: 'KB' | 'MB';
-  aspectRatioLocked: boolean;
-  origWidth: number;
-  origHeight: number;
-  rotation: number;
-  flipH: boolean;
-  flipV: boolean;
-  cropAspect: string;
-  grayscale: boolean;
-  cropLeftPct: number;
-  cropTopPct: number;
-  cropWidthPct: number;
-  cropHeightPct: number;
-  cropApplied: boolean;
-}
+import { renderClassicHalftone } from '../../utils/posterEngine';
+import { ImageSidebarControls } from './components/ImageSidebarControls';
+import { ImageBatchResults } from './components/ImageBatchResults';
+import { IMAGE_TABS as TABS } from './imageToolsConfig';
+import type { FileSettings, ImageTabId as TabId } from './imageToolsConfig';
+
+const HalftoneImagePreview: React.FC<{
+  src: string;
+  dotSize: number;
+  invert: boolean;
+  transform?: string;
+  clipPath?: string;
+  onLoad?: () => void;
+}> = ({ src, dotSize, invert, transform, clipPath, onLoad }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  const render = () => {
+    const canvas = canvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    rafRef.current = requestAnimationFrame(() => {
+      const targetW = Math.min(1200, Math.max(600, img.naturalWidth || img.width));
+      const targetH = Math.max(1, Math.round((targetW * (img.naturalHeight || img.height)) / (img.naturalWidth || img.width)));
+
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+      }
+
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      const mappedDotSize = Math.max(4, Math.round((dotSize / 14) * (targetW / 80)));
+      renderClassicHalftone(ctx, targetW, targetH, mappedDotSize, 0, 0, invert);
+    });
+  };
+
+  useEffect(() => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      imgRef.current = img;
+      onLoad?.();
+      render();
+    };
+    img.src = src;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+
+  useEffect(() => {
+    render();
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dotSize, invert]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="max-w-full max-h-[calc(100vh-14rem)] object-contain rounded-lg shadow-2xl select-none transition-all duration-300"
+      style={{
+        transform: transform || undefined,
+        clipPath: clipPath || undefined,
+      }}
+      aria-label="Halftone preview"
+    />
+  );
+};
 
 interface ImageToolsProps {
   onGoHome: () => void;
+  onSelectTool: (toolId: string) => void;
   onUploadSuccess: () => void;
 }
 
-const TABS = [
-  { id: 'compress',   label: 'Compress',  Icon: Sliders },
-  { id: 'resize',     label: 'Resize',    Icon: ResizeIcon },
-  { id: 'crop',       label: 'Crop',      Icon: CropIcon },
-  { id: 'mirror',     label: 'Mirror',    Icon: MirrorIcon },
-  { id: 'rotate',     label: 'Rotate',    Icon: RefreshCw },
-  { id: 'format',     label: 'Convert',   Icon: FormatIcon },
-  { id: 'filter',     label: 'Filters',   Icon: FilterIcon },
-] as const;
-
-type TabId = typeof TABS[number]['id'];
-
-const detectDocumentContours = (img: HTMLImageElement) => {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  
-  // Scale down for faster pixel scanning
-  const w = 200;
-  const h = Math.round((img.naturalHeight * 200) / img.naturalWidth);
-  canvas.width = w;
-  canvas.height = h;
-  ctx.drawImage(img, 0, 0, w, h);
-  
-  const imgData = ctx.getImageData(0, 0, w, h);
-  const data = imgData.data;
-  
-  // 1. Calculate average luminance to set adaptive threshold
-  let totalLum = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    totalLum += (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-  }
-  const avgLum = totalLum / (w * h);
-  
-  // 2. Scan from left, right, top, bottom to find transitions
-  let left = 0, right = w - 1, top = 0, bottom = h - 1;
-  const threshold = Math.max(40, avgLum * 0.85); // buffer threshold
-  
-  // Scan Left
-  for (let x = 0; x < w; x++) {
-    let columnSum = 0;
-    for (let y = 0; y < h; y++) {
-      const idx = (y * w + x) * 4;
-      columnSum += (0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
-    }
-    if (columnSum / h > threshold) {
-      left = x;
-      break;
-    }
-  }
-  
-  // Scan Right
-  for (let x = w - 1; x >= 0; x--) {
-    let columnSum = 0;
-    for (let y = 0; y < h; y++) {
-      const idx = (y * w + x) * 4;
-      columnSum += (0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
-    }
-    if (columnSum / h > threshold) {
-      right = x;
-      break;
-    }
-  }
-  
-  // Scan Top
-  for (let y = 0; y < h; y++) {
-    let rowSum = 0;
-    for (let x = 0; x < w; x++) {
-      const idx = (y * w + x) * 4;
-      rowSum += (0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
-    }
-    if (rowSum / w > threshold) {
-      top = y;
-      break;
-    }
-  }
-  
-  // Scan Bottom
-  for (let y = h - 1; y >= 0; y--) {
-    let rowSum = 0;
-    for (let x = 0; x < w; x++) {
-      const idx = (y * w + x) * 4;
-      rowSum += (0.299 * data[idx] + 0.587 * data[idx+1] + 0.114 * data[idx+2]);
-    }
-    if (rowSum / w > threshold) {
-      bottom = y;
-      break;
-    }
-  }
-  
-  // 3. Return percentage bounds (clamped for margin buffer)
-  const lPct = Math.max(0, Math.round((left / w) * 100));
-  const tPct = Math.max(0, Math.round((top / h) * 100));
-  const rPct = Math.min(100, Math.round((right / w) * 100));
-  const bPct = Math.min(100, Math.round((bottom / h) * 100));
-  
-  const wPct = Math.max(15, rPct - lPct);
-  const hPct = Math.max(15, bPct - tPct);
-  
-  return { left: lPct, top: tPct, width: wPct, height: hPct };
-};
-
-export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSuccess }) => {
+export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, onUploadSuccess }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [fileSettingsList, setFileSettingsList] = useState<FileSettings[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [sameForAll, setSameForAll] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
     loadSetting('compactor_image_compression_preset', 'balanced')
   );
   const [removeMetadata, setRemoveMetadata] = useState(() =>
     loadSetting('compactor_image_remove_metadata', true)
   );
-  const [activeTab, setActiveTab] = useState<TabId>(() => {
-    const saved = localStorage.getItem('compactor_img_active_tab');
-    return (saved as TabId) || 'compress';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('compactor_img_active_tab', activeTab);
-  }, [activeTab]);
+  const [activeTab, setActiveTab] = useState<TabId>('compress');
   const [processing, setProcessing] = useState(false);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<ImageProcessResult[]>([]);
   const [failedFileIndexes, setFailedFileIndexes] = useState<number[]>([]);
-  const [selectedForCompare, setSelectedForCompare] = useState<ImageProcessResult | null>(null);
+  const [imageZoom, setImageZoom] = useState(80);
+  const previewViewportRef = useRef<HTMLDivElement>(null);
   const cancellationRef = useRef<boolean>(false);
 
-  // Interactive split slider preview states
-  const [compareSplitPct, setCompareSplitPct] = useState<number>(50);
-  const [isDraggingSplit, setIsDraggingSplit] = useState<boolean>(false);
-  const splitContainerRef = useRef<HTMLDivElement>(null);
-
-  const startSplitDrag = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDraggingSplit(true);
-  };
+  // Canvas encoding does not expose granular progress for one image. Keep the
+  // user-facing percentage tied to completed work so both processing surfaces
+  // report the same, honest batch progress.
+  const batchProgress = files.length > 0
+    ? Math.min(100, Math.max(0, ((currentFileIndex + progress / 100) / files.length) * 100))
+    : 0;
 
   useEffect(() => {
-    const handleGlobalMove = (e: MouseEvent) => {
-      if (!isDraggingSplit || !splitContainerRef.current) return;
-      const rect = splitContainerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      setCompareSplitPct(pct);
-    };
+    saveSetting('compactor_image_compression_preset', compressionPreset);
+    saveSetting('compactor_image_remove_metadata', removeMetadata);
+  }, [compressionPreset, removeMetadata]);
 
-    const handleGlobalUp = () => {
-      setIsDraggingSplit(false);
+  useEffect(() => {
+    const viewport = previewViewportRef.current;
+    if (!viewport) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const rect = viewport.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left + viewport.scrollLeft;
+      const cursorY = event.clientY - rect.top + viewport.scrollTop;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      setImageZoom(current => {
+        const next = Math.max(25, Math.min(300, current + direction * 10));
+        if (next === current) return current;
+        const ratio = next / current;
+        requestAnimationFrame(() => {
+          viewport.scrollLeft = cursorX * ratio - (event.clientX - rect.left);
+          viewport.scrollTop = cursorY * ratio - (event.clientY - rect.top);
+        });
+        return next;
+      });
     };
+    viewport.addEventListener('wheel', handleWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', handleWheel);
+  }, [files.length]);
 
-    if (isDraggingSplit) {
-      window.addEventListener('mousemove', handleGlobalMove);
-      window.addEventListener('mouseup', handleGlobalUp);
-    }
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMove);
-      window.removeEventListener('mouseup', handleGlobalUp);
-    };
-  }, [isDraggingSplit]);
+  useEffect(() => setImageZoom(80), [activeIndex]);
 
   const [compressMethod, setCompressMethod] = useState<'auto' | 'target'>('auto');
   const [targetSize, setTargetSize] = useState<string>('30');
@@ -230,12 +182,6 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   const [cropApplied, setCropApplied] = useState<boolean>(false);
 
   const [displayGrid, setDisplayGrid] = useState(true);
-  const [draggedFileIndex, setDraggedFileIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    saveSetting('compactor_image_compression_preset', compressionPreset);
-    saveSetting('compactor_image_remove_metadata', removeMetadata);
-  }, [compressionPreset, removeMetadata]);
 
   const applyCompressionPreset = (preset: CompressionPreset) => {
     setCompressionPreset(preset);
@@ -244,13 +190,27 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     updateSetting('compressMethod', 'auto');
   };
 
-  // Preview URLs managed with cleanup
+  // Preview URLs managed with ref and explicit cleanup on file removal
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  const previewUrlsRef = useRef<string[]>([]);
+
   useEffect(() => {
-    const urls = files.map(f => URL.createObjectURL(f));
-    setPreviewUrls(urls);
-    return () => urls.forEach(u => URL.revokeObjectURL(u));
-  }, [files]);
+    previewUrlsRef.current = previewUrls;
+  }, [previewUrls]);
+
+  useEffect(() => {
+    return () => {
+      previewUrlsRef.current.forEach(u => URL.revokeObjectURL(u));
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      results.forEach(r => {
+        if (r.url) URL.revokeObjectURL(r.url);
+      });
+    };
+  }, [results]);
 
   const [imageRect, setImageRect] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -331,8 +291,14 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
 
-      const dxPct = (dx / imageRect.width) * 100;
-      const dyPct = (dy / imageRect.height) * 100;
+      // Read the rendered bounds while dragging. The preview can be zoomed, so
+      // the stored unscaled dimensions are not the cursor's coordinate space.
+      const renderedImageRect = imageRef.current?.getBoundingClientRect();
+      const interactionWidth = renderedImageRect?.width || imageRect.width;
+      const interactionHeight = renderedImageRect?.height || imageRect.height;
+
+      const dxPct = (dx / interactionWidth) * 100;
+      const dyPct = (dy / interactionHeight) * 100;
 
       if (type === 'move') {
         finalLeft = Math.max(0, Math.min(100 - initWidth, initLeft + dxPct));
@@ -399,10 +365,10 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
       // Update DOM directly for absolute smooth cursor tracking without React cycle lag
       if (cropOverlayRef.current) {
-        cropOverlayRef.current.style.left = `${imageRect.left + (finalLeft / 100) * imageRect.width}px`;
-        cropOverlayRef.current.style.top = `${imageRect.top + (finalTop / 100) * imageRect.height}px`;
-        cropOverlayRef.current.style.width = `${(finalWidth / 100) * imageRect.width}px`;
-        cropOverlayRef.current.style.height = `${(finalHeight / 100) * imageRect.height}px`;
+        cropOverlayRef.current.style.left = `${finalLeft}%`;
+        cropOverlayRef.current.style.top = `${finalTop}%`;
+        cropOverlayRef.current.style.width = `${finalWidth}%`;
+        cropOverlayRef.current.style.height = `${finalHeight}%`;
       }
     };
 
@@ -519,20 +485,11 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     }
   };
 
-  const getFormatLabel = (v: string) => {
-    if (v === 'preserve') return 'Original';
-    if (v === 'image/webp') return 'WebP';
-    if (v === 'image/jpeg') return 'JPEG';
-    if (v === 'image/jpg') return 'JPG';
-    if (v === 'image/png') return 'PNG';
-    if (v === 'image/gif') return 'GIF';
-    return v;
-  };
-
   const handleFilesSelected = async (selectedFiles: File[]) => {
     setResults([]);
     const uniqueFiles = appendUniqueFiles(files, selectedFiles).slice(files.length);
     if (uniqueFiles.length === 0) return;
+    const newUrls = uniqueFiles.map(f => URL.createObjectURL(f));
     const newSettings: FileSettings[] = [];
     for (const file of uniqueFiles) {
       let ow = 0, oh = 0;
@@ -541,10 +498,16 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
         quality, format, maxWidth: ow ? ow.toString() : maxWidth,
         maxHeight: oh ? oh.toString() : maxHeight, compressMethod, targetSize, targetUnit,
         aspectRatioLocked, origWidth: ow, origHeight: oh, rotation, flipH, flipV, cropAspect: 'full',
-        grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false
+        grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false,
+        watermarkText: '', watermarkPosition: 'center', watermarkOpacity: 0.4,
+        watermarkFontSize: 48, watermarkColor: '#ffffff',
+        scanEnhanceMode: 'none',
+        halftoneDotSize: 10,
+        halftoneInvert: false,
       });
     }
     setFiles(prev => [...prev, ...uniqueFiles]);
+    setPreviewUrls(prev => [...prev, ...newUrls]);
     setFileSettingsList(prev => [...prev, ...newSettings]);
     if (activeIndex === null && uniqueFiles.length > 0) {
       setActiveIndex(0);
@@ -556,20 +519,35 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   };
 
   const removeFile = (index: number) => {
+    const urlToRemove = previewUrls[index];
+    if (urlToRemove) URL.revokeObjectURL(urlToRemove);
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
     setFiles(prev => prev.filter((_, i) => i !== index));
     setFileSettingsList(prev => prev.filter((_, i) => i !== index));
-    if (activeIndex === index) setActiveIndex(null);
+    if (activeIndex === index) setActiveIndex(files.length > 1 ? Math.min(index, files.length - 2) : null);
     else if (activeIndex !== null && activeIndex > index) setActiveIndex(activeIndex - 1);
   };
 
-  const clearQueue = () => { setFiles([]); setFileSettingsList([]); setActiveIndex(null); setResults([]); setFailedFileIndexes([]); setSelectedForCompare(null); };
+  const clearQueue = () => {
+    previewUrls.forEach(u => URL.revokeObjectURL(u));
+    setPreviewUrls([]);
+    setFiles([]); setFileSettingsList([]); setActiveIndex(null); setResults([]);
+    setFailedFileIndexes([]); setSameForAll(true);
+    setCompressionPreset('balanced'); setRemoveMetadata(true); setActiveTab('compress');
+    setCompressMethod('auto'); setTargetSize('30'); setTargetUnit('KB');
+    setQuality(80); setFormat('preserve'); setMaxWidth(''); setMaxHeight('');
+    setAspectRatioLocked(true); setOrigWidth(0); setOrigHeight(0); setRotation(0);
+    setFlipH(false); setFlipV(false); setCropAspect('none'); setGrayscale(false);
+    setCropLeftPct(0); setCropTopPct(0); setCropWidthPct(100); setCropHeightPct(100);
+    setCropApplied(false); setImageZoom(80);
+  };
 
   const startBatchCompression = async (retryIndexes?: number[]) => {
     if (files.length === 0) return;
     const indexes = retryIndexes ?? files.map((_, index) => index);
     setProcessing(true);
     if (!retryIndexes) setResults([]);
-    setSelectedForCompare(null);
+   
     cancellationRef.current = false;
     const processedResults: ImageProcessResult[] = [];
     const failedIndexes: number[] = [];
@@ -582,7 +560,10 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
       const s = fileSettingsList[i] || { 
         quality, format, maxWidth, maxHeight, compressMethod, targetSize, targetUnit, 
         aspectRatioLocked, origWidth, origHeight, rotation, flipH, flipV, cropAspect, 
-        grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false
+        grayscale, cropLeftPct, cropTopPct, cropWidthPct, cropHeightPct, cropApplied: false,
+        watermarkText: '', watermarkPosition: 'center' as const, watermarkOpacity: 0.4,
+        watermarkFontSize: 48, watermarkColor: '#ffffff',
+        scanEnhanceMode: 'smart-contrast' as const,
       };
       
       try {
@@ -590,7 +571,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
         await new Promise(resolve => setTimeout(resolve, 60));
         if (cancellationRef.current) break;
 
-        const parsedFormat = s.format === 'preserve' ? file.type : s.format;
+        const parsedFormat = s.format === 'preserve' || s.format === 'original' ? file.type : s.format;
         const sizeVal = parseFloat(s.targetSize);
         const targetSizeKB = s.targetUnit === 'MB' ? sizeVal * 1024 : sizeVal;
         
@@ -621,9 +602,144 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
     setProcessing(false);
   };
 
-  const getSavings = (orig: number, opt: number) => { const d = orig - opt; return d <= 0 ? 0 : Math.round((d / orig) * 100); };
-  const totalSavings = () => { const o = results.reduce((a,r) => a + r.originalSize, 0); const n = results.reduce((a,r) => a + r.newSize, 0); return getSavings(o, n); };
-  const sizeSummary = getSizeSummary(results);
+  const startBatchWatermark = async () => {
+    if (files.length === 0) return;
+    setProcessing(true);
+    setResults([]);
+   
+    cancellationRef.current = false;
+    const processedResults: ImageProcessResult[] = [];
+    const failedIndexes: number[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      if (cancellationRef.current) break;
+      setCurrentFileIndex(i);
+      setProgress(0);
+      const file = files[i];
+      const s = fileSettingsList[i];
+      const wText = s?.watermarkText || 'WATERMARK';
+      try {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const result = await watermarkImage(file, {
+          text: wText,
+          position: s?.watermarkPosition ?? 'center',
+          opacity: s?.watermarkOpacity ?? 0.4,
+          fontSize: s?.watermarkFontSize ?? 48,
+          color: s?.watermarkColor ?? '#ffffff',
+        });
+        processedResults.push(result);
+        onUploadSuccess();
+        setProgress(((i + 1) / files.length) * 100);
+      } catch (err) {
+        failedIndexes.push(i);
+        console.error(`Watermark failed: ${file.name}`, err);
+      }
+    }
+
+    setResults(processedResults);
+    setFailedFileIndexes(failedIndexes);
+    setProcessing(false);
+  };
+
+  const startBatchImageToPdf = async () => {
+    if (files.length === 0) return;
+    setProcessing(true);
+    setResults([]);
+   
+    cancellationRef.current = false;
+    const processedResults: ImageProcessResult[] = [];
+    const failedIndexes: number[] = [];
+
+    const { imagesToPdf } = await import('../../utils/pdf');
+
+    for (let i = 0; i < files.length; i++) {
+      if (cancellationRef.current) break;
+      setCurrentFileIndex(i);
+      setProgress(0);
+      const file = files[i];
+      try {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const blob = await imagesToPdf([file], { pageSize: 'a4', orientation: 'auto', margin: 'small' });
+        const baseName = file.name.substring(0, file.name.lastIndexOf('.'));
+        const url = URL.createObjectURL(blob);
+        processedResults.push({
+          blob,
+          url,
+          name: `${baseName}.pdf`,
+          originalSize: file.size,
+          newSize: blob.size,
+          width: 0,
+          height: 0,
+        });
+        onUploadSuccess();
+        setProgress(((i + 1) / files.length) * 100);
+      } catch (err) {
+        failedIndexes.push(i);
+        console.error(`PDF conversion failed: ${file.name}`, err);
+      }
+    }
+
+    setResults(processedResults);
+    setFailedFileIndexes(failedIndexes);
+    setProcessing(false);
+  };
+
+  const startBatchScanEnhance = async () => {
+    if (files.length === 0) return;
+    setProcessing(true);
+    setResults([]);
+   
+    cancellationRef.current = false;
+    const processedResults: ImageProcessResult[] = [];
+    const failedIndexes: number[] = [];
+
+    const { enhanceScanImage } = await import('../../utils/imageCleanup');
+
+    for (let i = 0; i < files.length; i++) {
+      if (cancellationRef.current) break;
+      setCurrentFileIndex(i);
+      setProgress(0);
+      const file = files[i];
+      const s = fileSettingsList[i];
+      try {
+        await new Promise(resolve => setTimeout(resolve, 40));
+        const result = await enhanceScanImage(file, {
+          mode: s?.scanEnhanceMode ?? 'smart-contrast',
+          halftoneDotSize: s?.halftoneDotSize ?? 10,
+          halftoneInvert: s?.halftoneInvert ?? false,
+        });
+        processedResults.push(result);
+        onUploadSuccess();
+        setProgress(((i + 1) / files.length) * 100);
+      } catch (err) {
+        failedIndexes.push(i);
+        console.error(`Scan enhancement failed: ${file.name}`, err);
+      }
+    }
+
+    setResults(processedResults);
+    setFailedFileIndexes(failedIndexes);
+    setProcessing(false);
+  };
+
+  const getActionLabel = () => {
+    const count = files.length;
+    const countSuffix = count > 1 ? ` (${count})` : '';
+    if (activeTab === 'watermark') return `Watermark & Export${countSuffix}`;
+    if (activeTab === 'image-to-pdf') return `Convert to PDF${countSuffix}`;
+    if (activeTab === 'filter') return `Apply Filters & Export${countSuffix}`;
+    if (activeTab === 'compress') return `Compress${countSuffix}`;
+    return `Export${countSuffix}`;
+  };
+
+  const handlePrimaryAction = () => {
+    if (activeTab === 'watermark') startBatchWatermark();
+    else if (activeTab === 'image-to-pdf') startBatchImageToPdf();
+    else if (activeTab === 'filter' && activeSettings?.scanEnhanceMode && activeSettings.scanEnhanceMode !== 'none') {
+      startBatchScanEnhance();
+    }
+    else startBatchCompression();
+  };
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -644,394 +760,35 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
   const activeFile = activeIndex !== null ? files[activeIndex] : null;
   const activeSettings = activeIndex !== null ? fileSettingsList[activeIndex] : null;
 
-  // Preview CSS filter (live preview for filters tab)
+  // Preview CSS filter (live preview for filters and enhance tabs)
+  const activeRotation = activeSettings?.rotation ?? rotation;
+  const activeFlipH = activeSettings?.flipH ?? flipH;
+  const activeFlipV = activeSettings?.flipV ?? flipV;
+  const activeGrayscale = activeSettings?.grayscale ?? grayscale;
+  const activeEnhanceMode = activeSettings?.scanEnhanceMode ?? 'none';
+
   const previewFilter = [
-    grayscale ? 'grayscale(100%)' : '',
-    rotation !== 0 ? '' : '',
+    activeGrayscale ? 'grayscale(100%)' : '',
+    activeEnhanceMode === 'smart-contrast'
+      ? 'contrast(145%) brightness(104%)'
+      : activeEnhanceMode === 'crisp-bw'
+      ? 'grayscale(100%) contrast(240%) brightness(98%)'
+      : '',
   ].filter(Boolean).join(' ');
 
   const previewTransform = [
-    rotation !== 0 ? `rotate(${rotation}deg)` : '',
-    flipH ? 'scaleX(-1)' : '',
-    flipV ? 'scaleY(-1)' : '',
+    activeRotation !== 0 ? `rotate(${activeRotation}deg)` : '',
+    activeFlipH ? 'scaleX(-1)' : '',
+    activeFlipV ? 'scaleY(-1)' : '',
   ].filter(Boolean).join(' ');
 
-  // ── Settings content renderer ─────────────────────────────────────────────
-  const renderSettings = () => (
-    <div className="space-y-5">
-      {activeTab === 'compress' && (
-        <div className="space-y-4">
-          <CompressionPresetSelector value={compressionPreset} onChange={applyCompressionPreset} />
-          <label className="compression-privacy-toggle">
-            <span>
-              <span className="block text-xs font-bold text-zinc-200">Remove private metadata</span>
-              <span className="block text-[10px] text-zinc-500 mt-0.5">Recommended. Canvas export removes EXIF and location data.</span>
-            </span>
-            <input type="checkbox" checked={removeMetadata} onChange={event => setRemoveMetadata(event.target.checked)} className="w-4 h-4 accent-white" />
-          </label>
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-zinc-400">Method</label>
-            <Select value={compressMethod} onValueChange={v => updateSetting('compressMethod', v as 'auto' | 'target')}>
-              <SelectTrigger className="w-full h-9 text-sm"><span>{compressMethod === 'auto' ? 'Auto Quality' : 'Target Size'}</span></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">Auto Quality</SelectItem>
-                <SelectItem value="target">Target Size</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
 
-          {compressMethod === 'auto' ? (
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-zinc-400">Quality</label>
-                <div className="flex items-center gap-1">
-                  <Input type="number" min={10} max={100} value={quality}
-                    onChange={e => { const v = parseInt(e.target.value, 10); if (!isNaN(v) && v >= 10 && v <= 100) updateSetting('quality', v); }}
-                    className="w-14 h-7 text-center text-sm p-1 font-bold bg-zinc-900 border-zinc-800 focus-visible:ring-1 focus-visible:ring-zinc-400"
-                  />
-                  <span className="text-xs text-zinc-500">%</span>
-                </div>
-              </div>
-              <Slider min={10} max={100} step={5} value={[quality]} onValueChange={v => updateSetting('quality', Array.isArray(v) ? v[0] : v)} className="py-1" />
-              <div className="flex justify-between text-[11px] text-zinc-600">
-                <span>Max compress</span><span>Best quality</span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-400">Target Size</label>
-              <div className="flex gap-2">
-                <Input type="number" placeholder="e.g. 150" value={targetSize}
-                  onChange={(e) => updateSetting('targetSize', e.target.value)}
-                  className="h-9 flex-1 text-sm"
-                />
-                <Select value={targetUnit} onValueChange={v => updateSetting('targetUnit', v as 'KB' | 'MB')}>
-                  <SelectTrigger className="w-20 h-9"><span>{targetUnit}</span></SelectTrigger>
-                  <SelectContent><SelectItem value="KB">KB</SelectItem><SelectItem value="MB">MB</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <p className="text-[11px] text-zinc-600">Quality & dimensions auto-adjust to hit target.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'resize' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-zinc-400">Fixed Ratio</label>
-            <input type="checkbox" checked={aspectRatioLocked} onChange={e => updateSetting('aspectRatioLocked', e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500">Width (px)</label>
-              <Input type="number" placeholder="1920" value={maxWidth} onChange={e => handleWidthChange(e.target.value)} className="h-9 text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs text-zinc-500">Height (px)</label>
-              <Input type="number" placeholder="1080" value={maxHeight} onChange={e => handleHeightChange(e.target.value)} className="h-9 text-sm" />
-            </div>
-          </div>
-          {activeFile && activeSettings && (
-            <p className="text-[11px] text-zinc-600">Original: {activeSettings.origWidth} × {activeSettings.origHeight}px</p>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'crop' && (
-        <div className="space-y-4 text-left">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-400">Width</label>
-              <Input 
-                type="number" 
-                value={Math.round((cropWidthPct / 100) * (activeSettings?.origWidth || origWidth))} 
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  const maxW = activeSettings?.origWidth || origWidth;
-                  if (!isNaN(val) && val > 0 && maxW > 0) {
-                    const pct = Math.min(100 - cropLeftPct, (val / maxW) * 100);
-                    updateSetting('cropWidthPct', pct);
-                  }
-                }}
-                className="h-9 text-sm bg-zinc-950 border-zinc-850"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-zinc-400">Height</label>
-              <Input 
-                type="number" 
-                value={Math.round((cropHeightPct / 100) * (activeSettings?.origHeight || origHeight))} 
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  const maxH = activeSettings?.origHeight || origHeight;
-                  if (!isNaN(val) && val > 0 && maxH > 0) {
-                    const pct = Math.min(100 - cropTopPct, (val / maxH) * 100);
-                    updateSetting('cropHeightPct', pct);
-                  }
-                }}
-                className="h-9 text-sm bg-zinc-950 border-zinc-850"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-400">Aspect Ratio</label>
-            <div className="flex gap-2 items-center">
-              <Select value={cropAspect} onValueChange={val => {
-                const activeVal = val ?? 'none';
-                updateSetting('cropAspect', activeVal);
-                
-                let ratio = 1;
-                if (activeVal === '1:1') ratio = 1;
-                else if (activeVal === '16:9') ratio = 16/9;
-                else if (activeVal === '4:3') ratio = 4/3;
-                else if (activeVal === '3:2') ratio = 3/2;
-                else if (activeVal === '5:4') ratio = 5/4;
-                
-                if (activeVal !== 'none' && activeVal !== 'full') {
-                  const currentImgW = activeSettings?.origWidth || origWidth || 100;
-                  const currentImgH = activeSettings?.origHeight || origHeight || 100;
-                  
-                  let newW = 100;
-                  let newH = 100;
-                  
-                  if (currentImgW / currentImgH > ratio) {
-                    newH = 80;
-                    newW = (ratio * currentImgH * 80) / currentImgW;
-                  } else {
-                    newW = 80;
-                    newH = (currentImgW * 80) / (ratio * currentImgH);
-                  }
-                  
-                  updateSetting('cropWidthPct', newW);
-                  updateSetting('cropHeightPct', newH);
-                  updateSetting('cropLeftPct', (100 - newW) / 2);
-                  updateSetting('cropTopPct', (100 - newH) / 2);
-                  
-                  setCropWidthPct(newW);
-                  setCropHeightPct(newH);
-                  setCropLeftPct((100 - newW) / 2);
-                  setCropTopPct((100 - newH) / 2);
-                } else if (activeVal === 'full') {
-                  updateSetting('cropWidthPct', 100);
-                  updateSetting('cropHeightPct', 100);
-                  updateSetting('cropLeftPct', 0);
-                  updateSetting('cropTopPct', 0);
-                  setCropWidthPct(100);
-                  setCropHeightPct(100);
-                  setCropLeftPct(0);
-                  setCropTopPct(0);
-                }
-              }}>
-                <SelectTrigger className="h-9 flex-1 bg-zinc-950 border-zinc-850">
-                  <span>{cropAspect === 'none' ? 'Custom (Free)' : cropAspect === '1:1' ? 'Square (1:1)' : cropAspect}</span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Custom (Free)</SelectItem>
-                  <SelectItem value="full">Full (Original)</SelectItem>
-                  <SelectItem value="1:1">Square (1:1)</SelectItem>
-                  <SelectItem value="16:9">16:9</SelectItem>
-                  <SelectItem value="4:3">4:3</SelectItem>
-                  <SelectItem value="3:2">3:2</SelectItem>
-                  <SelectItem value="5:4">5:4</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <button 
-                onClick={() => {
-                  let nextAspect = cropAspect;
-                  if (cropAspect === '16:9') nextAspect = '9:16';
-                  else if (cropAspect === '9:16') nextAspect = '16:9';
-                  else if (cropAspect === '4:3') nextAspect = '3:4';
-                  else if (cropAspect === '3:4') nextAspect = '4:3';
-                  else if (cropAspect === '3:2') nextAspect = '2:3';
-                  else if (cropAspect === '2:3') nextAspect = '3:2';
-                  else if (cropAspect === '5:4') nextAspect = '4:5';
-                  else if (cropAspect === '4:5') nextAspect = '5:4';
-
-                  const currentImgW = activeSettings?.origWidth || origWidth || 100;
-                  const currentImgH = activeSettings?.origHeight || origHeight || 100;
-
-                  let r = 1;
-                  if (nextAspect === '16:9') r = 16 / 9;
-                  else if (nextAspect === '9:16') r = 9 / 16;
-                  else if (nextAspect === '4:3') r = 4 / 3;
-                  else if (nextAspect === '3:4') r = 3 / 4;
-                  else if (nextAspect === '3:2') r = 3 / 2;
-                  else if (nextAspect === '2:3') r = 2 / 3;
-                  else if (nextAspect === '5:4') r = 5 / 4;
-                  else if (nextAspect === '4:5') r = 4 / 5;
-
-                  let nextW = 90;
-                  let nextH = 90;
-
-                  if (nextAspect !== 'none') {
-                    if (currentImgW / currentImgH > r) {
-                      nextH = 90;
-                      nextW = ((r * currentImgH * 90) / currentImgW);
-                    } else {
-                      nextW = 90;
-                      nextH = ((currentImgW * 90) / (r * currentImgH));
-                    }
-                  } else {
-                    const w = cropWidthPct;
-                    const h = cropHeightPct;
-                    const pxW = (h / 100) * currentImgH;
-                    const pxH = (w / 100) * currentImgW;
-                    nextW = Math.min(100, (pxW / currentImgW) * 100);
-                    nextH = Math.min(100, (pxH / currentImgH) * 100);
-                  }
-
-                  if (nextW > 100) { nextW = 100; nextH = (currentImgW / (r * currentImgH)) * 100; }
-                  if (nextH > 100) { nextH = 100; nextW = ((r * currentImgH) / currentImgW) * 100; }
-
-                  const nextLeft = (100 - nextW) / 2;
-                  const nextTop = (100 - nextH) / 2;
-
-                  updateSetting('cropAspect', nextAspect);
-                  updateSetting('cropWidthPct', nextW);
-                  updateSetting('cropHeightPct', nextH);
-                  updateSetting('cropLeftPct', nextLeft);
-                  updateSetting('cropTopPct', nextTop);
-
-                  setCropAspect(nextAspect);
-                  setCropWidthPct(nextW);
-                  setCropHeightPct(nextH);
-                  setCropLeftPct(nextLeft);
-                  setCropTopPct(nextTop);
-                  
-                  setTimeout(measureImage, 100);
-                }}
-                className="h-9 w-9 bg-zinc-950 border border-zinc-850 hover:bg-zinc-900 rounded-lg flex items-center justify-center text-zinc-400 shrink-0"
-                title="Swap orientation"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 12V4h8m8 8v8h-8" />
-                  <path d="M14 2L22 10M10 22L2 14" />
-                </svg>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between py-1">
-            <span className="text-xs text-zinc-400">Display grid</span>
-            <input 
-              type="checkbox" 
-              checked={displayGrid} 
-              onChange={(e) => setDisplayGrid(e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer" 
-            />
-          </div>
-
-          <div className="flex gap-2">
-            {cropApplied ? (
-              <button 
-                onClick={revertImmediateCrop}
-                className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 font-bold h-9 rounded-lg text-sm transition-all"
-              >
-                Revert
-              </button>
-            ) : (
-              <button 
-                onClick={applyImmediateCrop}
-                className="flex-1 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold h-9 rounded-lg text-sm transition-all"
-              >
-                Crop
-              </button>
-            )}
-          </div>
-          
-          <button
-            onClick={() => {
-              if (imageRef.current) {
-                const bounds = detectDocumentContours(imageRef.current);
-                if (bounds) {
-                  updateSetting('cropLeftPct', bounds.left);
-                  updateSetting('cropTopPct', bounds.top);
-                  updateSetting('cropWidthPct', bounds.width);
-                  updateSetting('cropHeightPct', bounds.height);
-                  setCropLeftPct(bounds.left);
-                  setCropTopPct(bounds.top);
-                  setCropWidthPct(bounds.width);
-                  setCropHeightPct(bounds.height);
-                  updateSetting('cropApplied', true);
-                  setCropApplied(true);
-                  setTimeout(measureImage, 80);
-                }
-              }
-            }}
-            className="w-full bg-zinc-900/40 hover:bg-zinc-900 border border-zinc-800 text-zinc-200 font-bold h-9 rounded-lg text-[10px] uppercase tracking-wide transition-all"
-          >
-            Auto Detect Document Borders
-          </button>
-        </div>
-      )}
-
-      {activeTab === 'mirror' && (
-        <div className="space-y-2">
-          {[{ label: 'Flip Horizontal', key: 'flipH' as const, val: flipH }, { label: 'Flip Vertical', key: 'flipV' as const, val: flipV }].map(item => (
-            <label key={item.key} className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-zinc-900 hover:border-zinc-800 cursor-pointer transition-colors">
-              <span className="text-sm text-zinc-300">{item.label}</span>
-              <input type="checkbox" checked={item.val} onChange={e => updateSetting(item.key, e.target.checked)}
-                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
-            </label>
-          ))}
-        </div>
-      )}
-
-      {activeTab === 'rotate' && (
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-zinc-400">Angle</label>
-          <Select value={rotation.toString()} onValueChange={v => updateSetting('rotation', parseInt(v || '0', 10))}>
-            <SelectTrigger className="w-full h-9">
-              <span>{rotation === 0 ? '0° — None' : rotation === 90 ? '90° Clockwise' : rotation === 180 ? '180° Half Turn' : '270° Counter-CW'}</span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0">0° — None</SelectItem>
-              <SelectItem value="90">90° Clockwise</SelectItem>
-              <SelectItem value="180">180° Half Turn</SelectItem>
-              <SelectItem value="270">270° Counter-CW</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {activeTab === 'format' && (
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-zinc-400">Output Format</label>
-          <Select value={format} onValueChange={v => updateSetting('format', v ?? 'preserve')}>
-            <SelectTrigger className="w-full h-9"><span>{getFormatLabel(format)}</span></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="preserve">Original</SelectItem>
-              <SelectItem value="image/webp">WebP</SelectItem>
-              <SelectItem value="image/jpeg">JPEG</SelectItem>
-              <SelectItem value="image/jpg">JPG</SelectItem>
-              <SelectItem value="image/png">PNG</SelectItem>
-              <SelectItem value="image/gif">GIF</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
-      {activeTab === 'filter' && (
-        <div className="space-y-4">
-          <label className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-zinc-900 hover:border-zinc-800 cursor-pointer transition-colors">
-            <span className="text-sm text-zinc-300">Grayscale</span>
-            <input type="checkbox" checked={grayscale} onChange={e => updateSetting('grayscale', e.target.checked)}
-              className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer" />
-          </label>
-        </div>
-      )}
-    </div>
-  );
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (
-    <div className="tool-layout">
-      <ToolHeader 
-        title="Image Optimizer" 
+    <div className={`tool-layout image-tool-layout ${files.length > 0 || processing || results.length > 0 ? 'has-active-session' : 'is-empty-session'}`}>
+      <ToolHeader
+        title="Image Optimizer"
         description="Compress, convert, resize, crop, and edit images right in your browser." 
         icon={ImageIcon} 
         onGoHome={() => {
@@ -1041,12 +798,21 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
             onGoHome();
           }
         }} 
+        actions={!processing && results.length === 0 ? <ToolModeSwitcher
+          label="Image tools"
+          activeId="image-optimizer"
+          options={[
+            { id: 'image-optimizer', label: 'Optimize' },
+            { id: 'rasterbator', label: 'Poster' },
+          ]}
+          onSelect={onSelectTool}
+        /> : undefined}
       />
 
       {files.length === 0 && !processing && results.length === 0 && (
-        <div className="max-w-2xl mx-auto py-10">
+        <div className="tool-upload-frame max-w-2xl mx-auto py-10">
           <FileUploader
-            accept="image/jpeg,image/png,image/webp,image/gif"
+            accept="image/jpeg,image/png,image/webp"
             multiple={true}
             label="Upload images to process"
             subLabel="Drag & drop JPEG, PNG, WebP, or GIF files (Up to 10GB)"
@@ -1057,78 +823,281 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
       )}
 
       {(files.length > 0 || processing || results.length > 0) && (
-        <div className="image-workbench">
+        <WorkspaceShell
+          className="workspace-shell--embedded"
+          title="Image Optimizer"
+          fileName={activeFile?.name || (files.length > 1 ? `${files.length} images` : 'Image workspace')}
+          fileMeta={activeFile ? `${formatBytes(activeFile.size)}${activeSettings?.origWidth ? ` · ${activeSettings.origWidth} × ${activeSettings.origHeight}px` : ''}` : `${files.length} files in queue`}
+          status={processing ? 'Processing' : results.length > 0 ? 'Export ready' : 'Ready to edit'}
+          statusDetail={processing ? `${Math.round(progress)}% · file ${currentFileIndex + 1} of ${files.length}` : activeTab ? `${TABS.find(tab => tab.id === activeTab)?.label || 'Edit'} controls active` : undefined}
+          onExit={results.length > 0 ? clearQueue : onGoHome}
+          actions={files.length > 0 && !processing && results.length === 0 ? (
+            <button
+              type="button"
+              onClick={handlePrimaryAction}
+              className="image-queue-action-btn"
+            >
+              <span>{getActionLabel()}</span>
+              <span className="font-black text-sm">→</span>
+            </button>
+          ) : undefined}
+        >
+        <div className={`image-workbench ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
 
           {/* ═══ LEFT SIDEBAR ═══════════════════════════════════════════════════ */}
-          <aside className="image-workbench__sidebar">
-            
-            {/* Sidebar header */}
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-900">
-              <button onClick={results.length > 0 ? clearQueue : onGoHome}
-                className="text-zinc-500 hover:text-zinc-200 transition-colors p-1 rounded-md hover:bg-zinc-900">
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <span className="text-sm font-bold text-zinc-200">Image Queue ({files.length})</span>
-            </div>
-
+          <aside className={`image-workbench__sidebar ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
             {files.length > 0 && !processing && results.length === 0 && (
-              <>
-                {/* Editing scope */}
-                <div className="px-4 py-2.5 border-b border-zinc-900 flex items-center justify-between gap-2">
-                  <p className="text-xs text-zinc-500 truncate flex-1 min-w-0">
-                    {sameForAll ? 'All images' : (activeFile?.name ?? 'Select image')}
-                  </p>
-                  <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer shrink-0">
-                    <input type="checkbox" checked={sameForAll} onChange={e => toggleSameForAll(e.target.checked)}
-                      className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-zinc-100" />
-                    Copy settings to all
-                  </label>
-                </div>
-
-                {/* Tool tabs */}
-                <nav className="py-1 border-b border-zinc-900">
-                  {TABS.map(({ id, label, Icon }) => (
-                    <button key={id} onClick={() => setActiveTab(id)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-all ${
-                        activeTab === id
-                          ? 'text-zinc-50 bg-zinc-900/60 border-l-2 border-zinc-200 font-semibold'
-                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/3 border-l-2 border-transparent font-medium'
-                      }`}
+              sidebarCollapsed ? (
+                /* Collapsed Icon Rail with Tooltips */
+                <div className="h-full flex flex-col items-center py-3 bg-[#18191e] justify-between w-full select-none">
+                  <div className="flex flex-col items-center gap-1.5 w-full px-2">
+                    {/* Expand button */}
+                    <button
+                      type="button"
+                      onClick={() => setSidebarCollapsed(false)}
+                      className="w-9 h-9 rounded-lg hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer mb-1"
+                      title="Expand sidebar"
                     >
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      {label}
+                      <PanelLeft className="w-4 h-4" />
                     </button>
-                  ))}
-                </nav>
 
-                {/* Settings content */}
-                <div className="flex-1 overflow-y-auto p-4">
-                  {renderSettings()}
+                    <div className="w-6 h-[1px] bg-white/10 mb-1" />
+
+                    {/* Tool icons with tooltip */}
+                    <div className="flex flex-col items-center gap-1 w-full overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+                      {TABS.map((tab) => {
+                        const Icon = tab.Icon;
+                        const isActive = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(tab.id);
+                              setSidebarCollapsed(false);
+                            }}
+                            title={`${tab.label} (Click to open)`}
+                            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer relative group ${
+                              isActive
+                                ? 'bg-white text-zinc-950 font-bold shadow-md'
+                                : 'text-zinc-400 hover:text-white hover:bg-white/10'
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                            {/* Hover Tooltip */}
+                            <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                              {tab.label}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Collapsed CTA button */}
+                  <div className="pt-2 border-t border-white/10 w-full flex justify-center px-2">
+                    <button
+                      type="button"
+                      onClick={handlePrimaryAction}
+                      title={getActionLabel()}
+                      className="w-9 h-9 rounded-lg bg-white text-zinc-950 hover:bg-zinc-200 flex items-center justify-center shadow-md cursor-pointer transition-all hover:scale-105 active:scale-95 group relative font-bold"
+                    >
+                      <span className="text-sm leading-none font-black">→</span>
+                      <div className="absolute left-full ml-3 px-2.5 py-1 bg-zinc-900 border border-zinc-700/80 text-zinc-100 text-xs font-semibold rounded-md shadow-xl whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50">
+                        {getActionLabel()}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Expanded Compact Sidebar */
+                <div className="h-full flex flex-col min-h-0 bg-[#18191e]">
+                  {/* Compact Header with Collapse button */}
+                  <div className="h-10 px-3.5 border-b border-white/10 flex items-center justify-between bg-transparent shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Tools</span>
+                      {files.length > 1 && (
+                        <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400">
+                          {files.length} files
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarCollapsed(true)}
+                      className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                      title="Collapse to icon rail"
+                    >
+                      <PanelLeftClose className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Tool tabs */}
+                  <WorkspaceToolNav items={TABS} activeId={activeTab} onChange={setActiveTab} label="Image editing tools" />
+
+                  {/* Scrollable settings content */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                    <ImageSidebarControls
+                      activeTab={activeTab}
+                      activeFile={activeFile}
+                      activeSettings={activeSettings}
+                      compressionPreset={compressionPreset}
+                      applyCompressionPreset={applyCompressionPreset}
+                      removeMetadata={removeMetadata}
+                      setRemoveMetadata={setRemoveMetadata}
+                      updateSetting={updateSetting}
+                      handleWidthChange={handleWidthChange}
+                      handleHeightChange={handleHeightChange}
+                      imageRef={imageRef}
+                      setCropLeftPct={setCropLeftPct}
+                      setCropTopPct={setCropTopPct}
+                      setCropWidthPct={setCropWidthPct}
+                      setCropHeightPct={setCropHeightPct}
+                      setCropApplied={setCropApplied}
+                      setCropAspect={setCropAspect}
+                      measureImage={measureImage}
+                      displayGrid={displayGrid}
+                      setDisplayGrid={setDisplayGrid}
+                      applyImmediateCrop={applyImmediateCrop}
+                      revertImmediateCrop={revertImmediateCrop}
+                    />
+                  </div>
+
+                  {/* Sidebar Footer with primary action */}
+                  <div className="p-3.5 border-t border-white/10 bg-zinc-900/50 backdrop-blur-sm shrink-0 space-y-2.5">
+                    {files.length > 1 && (
+                      <label className="flex items-center justify-between text-xs text-zinc-400 px-1 cursor-pointer select-none">
+                        <span>Apply to all ({files.length})</span>
+                        <input
+                          type="checkbox"
+                          checked={sameForAll}
+                          onChange={e => toggleSameForAll(e.target.checked)}
+                          className="w-3.5 h-3.5 accent-white rounded"
+                        />
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handlePrimaryAction}
+                      className="w-full h-10 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+                    >
+                      <span>{getActionLabel()}</span>
+                      <span className="font-black text-sm">→</span>
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* Processing state in sidebar */}
+            {processing && (
+              <div className="flex-1 min-h-0 p-4 flex flex-col select-none">
+                <div className="min-h-0 flex-1 space-y-4 flex flex-col">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Status</span>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      Optimizing Files...
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      File {currentFileIndex + 1} of {files.length}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs font-semibold">
+                      <span className="text-zinc-400">Batch Progress</span>
+                      <span className="text-white font-mono">{Math.round(batchProgress)}%</span>
+                    </div>
+                    <div className="w-full h-2 rounded-full bg-zinc-950 border border-white/10 overflow-hidden">
+                      <div
+                        className="h-full bg-white transition-all duration-200"
+                        style={{ width: `${Math.round(batchProgress)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Queued files status */}
+                  <div className="min-h-0 flex-1 flex flex-col space-y-1 pt-2 border-t border-white/10">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block mb-2">Queue Status</span>
+                    <div className="space-y-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
+                      {files.map((file, idx) => {
+                        const isDone = idx < currentFileIndex;
+                        const isCurrent = idx === currentFileIndex;
+                        return (
+                          <div
+                            key={`${file.name}-${idx}`}
+                            className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                              isCurrent
+                                ? 'border-white/30 bg-white/5 text-white font-semibold'
+                                : isDone
+                                ? 'border-white/5 bg-zinc-950/30 text-zinc-400'
+                                : 'border-transparent text-zinc-500'
+                            }`}
+                          >
+                            <span className="truncate max-w-[150px]">{file.name}</span>
+                            <span className="text-[10px] shrink-0 font-mono">
+                              {isDone ? '✓ Done' : isCurrent ? `${Math.round(progress)}%` : 'Waiting'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
-                {/* Optimize CTA */}
-                <div className="p-3 border-t border-zinc-900">
-                  <button onClick={() => startBatchCompression()} disabled={files.length === 0}
-                    className="w-full bg-zinc-50 hover:bg-zinc-200 disabled:opacity-50 text-zinc-950 font-black py-3 rounded-xl text-sm transition-colors shadow-sm cursor-pointer">
-                    Optimize {files.length} {files.length === 1 ? 'Image' : 'Images'} →
-                  </button>
-                </div>
-              </>
+              </div>
             )}
 
             {/* Results sidebar info */}
             {results.length > 0 && !processing && (
-              <div className="flex-1 p-4 space-y-4">
-                <div className="text-center space-y-1">
-                  <div className="w-10 h-10 bg-zinc-900/40 border border-zinc-800 rounded-full flex items-center justify-center mx-auto">
-                    <CheckCircle className="w-5 h-5 text-zinc-200" />
+              <div className="flex-1 p-4 space-y-5 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    <CheckCircle className="w-5 h-5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-bold text-white">Batch Complete</p>
+                      <p className="text-[11px] text-emerald-400/90">{results.length} {results.length === 1 ? 'image' : 'images'} processed</p>
+                    </div>
                   </div>
-                  <p className="text-sm font-bold text-white mt-2">Done!</p>
-                  <p className="text-xs text-zinc-500">{results.length} images · saved {totalSavings()}%</p>
+
+                  <div className="p-3.5 rounded-xl border border-white/10 bg-zinc-900/60 space-y-2.5">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Summary Stats</span>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex justify-between text-zinc-400">
+                        <span>Original Size</span>
+                        <span className="font-mono text-zinc-200">
+                          {formatBytes(results.reduce((a, r) => a + r.originalSize, 0))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-zinc-400">
+                        <span>Optimized Size</span>
+                        <span className="font-mono text-zinc-200">
+                          {formatBytes(results.reduce((a, r) => a + r.newSize, 0))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between font-bold pt-1.5 border-t border-white/10 text-white">
+                        <span>Total Saved</span>
+                        <span className="font-mono text-emerald-400">
+                          {(() => {
+                            const o = results.reduce((a, r) => a + r.originalSize, 0);
+                            const n = results.reduce((a, r) => a + r.newSize, 0);
+                            const s = Math.max(0, o - n);
+                            const p = o > 0 ? Math.round((s / o) * 100) : 0;
+                            return `${formatBytes(s)} (${p}%)`;
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <button onClick={clearQueue}
-                  className="w-full bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors cursor-pointer">
-                  Process More
+
+                <button
+                  type="button"
+                  onClick={clearQueue}
+                  className="w-full bg-white hover:bg-zinc-200 text-zinc-950 font-bold py-2.5 rounded-xl text-xs transition-all shadow-md cursor-pointer"
+                >
+                  Process More Images
                 </button>
               </div>
             )}
@@ -1142,111 +1111,72 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
           <>
             {/* File info bar */}
             {activeFile && (
-              <div className="h-10 border-b border-[var(--border-color)] bg-[var(--surface-color)] flex items-center px-5 gap-4 text-xs text-[var(--text-secondary)] shrink-0">
-                <span className="font-medium text-[var(--text-primary)] truncate max-w-[260px]">{activeFile.name}</span>
-                <span>{formatBytes(activeFile.size)}</span>
-                {activeSettings && activeSettings.origWidth > 0 && (
-                  <span>{activeSettings.origWidth} × {activeSettings.origHeight}px</span>
-                )}
-                <span className="ml-auto text-[var(--text-tertiary)]">{files.length} in queue</span>
+              <div className="image-filebar h-10 border-b border-[var(--border-color)] bg-[var(--surface-color)] flex items-center px-4 gap-3 text-xs text-[var(--text-secondary)] shrink-0 justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="font-semibold text-[var(--text-primary)] truncate max-w-[200px]">{activeFile.name}</span>
+                  <span className="text-zinc-500">{formatBytes(activeFile.size)}</span>
+                  {activeSettings && activeSettings.origWidth > 0 && (
+                    <span className="text-zinc-500 hidden sm:inline">{activeSettings.origWidth} × {activeSettings.origHeight}px</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <WorkspaceZoomControls value={imageZoom} onChange={setImageZoom} />
+                </div>
               </div>
             )}
+            <input ref={addMoreRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp" multiple onChange={(e) => { handleFilesSelected(Array.from(e.target.files || [])); e.target.value = ''; }} />
 
-            {/* Image preview */}
-            <div className="flex-1 flex items-center justify-center bg-[var(--bg-color)] relative overflow-hidden">
+            {/* Image preview and asset queue */}
+            <div className="image-editor-stage">
+            <div ref={previewViewportRef} className="image-preview-viewport flex-1 bg-[var(--bg-color)] relative overflow-auto">
               {/* Subtle checker background */}
               <div className="absolute inset-0 opacity-[0.03]"
                 style={{ backgroundImage: 'repeating-conic-gradient(#fff 0% 25%, transparent 0% 50%)', backgroundSize: '20px 20px' }} />
               
                {activeIndex !== null && previewUrls[activeIndex] ? (
-                <div className="relative max-w-full max-h-full p-6 flex items-center justify-center">
-                  {selectedForCompare ? (
-                    <div 
-                      ref={splitContainerRef}
-                      className="relative select-none overflow-hidden max-w-full rounded-lg shadow-2xl border border-zinc-800 bg-zinc-950 flex items-center justify-center"
-                      style={{
-                        width: imageRect ? `${imageRect.width}px` : '100%',
-                        height: imageRect ? `${imageRect.height}px` : '400px',
-                      }}
-                    >
-                      {/* Left Image: Original */}
-                      <img 
+                <div
+                  className="image-preview-stage relative min-w-full min-h-full p-6 flex items-center justify-center"
+                >
+                  <div className="image-preview-zoom-layer" style={{ zoom: `${imageZoom}%` }}>
+                    <div className="image-preview-image-frame relative inline-flex">
+                    {activeEnhanceMode === 'halftone' ? (
+                      <HalftoneImagePreview
+                        key={activeIndex}
                         src={previewUrls[activeIndex]}
-                        alt="Original"
-                        className="absolute inset-0 w-full h-full object-contain pointer-events-none rounded-lg"
+                        dotSize={activeSettings?.halftoneDotSize ?? 10}
+                        invert={activeSettings?.halftoneInvert ?? false}
+                        transform={previewTransform}
+                        clipPath={cropApplied ? `inset(${cropTopPct}% ${100 - cropLeftPct - cropWidthPct}% ${100 - cropTopPct - cropHeightPct}% ${cropLeftPct}%)` : undefined}
+                        onLoad={measureImage}
+                      />
+                    ) : (
+                      <img
+                        key={activeIndex}
+                        ref={imageRef}
+                        src={previewUrls[activeIndex]}
+                        alt={activeFile?.name ?? 'Preview'}
+                        className="max-w-full max-h-[calc(100vh-14rem)] object-contain rounded-lg shadow-2xl select-none transition-all duration-300"
                         style={{
-                          clipPath: `inset(0 ${100 - compareSplitPct}% 0 0)`
+                          filter: previewFilter || 'none',
+                          transform: previewTransform || undefined,
+                          clipPath: cropApplied ? `inset(${cropTopPct}% ${100 - cropLeftPct - cropWidthPct}% ${100 - cropTopPct - cropHeightPct}% ${cropLeftPct}%)` : undefined,
                         }}
                         draggable={false}
+                        onLoad={measureImage}
                       />
+                    )}
 
-                      {/* Right Image: Optimized */}
-                      <img 
-                        src={selectedForCompare.url}
-                        alt="Optimized"
-                        className="absolute inset-0 w-full h-full object-contain pointer-events-none rounded-lg"
-                        style={{
-                          clipPath: `inset(0 0 0 ${compareSplitPct}%)`
-                        }}
-                        draggable={false}
-                      />
-
-                      {/* Floating Labels */}
-                      <div className="absolute top-4 left-4 bg-zinc-950/80 text-zinc-300 border border-zinc-800 px-3 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm z-10 select-none pointer-events-none">
-                        Original
-                      </div>
-                      <div className="absolute top-4 right-4 bg-zinc-950/80 text-zinc-300 border border-zinc-800 px-3 py-1 rounded-md text-[10px] font-bold tracking-wider uppercase backdrop-blur-sm z-10 select-none pointer-events-none">
-                        Optimized ({formatBytes(selectedForCompare.newSize)})
-                      </div>
-
-                      {/* Split Control vertical divider */}
-                      <div 
-                        className="absolute top-0 bottom-0 w-1 bg-white cursor-col-resize z-20"
-                        style={{ left: `${compareSplitPct}%` }}
-                        onMouseDown={startSplitDrag}
-                      >
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950 border border-zinc-500 flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="3">
-                            <path d="M8 5l-7 7 7 7M16 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
-
-                      {/* Close Compare Overlay button */}
-                      <button 
-                        onClick={() => setSelectedForCompare(null)}
-                        className="absolute bottom-4 right-4 bg-zinc-950/90 text-zinc-400 hover:text-zinc-200 border border-zinc-800 hover:border-zinc-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-all z-10 shadow-lg"
-                      >
-                        Exit Comparison
-                      </button>
-                    </div>
-                  ) : (
-                    <img
-                      key={activeIndex}
-                      ref={imageRef}
-                      src={previewUrls[activeIndex]}
-                      alt={activeFile?.name ?? 'Preview'}
-                      className="max-w-full max-h-[calc(100vh-14rem)] object-contain rounded-lg shadow-2xl select-none transition-all duration-300"
-                      style={{
-                        filter: previewFilter || undefined,
-                        transform: previewTransform || undefined,
-                        clipPath: cropApplied ? `inset(${cropTopPct}% ${100 - cropLeftPct - cropWidthPct}% ${100 - cropTopPct - cropHeightPct}% ${cropLeftPct}%)` : undefined,
-                      }}
-                      draggable={false}
-                      onLoad={measureImage}
-                    />
-                  )}
-
-                  {/* Manual visual crop bounding box overlay */}
-                  {imageRect && !cropApplied && (
+                    {/* Manual visual crop bounding box overlay */}
+                    {activeTab === 'crop' && imageRect && !cropApplied && (
                     <div 
                       ref={cropOverlayRef}
-                      className={`absolute ${activeTab === 'crop' ? 'border-2 border-white opacity-100 pointer-events-auto' : 'border border-dashed border-zinc-500/30 opacity-40 pointer-events-none'}`}
+                      className="absolute border-2 border-white opacity-100 pointer-events-auto"
                       style={{
-                        left: `${imageRect.left + (cropLeftPct / 100) * imageRect.width}px`,
-                        top: `${imageRect.top + (cropTopPct / 100) * imageRect.height}px`,
-                        width: `${(cropWidthPct / 100) * imageRect.width}px`,
-                        height: `${(cropHeightPct / 100) * imageRect.height}px`,
+                        left: `${cropLeftPct}%`,
+                        top: `${cropTopPct}%`,
+                        width: `${cropWidthPct}%`,
+                        height: `${cropHeightPct}%`,
                         boxShadow: activeTab === 'crop' ? '0 0 0 9999px rgba(4,6,8,0.75)' : 'none',
                         zIndex: 20
                       }}
@@ -1278,7 +1208,71 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                         </>
                       )}
                     </div>
-                  )}
+                    )}
+
+                    {/* Live Watermark Overlay Preview */}
+                    {activeTab === 'watermark' && (activeSettings?.watermarkText || '') && (
+                      (activeSettings?.watermarkPosition ?? 'center') === 'pattern' ? (
+                        <div
+                          className="absolute inset-0 pointer-events-none overflow-hidden select-none z-20 flex items-center justify-center"
+                          style={{ opacity: activeSettings?.watermarkOpacity ?? 0.4 }}
+                        >
+                          <div
+                            className="w-[220%] h-[220%] flex flex-wrap content-center justify-center gap-x-16 gap-y-12 shrink-0 select-none"
+                            style={{
+                              transform: 'rotate(-30deg)',
+                              color: activeSettings?.watermarkColor ?? '#ffffff',
+                              fontSize: `${Math.max(12, Math.min(36, (activeSettings?.watermarkFontSize ?? 48) * (imageZoom / 100) * 0.75))}px`,
+                              fontWeight: 800,
+                              textShadow: '0 2px 8px rgba(0,0,0,0.85)',
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            {Array.from({ length: 48 }).map((_, pIdx) => (
+                              <span key={pIdx} className="whitespace-nowrap select-none">
+                                {activeSettings?.watermarkText}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div 
+                          className="absolute inset-0 pointer-events-none flex z-20"
+                          style={{
+                            justifyContent:
+                              (activeSettings?.watermarkPosition ?? 'center') === 'top-left' || (activeSettings?.watermarkPosition ?? 'center') === 'bottom-left'
+                                ? 'flex-start'
+                                : (activeSettings?.watermarkPosition ?? 'center') === 'top-right' || (activeSettings?.watermarkPosition ?? 'center') === 'bottom-right'
+                                ? 'flex-end'
+                                : 'center',
+                            alignItems:
+                              (activeSettings?.watermarkPosition ?? 'center') === 'top-left' || (activeSettings?.watermarkPosition ?? 'center') === 'top-right'
+                                ? 'flex-start'
+                                : (activeSettings?.watermarkPosition ?? 'center') === 'bottom-left' || (activeSettings?.watermarkPosition ?? 'center') === 'bottom-right'
+                                ? 'flex-end'
+                                : 'center',
+                            padding: '1.75rem',
+                          }}
+                        >
+                          <div
+                            style={{
+                              opacity: activeSettings?.watermarkOpacity ?? 0.4,
+                              fontSize: `${Math.max(14, Math.min(64, (activeSettings?.watermarkFontSize ?? 48) * (imageZoom / 100)))}px`,
+                              color: activeSettings?.watermarkColor ?? '#ffffff',
+                              fontWeight: 800,
+                              textShadow: '0 2px 10px rgba(0,0,0,0.85)',
+                              userSelect: 'none',
+                              letterSpacing: '0.04em',
+                              textAlign: 'center',
+                            }}
+                          >
+                            {activeSettings?.watermarkText}
+                          </div>
+                        </div>
+                      )
+                    )}
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center space-y-3 text-zinc-700">
@@ -1287,76 +1281,61 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
                 </div>
               )}
             </div>
-
-            {/* Queue strip */}
-            <div className="h-[88px] border-t border-[var(--border-color)] bg-[var(--surface-color)] flex items-center gap-2 px-4 overflow-x-auto shrink-0"
-              style={{ scrollbarWidth: 'none' }}>
-              {files.map((file, idx) => (
-                <div
-                  key={`${file.name}:${file.size}:${file.lastModified}`}
-                  draggable
-                  onDragStart={() => setDraggedFileIndex(idx)}
-                  onDragOver={event => event.preventDefault()}
-                  onDrop={() => {
-                    if (draggedFileIndex === null || draggedFileIndex === idx) return;
-                    setFiles(prev => {
-                      const copy = [...prev];
-                      const [moved] = copy.splice(draggedFileIndex, 1);
-                      copy.splice(idx, 0, moved);
-                      return copy;
-                    });
-                    setFileSettingsList(prev => {
-                      const copy = [...prev];
-                      const [moved] = copy.splice(draggedFileIndex, 1);
-                      copy.splice(idx, 0, moved);
-                      return copy;
-                    });
-                    setActiveIndex(idx);
-                    setDraggedFileIndex(null);
-                  }}
-                  onDragEnd={() => setDraggedFileIndex(null)}
-                  className="relative flex-shrink-0 group cursor-grab"
-                >
-                  <button onClick={() => selectActiveFile(idx)}
-                    className={`h-[60px] w-[60px] rounded-lg overflow-hidden border-2 transition-all block ${
-                      activeIndex === idx
-                        ? 'border-[var(--text-primary)] shadow-sm'
-                        : 'border-[var(--border-color)] hover:border-zinc-500'
-                    }`}>
-                    {previewUrls[idx] && (
-                      <img src={previewUrls[idx]} alt={file.name}
-                        className="w-full h-full object-cover" draggable={false} />
-                    )}
-                  </button>
-                  <button onClick={() => removeFile(idx)}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 hover:bg-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
-                    <span className="text-[9px] text-white font-bold leading-none">✕</span>
-                  </button>
-                </div>
-              ))}
-
-              {/* Add more */}
-              <button onClick={() => addMoreRef.current?.click()}
-                className="flex-shrink-0 h-[60px] w-[60px] rounded-lg border-2 border-dashed border-[var(--border-color)] hover:border-zinc-500 hover:bg-[var(--surface-hover)] flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all">
-                <PlusIcon className="w-5 h-5" />
+            <aside className="image-queue-rail" aria-label={`${files.length} image${files.length === 1 ? '' : 's'} in queue`}>
+              <div className="image-queue-rail__header">Queue <b>{files.length}</b></div>
+              <button
+                type="button"
+                onClick={() => addMoreRef.current?.click()}
+                title="Add images to queue"
+                aria-label="Add images to queue"
+                className="image-queue-strip__add"
+              >
+                <Plus aria-hidden="true" />
               </button>
-              <input ref={addMoreRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(e) => { handleFilesSelected(Array.from(e.target.files || [])); e.target.value = ''; }} />
+              <div className="image-queue-strip" role="list">
+                {files.map((queuedFile, idx) => (
+                  <div key={`${queuedFile.name}-${idx}`} className="image-queue-strip__item" role="listitem">
+                    <button
+                      type="button"
+                      onClick={() => selectActiveFile(idx)}
+                      title={`Image ${idx + 1}: ${queuedFile.name}`}
+                      aria-label={`Select image ${idx + 1}: ${queuedFile.name}`}
+                      aria-current={activeIndex === idx ? 'true' : undefined}
+                      className={`image-queue-strip__thumb ${activeIndex === idx ? 'is-active' : ''}`}
+                    >
+                      {previewUrls[idx] ? <img src={previewUrls[idx]} alt="" /> : <ImageIcon aria-hidden="true" />}
+                      <span className="image-queue-strip__index" aria-hidden="true">{idx + 1}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(idx)}
+                      title={`Remove ${queuedFile.name}`}
+                      aria-label={`Remove ${queuedFile.name} from queue`}
+                      className="image-queue-strip__remove"
+                    >
+                      <X aria-hidden="true" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </aside>
             </div>
           </>
         )}
 
         {/* ── Processing state with cancellation ── */}
         {processing && (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 bg-zinc-950/40">
-            <div className="max-w-md w-full space-y-6 flex flex-col items-center">
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center px-6 py-8 bg-zinc-950/40">
+            <div className="max-w-md w-full flex flex-col items-center gap-6">
               <ProgressBar
-                progress={progress}
+                progress={batchProgress}
                 statusText={`Processing ${currentFileIndex + 1} of ${files.length}…`}
-                subText={`Web Worker streaming buffer: ${files[currentFileIndex]?.name}`}
+                subText={`Optimizing ${files[currentFileIndex]?.name || 'image'} · ${Math.round(batchProgress)}% of batch complete`}
               />
               <button
+                type="button"
                 onClick={() => { cancellationRef.current = true; }}
-                className="px-5 py-2 rounded-lg border border-red-500/20 text-red-500 hover:bg-red-500/10 text-xs font-semibold tracking-wide uppercase transition-all"
+                className="mt-2 px-6 py-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold tracking-wider uppercase transition-all shadow-sm cursor-pointer"
               >
                 Cancel Process
               </button>
@@ -1366,96 +1345,17 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onUploadSucces
 
         {/* ── Results state ── */}
         {results.length > 0 && !processing && (
-          <div className="flex-1 overflow-y-auto p-6">
-            {/* Results table */}
-            <div className="border border-zinc-900 rounded-xl overflow-hidden bg-[#06080d] text-left mb-6">
-              <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-zinc-950/60 border-b border-zinc-900 text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                <div className="col-span-5">File</div>
-                <div className="col-span-2 text-right">Original</div>
-                <div className="col-span-2 text-right">Result</div>
-                <div className="col-span-1 text-right">Saved</div>
-                <div className="col-span-2 text-center">Download</div>
-              </div>
-              <div className="divide-y divide-zinc-900">
-                {results.map((res, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 px-5 py-3.5 items-center hover:bg-zinc-950/20 transition-colors">
-                    <div className="col-span-5 truncate text-sm font-medium text-zinc-200" title={res.name}>{res.name}</div>
-                    <div className="col-span-2 text-right text-xs text-zinc-500">{formatBytes(res.originalSize)}</div>
-                    <div className="col-span-2 text-right text-sm font-bold text-zinc-100">{formatBytes(res.newSize)}</div>
-                    <div className="col-span-1 text-right text-sm font-bold text-white">-{getSavings(res.originalSize, res.newSize)}%</div>
-                    <div className="col-span-2 flex items-center justify-center gap-2">
-                      <button onClick={() => setSelectedForCompare(res)}
-                        className="w-8 h-8 rounded-lg border border-zinc-800 text-zinc-300 hover:bg-zinc-900 flex items-center justify-center transition-colors" title="Compare">
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      <a href={res.url} download={res.name}
-                        className="w-8 h-8 rounded-lg border border-zinc-800 text-zinc-300 hover:bg-zinc-900 flex items-center justify-center transition-colors" title="Download">
-                        <Download className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Download all */}
-            <div className="flex flex-col items-center justify-center gap-3">
-              <p className="text-xs text-zinc-400">
-                {formatBytes(sizeSummary.originalSize)} → {formatBytes(sizeSummary.newSize)} · saved {formatBytes(sizeSummary.savedSize)} ({sizeSummary.savedPercent}%)
-              </p>
-              <div className="flex flex-wrap justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => downloadAll(results)}
-                  className="inline-flex items-center gap-2 bg-zinc-50 hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-2.5 rounded-lg text-sm transition-colors"
-                >
-                  <Download className="w-4 h-4" /> Download All
-                </button>
-                {results.length === 1 && (
-                  <button
-                    type="button"
-                    onClick={() => shareResult(results[0]).catch(console.error)}
-                    className="batch-action batch-action--secondary"
-                  >
-                    Share
-                  </button>
-                )}
-                {failedFileIndexes.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => startBatchCompression(failedFileIndexes)}
-                    className="inline-flex items-center gap-2 border border-rose-800 text-rose-300 font-bold px-6 py-2.5 rounded-lg text-sm"
-                  >
-                    Retry {failedFileIndexes.length} failed
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Side-by-side compare */}
-            {selectedForCompare && (
-              <div className="mt-6 border border-zinc-900 rounded-xl overflow-hidden bg-[#06080d] p-5 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-zinc-200">Comparing: {selectedForCompare.name}</h3>
-                  <button onClick={() => setSelectedForCompare(null)} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">Close</button>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {[  
-                    { label: `Original · ${formatBytes(selectedForCompare.originalSize)}`, src: (() => { const f = files.find(f => selectedForCompare.name.includes(f.name.substring(0, f.name.lastIndexOf('.')))); return f ? URL.createObjectURL(f) : ''; })() },
-                    { label: `Optimized · ${formatBytes(selectedForCompare.newSize)} · -${getSavings(selectedForCompare.originalSize, selectedForCompare.newSize)}%`, src: selectedForCompare.url }
-                  ].map(({ label, src }) => (
-                    <div key={label} className="space-y-2">
-                      <p className="text-xs font-semibold text-zinc-500">{label}</p>
-                      {src && <img src={src} alt={label} className="w-full max-h-[240px] object-contain rounded-lg bg-zinc-950 border border-zinc-900" />}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <ImageBatchResults
+            results={results}
+            files={files}
+            previewUrls={previewUrls}
+            failedFileIndexes={failedFileIndexes}
+            onRetryFailed={(indexes) => startBatchCompression(indexes)}
+          />
         )}
       </div>
     </div>
+    </WorkspaceShell>
   )}
 </div>
   );

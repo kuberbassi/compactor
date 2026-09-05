@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { CompressionPresetSelector } from '../../components/Common/CompressionPresetSelector';
 import { ProgressBar } from '../../components/Common/ProgressBar';
-import { ToolHeader } from '../../components/Common/ToolHeader';
 import { TrimTimeline } from '../../components/Common/TrimTimeline';
 import type { TrimSegment } from '../../components/Common/TrimTimeline';
 import { CustomAudioPlayer } from '../../components/Common/CustomAudioPlayer';
+import { WorkspaceShell } from '../../components/Workspace/WorkspaceShell';
+import { ToolHeader } from '../../components/Common/ToolHeader';
+import { ErrorBanner } from '../../components/Common/ErrorBanner';
 
 import { compressAudio, getFFmpeg, terminateFFmpeg } from '../../utils/ffmpeg';
 import { formatBytes } from '../../utils/image';
@@ -18,16 +20,21 @@ import { processPitchAndSpeed } from '../../utils/audioPitchSpeed';
 
 import { 
   Music, Download, RefreshCw, CheckCircle, 
-  Disc, Sliders, Layers, ArrowUp, ArrowDown, Trash2, Zap, Plus, Minus, RotateCcw
+  Disc, Sliders, Layers, Zap
 } from 'lucide-react';
 import { Switch } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
 import { Card } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { ToolModeSwitcher } from '../../components/Common/ToolModeSwitcher';
+import { AudioJoinerPanel } from './components/AudioJoinerPanel';
+import { AudioBpmPanel } from './components/AudioBpmPanel';
+import { AudioPitchSpeedPanel } from './components/AudioPitchSpeedPanel';
 
 interface AudioToolsProps {
   mode?: string;
   onGoHome: () => void;
+  onSelectTool: (toolId: string) => void;
   onUploadSuccess: () => void;
 }
 
@@ -74,7 +81,7 @@ function transposeKeyDisplay(baseKey: string | null, semitones: number): { root:
   };
 }
 
-export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer', onGoHome, onUploadSuccess }) => {
+export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer', onGoHome, onSelectTool, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(mode);
 
   useEffect(() => {
@@ -106,7 +113,18 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
   const [removeMetadata, setRemoveMetadata] = useState(() =>
     loadSetting('compactor_audio_remove_metadata', true)
   );
+  const [normalizeAudio, setNormalizeAudio] = useState(false);
+  const [fadeInDuration, setFadeInDuration] = useState(0);
+  const [fadeOutDuration, setFadeOutDuration] = useState(0);
+  const [audioChannels, setAudioChannels] = useState<'original' | 'mono' | 'stereo'>('original');
+  const [removeSilence, setRemoveSilence] = useState(false);
+  const [noiseReduction, setNoiseReduction] = useState(false);
+  const [bassBoost, setBassBoost] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [seekToTime, setSeekToTime] = useState<number | null>(null);
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Key & BPM Finder State
   const [analysisResult, setAnalysisResult] = useState<AudioAnalysisResult | null>(null);
@@ -125,8 +143,15 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     newSize: number;
   } | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (result?.url) {
+        URL.revokeObjectURL(result.url);
+      }
+    };
+  }, [result?.url]);
+
   const logEndRef = useRef<HTMLDivElement>(null);
-  const addTracksInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     saveSetting('compactor_audio_compression_preset', compressionPreset);
@@ -229,9 +254,10 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
   // Run Audio Processing
   const startAudioProcessing = async () => {
+    setErrorMessage(null);
     if (activeTool === 'audio-joiner') {
       if (joinFiles.length < 2) {
-        alert('Please upload at least 2 audio files to join.');
+        setErrorMessage('Please upload at least 2 audio files to join.');
         return;
       }
       setProcessing(true);
@@ -250,7 +276,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         onUploadSuccess();
       } catch (e: any) {
         console.error(e);
-        alert(`Joining failed: ${e.message || e}`);
+        setErrorMessage(`Joining failed: ${e.message || e}`);
       } finally {
         setProcessing(false);
       }
@@ -260,7 +286,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     if (activeTool === 'audio-pitch-speed') {
       if (!file) return;
       if (pitchSemitones === 0 && speedRatio === 1.0) {
-        alert('No changes applied — adjust pitch or speed before exporting.');
+        setErrorMessage('No changes applied — adjust pitch or speed before exporting.');
         return;
       }
       setProcessing(true);
@@ -287,7 +313,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         onUploadSuccess();
       } catch (e: any) {
         console.error(e);
-        alert(`Pitch/Speed change failed: ${e.message || e}`);
+        setErrorMessage(`Pitch/Speed change failed: ${e.message || e}`);
       } finally {
         setProcessing(false);
       }
@@ -311,6 +337,13 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
         compileMode: enableTrim ? trimCompileMode : undefined,
         duration: audioDuration,
         removeMetadata,
+        normalizeAudio,
+        fadeInDuration: fadeInDuration > 0 ? fadeInDuration : undefined,
+        fadeOutDuration: fadeOutDuration > 0 ? fadeOutDuration : undefined,
+        channels: audioChannels !== 'original' ? audioChannels : undefined,
+        removeSilence,
+        noiseReduction,
+        bassBoost,
       };
 
       const compressResult = await compressAudio(file, config, handleLog, setProgress);
@@ -319,7 +352,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     } catch (e: any) {
       console.error(e);
       setLogs((prev) => [...prev, `ERROR: ${e.message || e}`]);
-      alert(`Processing failed: ${e.message || 'Make sure your browser supports SharedArrayBuffer.'}`);
+      setErrorMessage(`Processing failed: ${e.message || 'Make sure your browser supports SharedArrayBuffer.'}`);
     } finally {
       setProcessing(false);
     }
@@ -351,507 +384,160 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     return () => window.removeEventListener('keydown', handleShortcut);
   });
 
+  const hasActiveSession = Boolean(file || joinFiles.length > 0 || result || processing);
+  const activeFileName = result?.name || file?.name || (joinFiles.length ? `${joinFiles.length} audio tracks` : currentToolInfo.label);
+  const sourceFormat = file?.name.split('.').pop()?.toUpperCase() || 'AUDIO';
+
   return (
-    <div className="w-full tool-layout space-y-4 sm:space-y-6">
-      <ToolHeader 
-        title={currentToolInfo.label} 
-        description={currentToolInfo.desc} 
-        icon={currentToolInfo.icon} 
-        onGoHome={() => {
-          if (file || joinFiles.length > 0 || result || processing) {
-            reset();
-          } else {
-            onGoHome();
-          }
-        }} 
+    <div className={`w-full tool-layout audio-tool-layout ${hasActiveSession ? 'has-active-session' : 'is-empty-session'}`}>
+      <ToolHeader
+        title={currentToolInfo.label}
+        description={currentToolInfo.desc}
+        icon={currentToolInfo.icon}
+        onGoHome={onGoHome}
+        actions={!processing && !result ? <ToolModeSwitcher
+          label="Audio tools"
+          activeId={activeTool}
+          options={AUDIO_TOOLS_CONFIG.map(tool => ({ id: tool.id, label: tool.shortLabel }))}
+          onSelect={onSelectTool}
+        /> : undefined}
       />
-
-      {/* Top Audio Sub-Tool Navigation Bar matching VideoCompressor reference */}
-      {!processing && !result && (
-        <div className="w-full flex justify-center mt-1 mb-3 sm:mb-4 px-1">
-          <div 
-            className="flex items-center gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl shadow-sm w-full max-w-full sm:w-auto overflow-x-auto no-scrollbar"
-            style={{ WebkitOverflowScrolling: 'touch' }}
-          >
-            {AUDIO_TOOLS_CONFIG.map((t) => {
-              const isActive = activeTool === t.id;
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setActiveTool(t.id);
-                    reset();
-                  }}
-                  className={`flex-1 sm:flex-none px-2 sm:px-3.5 py-1.5 rounded-lg text-[10px] sm:text-xs font-bold whitespace-nowrap transition-all duration-150 cursor-pointer shrink-0 min-h-[36px] flex items-center justify-center ${
-                    isActive
-                      ? 'bg-zinc-800 text-white font-extrabold shadow-sm border border-zinc-700'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
-                  }`}
-                >
-                  <span className="hidden sm:inline">{t.label}</span>
-                  <span className="inline sm:hidden">{t.shortLabel}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ── MODE 1: AUDIO JOINER SETUP ── */}
-      {activeTool === 'audio-joiner' && !result && !processing && (
-        <div className="w-full max-w-2xl mx-auto space-y-4 sm:space-y-6">
-          {joinFiles.length === 0 ? (
-            <FileUploader 
-              accept="audio/*"
-              label="Upload Audio Tracks to Merge"
-              subLabel="Drag & drop multiple audio tracks (MP3, WAV, AAC, M4A, FLAC)"
-              onFilesSelected={handleFilesSelected}
-              multiple={true}
-              maxSizeMB={Infinity}
-            />
-          ) : (
-            <div className="p-3 bg-zinc-950/60 border border-[var(--border-color)] rounded-xl flex items-center justify-between min-w-0 gap-2">
-              <span className="text-xs text-zinc-400 font-medium truncate pr-1 min-w-0 flex-1">Add more audio files to queue...</span>
-              <input
-                ref={addTracksInputRef}
-                type="file"
-                accept="audio/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files) {
-                    handleFilesSelected(Array.from(e.target.files));
-                  }
-                }}
-              />
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => addTracksInputRef.current?.click()}
-                className="h-8 text-xs font-semibold shrink-0 border-[var(--border-color)]"
-              >
-                <Plus className="w-3.5 h-3.5 mr-1" />
-                <span className="hidden xs:inline">Add Tracks</span>
-                <span className="xs:hidden">Add</span>
-              </Button>
-            </div>
-          )}
-
-          {joinFiles.length > 0 && (
-            <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-4 sm:p-6 space-y-4 sm:space-y-5 rounded-2xl shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
-                <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
-                  Audio Queue ({joinFiles.length} Tracks)
-                </span>
-                <Button variant="ghost" onClick={() => setJoinFiles([])} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold">
-                  Clear All
-                </Button>
-              </div>
-
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {joinFiles.map((f, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-zinc-950/60 border border-[var(--border-color)] text-xs text-[var(--text-primary)] min-w-0 gap-2">
-                    <div className="flex items-center gap-2 sm:gap-3 truncate flex-1 min-w-0 pr-1">
-                      <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono text-[10px] flex items-center justify-center font-bold shrink-0">
-                        {idx + 1}
-                      </span>
-                      <div className="min-w-0 flex-1 truncate">
-                        <span className="truncate font-semibold text-xs block max-w-[140px] xs:max-w-xs">{f.name}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono block sm:hidden">{formatBytes(f.size)}</span>
-                      </div>
-                      <span className="text-[10px] text-zinc-500 font-mono shrink-0 hidden sm:inline">{formatBytes(f.size)}</span>
-                    </div>
-
-                    <div className="flex items-center gap-0.5 shrink-0">
-                      {idx > 0 && (
-                        <Button 
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const copy = [...joinFiles];
-                            [copy[idx - 1], copy[idx]] = [copy[idx], copy[idx - 1]];
-                            setJoinFiles(copy);
-                          }}
-                          className="h-7 w-7 text-zinc-400 hover:text-white"
-                          title="Move Up"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      {idx < joinFiles.length - 1 && (
-                        <Button 
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const copy = [...joinFiles];
-                            [copy[idx + 1], copy[idx]] = [copy[idx], copy[idx + 1]];
-                            setJoinFiles(copy);
-                          }}
-                          className="h-7 w-7 text-zinc-400 hover:text-white"
-                          title="Move Down"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </Button>
-                      )}
-                      <Button 
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setJoinFiles(joinFiles.filter((_, i) => i !== idx))}
-                        className="h-7 w-7 text-zinc-500 hover:text-rose-400"
-                        title="Remove Track"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <Button 
-                onClick={startAudioProcessing} 
-                disabled={joinFiles.length < 2}
-                className="w-full h-11 bg-white text-black hover:bg-zinc-200 font-bold text-xs sm:text-sm rounded-xl shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                <Layers className="w-4 h-4 mr-2" />
-                <span>Merge {joinFiles.length} Audio Tracks</span>
-              </Button>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* ── MODE 2, 3, 4 SINGLE FILE UPLOADER ── */}
-      {activeTool !== 'audio-joiner' && !file && !result && (
-        <div className="w-full max-w-2xl mx-auto py-2 sm:py-4">
+      {/* ── EMPTY UPLOAD STATE ── */}
+      {!hasActiveSession && (
+        <div className="tool-upload-frame w-full max-w-2xl mx-auto py-2">
           <FileUploader 
-            accept="audio/*"
-            label={`Upload Audio for ${currentToolInfo.label}`}
-            subLabel="Drag & drop any size MP3, WAV, OGG, M4A, or FLAC files"
+            accept="audio/*,video/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.webm,.mp4,.mov,.mkv,.avi"
+            label={activeTool === 'audio-joiner' ? "Upload Audio Tracks to Merge" : `Upload Audio or Video for ${currentToolInfo.label}`}
+            subLabel={activeTool === 'audio-joiner' ? "Drag & drop multiple audio tracks (MP3, WAV, AAC, M4A, FLAC, OPUS)" : "Drag & drop audio (MP3, WAV, OGG, M4A, FLAC, OPUS) or video files (MP4, MOV, MKV, WebM) to extract & process audio"}
             onFilesSelected={handleFilesSelected}
+            multiple={activeTool === 'audio-joiner'}
             maxSizeMB={Infinity}
           />
         </div>
       )}
 
+      {/* ── ACTIVE WORKSPACE SESSION ── */}
+      {hasActiveSession && (
+        <WorkspaceShell
+          title={currentToolInfo.label}
+          fileName={activeFileName}
+          fileMeta={file ? formatBytes(file.size) : joinFiles.length ? `${joinFiles.length} files in queue` : undefined}
+          status={processing ? statusText : result ? 'Export ready' : 'Ready to edit'}
+          statusDetail={activeTool === 'audio-joiner' ? `${joinFiles.length} tracks` : 'Local audio workspace'}
+          onExit={reset}
+          actions={result ? (
+            <a href={result.url} download={result.name} className="workspace-primary-action"><Download aria-hidden="true" /> Export</a>
+          ) : !processing ? (
+            <button type="button" onClick={startAudioProcessing} className="workspace-primary-action"><Zap aria-hidden="true" /> Process audio</button>
+          ) : null}
+          className="audio-workspace-shell has-active-session"
+        >
+          <div className="audio-workspace-content">
+
+      {/* ── MODE 1: AUDIO JOINER SETUP ── */}
+      {activeTool === 'audio-joiner' && !result && !processing && (
+        <AudioJoinerPanel
+          joinFiles={joinFiles}
+          setJoinFiles={setJoinFiles}
+          onFilesSelected={handleFilesSelected}
+          onRunJoin={startAudioProcessing}
+        />
+      )}
+
       {/* ── MODE 3: KEY & BPM FINDER RESULT VIEW ── */}
       {activeTool === 'audio-bpm-finder' && file && !result && (
-        <div className="w-full max-w-2xl mx-auto space-y-4 sm:space-y-6">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-4 sm:p-6 space-y-4 sm:space-y-5 rounded-2xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--border-color)] pb-3 min-w-0">
-              <div className="flex items-center gap-2 truncate min-w-0 flex-1">
-                <Disc className="w-4 h-4 text-zinc-400 shrink-0" />
-                <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[140px] xs:max-w-xs">{file.name}</span>
-              </div>
-              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold shrink-0 whitespace-nowrap">
-                <span className="hidden xs:inline">Analyze Another</span>
-                <span className="xs:hidden">Reset</span>
-              </Button>
-            </div>
-
-            {analyzingBpm ? (
-              <div className="py-12 text-center space-y-3">
-                <div className="w-9 h-9 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-xs font-mono font-bold text-zinc-300">Analyzing Pitch Profiles & Onset BPM...</p>
-              </div>
-            ) : analysisResult ? (
-              <div className="space-y-4 sm:space-y-5">
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <div className="p-3 sm:p-4 rounded-xl bg-zinc-950/70 border border-[var(--border-color)] text-center space-y-1 min-w-0 flex flex-col items-center justify-center min-h-[90px] sm:min-h-[105px]">
-                    <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">TEMPO</span>
-                    <span className="text-2xl sm:text-4xl font-black text-white block truncate">{analysisResult.bpm}</span>
-                    <span className="text-[9px] sm:text-[10px] font-mono font-bold text-emerald-400 block truncate">BEATS PER MINUTE</span>
-                  </div>
-
-                  <div className="p-3 sm:p-4 rounded-xl bg-zinc-950/70 border border-[var(--border-color)] text-center space-y-1 min-w-0 flex flex-col items-center justify-center min-h-[90px] sm:min-h-[105px]">
-                    <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">MUSICAL KEY</span>
-                    <span className="text-lg sm:text-3xl font-black text-white block truncate leading-tight">{analysisResult.key}</span>
-                    <span className="text-[9px] sm:text-[10px] font-mono font-bold text-indigo-400 block truncate">CAMELOT {analysisResult.camelot}</span>
-                  </div>
-                </div>
-
-                <div className="p-2.5 sm:p-3 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl flex items-center justify-between gap-1 text-center font-mono text-zinc-400">
-                  <div className="flex-1 min-w-0 px-1">
-                    <span className="text-zinc-500 block text-[9px] sm:text-[10px] uppercase font-bold truncate">Confidence</span>
-                    <strong className="text-white text-xs sm:text-sm block truncate">{analysisResult.confidence}%</strong>
-                  </div>
-                  <div className="h-6 w-px bg-zinc-800 shrink-0" />
-                  <div className="flex-1 min-w-0 px-1">
-                    <span className="text-zinc-500 block text-[9px] sm:text-[10px] uppercase font-bold truncate">Sample Rate</span>
-                    <strong className="text-white text-xs sm:text-sm block truncate">{analysisResult.sampleRate} Hz</strong>
-                  </div>
-                  <div className="h-6 w-px bg-zinc-800 shrink-0" />
-                  <div className="flex-1 min-w-0 px-1">
-                    <span className="text-zinc-500 block text-[9px] sm:text-[10px] uppercase font-bold truncate">Scale</span>
-                    <strong className="text-white text-xs sm:text-sm uppercase block truncate">{analysisResult.mode}</strong>
-                  </div>
-                </div>
-
-                {previewUrl && (
-                  <CustomAudioPlayer
-                    src={previewUrl}
-                    title={file.name}
-                    subtitle="Track Audio Preview"
-                  />
-                )}
-              </div>
-            ) : null}
-          </Card>
-        </div>
+        <AudioBpmPanel
+          file={file}
+          analyzingBpm={analyzingBpm}
+          analysisResult={analysisResult}
+          previewUrl={previewUrl}
+          onReset={reset}
+        />
       )}
 
       {/* ── MODE 4: PITCH & SPEED CONTROLS WITH LIVE KEY/BPM DISPLAY ── */}
       {activeTool === 'audio-pitch-speed' && file && !result && !processing && (
-        <div className="w-full max-w-2xl mx-auto space-y-4 sm:space-y-6">
-          <Card className="border-zinc-800/80 bg-[#12121a] p-4 sm:p-6 space-y-5 sm:space-y-6 rounded-2xl shadow-xl overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-zinc-800/60 pb-3 min-w-0">
-              <div className="flex items-center gap-2 truncate min-w-0 flex-1">
-                <Sliders className="w-4 h-4 text-zinc-300 shrink-0" />
-                <span className="text-xs font-bold text-white truncate max-w-[140px] xs:max-w-xs">{file.name}</span>
-              </div>
-              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold shrink-0">
-                Remove
-              </Button>
-            </div>
-
-            {/* Pitch & Speed Control Section Matching Screenshot */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-              {/* Sliders Column */}
-              <div className="md:col-span-8 space-y-6">
-                {/* PITCH SLIDER CONTROL WITH STEPPER & PRESETS */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-400 font-bold uppercase tracking-wider">PITCH</span>
-                      {pitchSemitones !== 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setPitchSemitones(0)}
-                          className="text-[10px] text-indigo-400 hover:text-indigo-300 bg-indigo-950/60 border border-indigo-800/60 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors"
-                          title="Reset Pitch to 0 semitones"
-                        >
-                          <RotateCcw className="w-2.5 h-2.5" />
-                          <span>Reset</span>
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPitchSemitones(Math.max(-12, pitchSemitones - 1))}
-                        className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center justify-center cursor-pointer transition-colors"
-                        title="Decrease 1 semitone"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="text-indigo-300 font-extrabold text-sm min-w-[3.2rem] text-center font-mono">
-                        {pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones}
-                        <span className="text-[10px] text-indigo-400 font-normal ml-0.5">st</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setPitchSemitones(Math.min(12, pitchSemitones + 1))}
-                        className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center justify-center cursor-pointer transition-colors"
-                        title="Increase 1 semitone"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="relative flex items-center">
-                    <input 
-                      type="range" 
-                      min="-12" 
-                      max="12" 
-                      step="1"
-                      value={pitchSemitones}
-                      onDoubleClick={() => setPitchSemitones(0)}
-                      onChange={(e) => setPitchSemitones(parseInt(e.target.value, 10))}
-                      className="w-full accent-indigo-500 h-2 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer hover:bg-zinc-800 transition-colors"
-                    />
-                  </div>
-
-                  {/* Quick Pitch Presets */}
-                  <div className="grid grid-cols-7 gap-1 pt-0.5 w-full">
-                    {[-12, -2, -1, 0, 1, 2, 12].map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => setPitchSemitones(st)}
-                        className={`w-full px-0.5 py-1 rounded text-[10px] sm:text-xs font-mono font-semibold transition-all cursor-pointer flex items-center justify-center ${
-                          pitchSemitones === st
-                            ? 'bg-indigo-600 text-white shadow-sm font-bold'
-                            : 'bg-zinc-900/80 border border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                        }`}
-                      >
-                        {st === 0 ? '0' : st > 0 ? `+${st}` : st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* SPEED SLIDER CONTROL WITH STEPPER & PRESETS */}
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <div className="flex items-center gap-2">
-                      <span className="text-zinc-400 font-bold uppercase tracking-wider">SPEED</span>
-                      {speedRatio !== 1.0 && (
-                        <button
-                          type="button"
-                          onClick={() => setSpeedRatio(1.0)}
-                          className="text-[10px] text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors"
-                          title="Reset Speed to 1.00x"
-                        >
-                          <RotateCcw className="w-2.5 h-2.5" />
-                          <span>Reset</span>
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setSpeedRatio(Math.max(0.5, Math.round((speedRatio - 0.05) * 100) / 100))}
-                        className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center justify-center cursor-pointer transition-colors"
-                        title="Decrease speed by 0.05x"
-                      >
-                        <Minus className="w-3 h-3" />
-                      </button>
-                      <span className="text-emerald-300 font-extrabold text-sm min-w-[3.5rem] text-center font-mono">
-                        {speedRatio.toFixed(2)}x
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setSpeedRatio(Math.min(2.0, Math.round((speedRatio + 0.05) * 100) / 100))}
-                        className="w-5 h-5 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center justify-center cursor-pointer transition-colors"
-                        title="Increase speed by 0.05x"
-                      >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="relative flex items-center">
-                    <input 
-                      type="range" 
-                      min="0.5" 
-                      max="2.0" 
-                      step="0.05"
-                      value={speedRatio}
-                      onDoubleClick={() => setSpeedRatio(1.0)}
-                      onChange={(e) => setSpeedRatio(parseFloat(e.target.value))}
-                      className="w-full accent-emerald-500 h-2 bg-zinc-800/80 rounded-lg appearance-none cursor-pointer hover:bg-zinc-800 transition-colors"
-                    />
-                  </div>
-
-                  {/* Quick Speed Presets */}
-                  <div className="grid grid-cols-6 gap-1 pt-0.5 w-full">
-                    {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((spd) => (
-                      <button
-                        key={spd}
-                        type="button"
-                        onClick={() => setSpeedRatio(spd)}
-                        className={`w-full px-0.5 py-1 rounded text-[10px] sm:text-xs font-mono font-semibold transition-all cursor-pointer flex items-center justify-center ${
-                          Math.abs(speedRatio - spd) < 0.01
-                            ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                            : 'bg-zinc-900/80 border border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                        }`}
-                      >
-                        {spd.toFixed(2)}x
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Dynamic KEY & BPM Info Cards Column */}
-              <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-1 gap-2.5 sm:gap-3">
-                {/* KEY DISPLAY CARD */}
-                <div className="p-3 sm:p-4 bg-zinc-950/90 border border-zinc-800/90 rounded-xl text-center space-y-1 flex flex-col items-center justify-center min-h-[90px] sm:min-h-[105px]">
-                  <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">KEY</span>
-                  {analyzingBpm ? (
-                    <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto my-2" />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center leading-none my-0.5">
-                      <span className="text-2xl sm:text-3xl font-black text-white tracking-tight">{transposedKey.root}</span>
-                      <span className="text-[10px] sm:text-xs font-bold text-indigo-400 font-mono mt-0.5 uppercase tracking-wider">{transposedKey.mode}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* BPM DISPLAY CARD */}
-                <div className="p-3 sm:p-4 bg-zinc-950/90 border border-zinc-800/90 rounded-xl text-center space-y-1 flex flex-col items-center justify-center min-h-[90px] sm:min-h-[105px]">
-                  <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">BPM</span>
-                  {analyzingBpm ? (
-                    <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto my-1" />
-                  ) : currentBpm !== null ? (
-                    <div className="flex flex-col items-center justify-center leading-none my-0.5">
-                      <span className="text-2xl sm:text-3xl font-black text-emerald-400 block font-mono">{currentBpm}</span>
-                      <span className="text-[9px] sm:text-[10px] font-bold text-emerald-500/80 font-mono mt-0.5 uppercase tracking-wider">BEATS / MIN</span>
-                    </div>
-                  ) : (
-                    <span className="text-xl font-black text-zinc-600 block font-mono">—</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Instant Audio Preview */}
-            {previewUrl && (
-              <div className="space-y-1.5 pt-3 border-t border-zinc-800/60">
-                <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block">Live Pitch & Speed Audio Preview</span>
-                <CustomAudioPlayer
-                  src={previewUrl}
-                  file={file}
-                  title={file.name}
-                  subtitle={`${pitchSemitones > 0 ? `+${pitchSemitones}` : pitchSemitones} Semitones • ${speedRatio.toFixed(2)}x Speed`}
-                  pitchSemitones={pitchSemitones}
-                  speedRatio={speedRatio}
-                />
-              </div>
-            )}
-
-            <Button 
-              onClick={startAudioProcessing} 
-              className="w-full h-11 bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xs sm:text-sm rounded-xl shadow-md cursor-pointer transition-all"
-            >
-              <Zap className="w-4 h-4 mr-2 fill-current" />
-              <span>Apply Pitch & Speed Changes</span>
-            </Button>
-          </Card>
-        </div>
+        <AudioPitchSpeedPanel
+          file={file}
+          pitchSemitones={pitchSemitones}
+          setPitchSemitones={setPitchSemitones}
+          speedRatio={speedRatio}
+          setSpeedRatio={setSpeedRatio}
+          analyzingBpm={analyzingBpm}
+          transposedKey={transposedKey}
+          currentBpm={currentBpm}
+          previewUrl={previewUrl}
+          onReset={reset}
+          onRunProcess={startAudioProcessing}
+        />
       )}
 
       {/* ── MODE 1: COMPRESS AUDIO SETTINGS ── */}
       {activeTool === 'audio-optimizer' && file && !result && !processing && (
-        <div className="w-full max-w-2xl mx-auto space-y-4 sm:space-y-6">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-4 sm:p-6 space-y-4 sm:space-y-5 rounded-2xl shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--border-color)] pb-3 min-w-0">
-              <div className="flex items-center gap-2 truncate min-w-0 flex-1">
-                <Music className="w-4 h-4 text-zinc-400 shrink-0" />
-                <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[140px] xs:max-w-xs">{file.name}</span>
+        <div className="audio-optimizer-session w-full max-w-2xl mx-auto">
+          <Card className="audio-editor-panel audio-optimizer-stage border-[var(--border-color)] bg-[var(--surface-color)] overflow-hidden">
+            <div className="audio-editor-panel__filebar workbench-filebar flex items-center justify-between gap-2 min-w-0">
+              <div className="workbench-filebar__identity truncate min-w-0 flex-1">
+                <span aria-hidden="true" />
+                <div>
+                  <strong>{file.name}</strong>
+                  <small>{sourceFormat} source · {formatBytes(file.size)}</small>
+                </div>
               </div>
-              <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 text-xs h-7 px-2 font-semibold shrink-0">
-                <span className="hidden xs:inline">Remove File</span>
-                <span className="xs:hidden">Remove</span>
-              </Button>
+              <div className="audio-filebar-actions">
+                <Button variant="ghost" onClick={reset} className="audio-remove-action text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 text-xs h-7 px-2 font-semibold shrink-0">
+                  <span className="hidden xs:inline">Remove File</span>
+                  <span className="xs:hidden">Remove</span>
+                </Button>
+                <Button onClick={startAudioProcessing} className="audio-process-action">Process audio</Button>
+              </div>
             </div>
 
-            <div className="p-3 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl text-center">
-              <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Original Size</span>
-              <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-0.5">{formatBytes(file.size)}</span>
-            </div>
+            {errorMessage && (
+              <div className="p-3">
+                <ErrorBanner 
+                  message={errorMessage} 
+                  onDismiss={() => setErrorMessage(null)} 
+                  onRetry={startAudioProcessing} 
+                />
+              </div>
+            )}
 
-            {/* Custom Audio Player */}
+            {/* Custom Audio Player with Studio Waveform Stage */}
             {previewUrl && (
-              <CustomAudioPlayer
-                src={previewUrl}
-                title={file.name}
-                subtitle={`${format.toUpperCase()} Audio Track`}
-              />
+              <div className="audio-preview-canvas workbench-canvas">
+                <div className="audio-preview-canvas__bar">
+                  <span><i aria-hidden="true" /> Source preview</span>
+                  <small>Local playback</small>
+                </div>
+                <div className="audio-waveform-stage flex-1 flex flex-col items-center justify-center p-6 text-center select-none min-h-[130px]">
+                  <div className="flex items-center justify-center gap-1 sm:gap-1.5 h-16 w-full max-w-sm px-2">
+                    {[35, 55, 25, 75, 45, 90, 60, 40, 85, 70, 95, 50, 80, 45, 65, 85, 55, 95, 40, 65, 90, 35, 75, 50, 80, 60, 40, 65, 45, 30].map((h, i) => (
+                      <div
+                        key={i}
+                        className="w-1.5 bg-gradient-to-t from-indigo-500/30 via-indigo-400 to-indigo-300 rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(169,156,255,0.15)]"
+                        style={{ height: `${h}%`, opacity: 0.65 + (i % 4) * 0.1 }}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-[11px] font-mono text-zinc-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-semibold text-zinc-300">{sourceFormat} audio track • 44.1 kHz stereo</span>
+                  </div>
+                </div>
+                <CustomAudioPlayer 
+                  src={previewUrl} 
+                  title={file.name} 
+                  subtitle={`${sourceFormat} Audio Track · ${formatBytes(file.size)}`}
+                  onTimeUpdate={(t: number) => setAudioCurrentTime(t)}
+                  onPlayStateChange={(p: boolean) => setIsAudioPlaying(p)}
+                  seekToTime={seekToTime}
+                />
+              </div>
             )}
 
             {/* Trim Timeline */}
-            <div className="space-y-3 pt-2 border-t border-[var(--border-color)]">
+            <div className="audio-timeline-panel space-y-3">
               <div className="flex items-center justify-between gap-2 min-w-0">
                 <div className="space-y-0.5 min-w-0 flex-1">
                   <label className="text-xs font-bold text-[var(--text-primary)] block">Trim Timeline</label>
@@ -865,11 +551,15 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               </div>
 
               {enableTrim && audioDuration > 0 && (
-                <div className="p-3 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl space-y-3">
+                <div className="pt-1">
                   <TrimTimeline 
                     duration={audioDuration}
-                    currentTime={0}
-                    onSeek={() => {}}
+                    currentTime={audioCurrentTime}
+                    isPlaying={isAudioPlaying}
+                    onSeek={(time) => {
+                      setAudioCurrentTime(time);
+                      setSeekToTime(time);
+                    }}
                     onChange={(segs, mode) => {
                       setTrimSegments(segs);
                       setTrimCompileMode(mode);
@@ -880,17 +570,111 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
             </div>
 
             {/* Config Selectors */}
-            <CompressionPresetSelector value={compressionPreset} onChange={applyCompressionPreset} />
+            <aside className="audio-optimizer-inspector">
+            <div className="audio-size-summary">
+              <span className="audio-panel-kicker">Source media</span>
+              <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Original Size</span>
+              <span className="block text-xl font-extrabold text-[var(--text-primary)] mt-0.5">{formatBytes(file.size)}</span>
+            </div>
 
-            <label className="compression-privacy-toggle">
-              <span>
-                <span className="block text-xs font-bold text-[var(--text-primary)]">Remove private metadata</span>
-                <span className="block text-[10px] text-zinc-400">Clears embedded title, artist, album, comments, and other tags.</span>
-              </span>
-              <input type="checkbox" checked={removeMetadata} onChange={event => setRemoveMetadata(event.target.checked)} className="w-4 h-4 accent-white" />
-            </label>
+            <div className="audio-presets-panel workbench-section"><CompressionPresetSelector value={compressionPreset} onChange={applyCompressionPreset} /></div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-2 border-t border-[var(--border-color)]">
+            <div className="space-y-2">
+              <label className="compression-privacy-toggle audio-privacy-panel">
+                <span>
+                  <span className="block text-xs font-bold text-[var(--text-primary)]">Remove private metadata</span>
+                  <span className="block text-[10px] text-zinc-400">Clears embedded title, artist, album, comments, and other tags.</span>
+                </span>
+                <input type="checkbox" checked={removeMetadata} onChange={event => setRemoveMetadata(event.target.checked)} className="w-4 h-4 accent-white" />
+              </label>
+
+              <label className="compression-privacy-toggle audio-privacy-panel">
+                <span>
+                  <span className="block text-xs font-bold text-[var(--text-primary)]">Normalize volume (EBU R128)</span>
+                  <span className="block text-[10px] text-zinc-400">Levels out quiet passages and loud peaks to a consistent broadcast loudness.</span>
+                </span>
+                <input type="checkbox" checked={normalizeAudio} onChange={e => setNormalizeAudio(e.target.checked)} className="w-4 h-4 accent-white" />
+              </label>
+
+              <label className="compression-privacy-toggle audio-privacy-panel">
+                <span>
+                  <span className="block text-xs font-bold text-[var(--text-primary)]">Remove dead silence</span>
+                  <span className="block text-[10px] text-zinc-400">Trims awkward long pauses from voice notes, podcasts, and recordings.</span>
+                </span>
+                <input type="checkbox" checked={removeSilence} onChange={e => setRemoveSilence(e.target.checked)} className="w-4 h-4 accent-white" />
+              </label>
+
+              <label className="compression-privacy-toggle audio-privacy-panel">
+                <span>
+                  <span className="block text-xs font-bold text-[var(--text-primary)]">Voice noise filter</span>
+                  <span className="block text-[10px] text-zinc-400">Filters low-end rumble and harsh high-frequency background hiss.</span>
+                </span>
+                <input type="checkbox" checked={noiseReduction} onChange={e => setNoiseReduction(e.target.checked)} className="w-4 h-4 accent-white" />
+              </label>
+
+              <label className="compression-privacy-toggle audio-privacy-panel">
+                <span>
+                  <span className="block text-xs font-bold text-[var(--text-primary)]">Bass boost (+5 dB)</span>
+                  <span className="block text-[10px] text-zinc-400">Adds low-end punch and warmth to flat audio recordings.</span>
+                </span>
+                <input type="checkbox" checked={bassBoost} onChange={e => setBassBoost(e.target.checked)} className="w-4 h-4 accent-white" />
+              </label>
+            </div>
+
+            {/* Fade In / Out */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Fade In (s)</label>
+                <Select value={String(fadeInDuration)} onValueChange={(v) => v && setFadeInDuration(Number(v))}>
+                  <SelectTrigger className="h-9 text-xs border-[var(--border-color)]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">None</SelectItem>
+                    <SelectItem value="0.5">0.5s</SelectItem>
+                    <SelectItem value="1">1s</SelectItem>
+                    <SelectItem value="2">2s</SelectItem>
+                    <SelectItem value="3">3s</SelectItem>
+                    <SelectItem value="5">5s</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Fade Out (s)</label>
+                <Select value={String(fadeOutDuration)} onValueChange={(v) => v && setFadeOutDuration(Number(v))}>
+                  <SelectTrigger className="h-9 text-xs border-[var(--border-color)]"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">None</SelectItem>
+                    <SelectItem value="0.5">0.5s</SelectItem>
+                    <SelectItem value="1">1s</SelectItem>
+                    <SelectItem value="2">2s</SelectItem>
+                    <SelectItem value="3">3s</SelectItem>
+                    <SelectItem value="5">5s</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Channel Mode */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Channel Mode</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['original', 'stereo', 'mono'] as const).map((ch) => (
+                  <button
+                    key={ch}
+                    type="button"
+                    onClick={() => setAudioChannels(ch)}
+                    className={`py-2 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                      audioChannels === ch
+                        ? 'border-white bg-zinc-800 text-white'
+                        : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                    }`}
+                  >
+                    {ch.charAt(0).toUpperCase() + ch.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="audio-output-panel grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Target Bitrate</label>
                 <Select value={bitrate} onValueChange={(val) => val && setBitrate(val)}>
@@ -926,7 +710,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
             </div>
 
             {audioDuration > 0 && !['wav', 'flac'].includes(format) && (
-              <div className="p-3 rounded-xl border border-[var(--border-color)] bg-zinc-950/40 text-center">
+              <div className="audio-estimate-panel p-3 rounded-xl border border-[var(--border-color)] bg-zinc-950/40 text-center">
                 <span className="block text-[10px] font-bold text-zinc-400 uppercase">Estimated output size</span>
                 <span className="block text-sm font-bold text-[var(--text-primary)] mt-1">
                   About {formatBytes(Math.round(audioDuration * parseInt(bitrate, 10) * 1000 / 8))}
@@ -934,6 +718,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
                 <span className="text-[9px] text-zinc-500">Calculated from duration and selected bitrate; container overhead may vary slightly.</span>
               </div>
             )}
+            </aside>
 
             <Button 
               onClick={startAudioProcessing} 
@@ -947,8 +732,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── PROCESSING VIEW ── */}
       {processing && (
-        <div className="w-full max-w-2xl mx-auto py-6 sm:py-8">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-8 text-center space-y-6 rounded-2xl shadow-sm">
+        <div className="audio-processing-workbench w-full max-w-2xl mx-auto py-6 sm:py-8">
+          <Card className="audio-processing-panel border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-8 text-center space-y-6 rounded-2xl shadow-sm">
             <div className="space-y-2">
               <h3 className="text-base font-bold text-[var(--text-primary)]">{statusText || 'Processing Audio...'}</h3>
               <p className="text-xs text-zinc-400">All audio processing is executed 100% inside your browser.</p>
@@ -961,9 +746,9 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
 
       {/* ── RESULT DOWNLOAD VIEW ── */}
       {result && (
-        <div className="w-full max-w-2xl mx-auto py-2 sm:py-4">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-8 text-center space-y-5 sm:space-y-6 rounded-2xl shadow-sm">
-            <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
+        <div className="audio-result-workbench w-full max-w-2xl mx-auto py-2 sm:py-4">
+          <Card className="audio-result-panel border-[var(--border-color)] bg-[var(--surface-color)] p-5 sm:p-8 text-center space-y-5 sm:space-y-6 rounded-2xl shadow-sm">
+            <div className="audio-result-success w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle className="w-6 h-6" />
             </div>
 
@@ -972,7 +757,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               <p className="text-xs text-zinc-400">{result.name}</p>
             </div>
 
-            <div className="p-4 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl flex items-center justify-around">
+            <div className="audio-result-metrics p-4 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl flex items-center justify-around">
               <div>
                 <span className="block text-[10px] font-bold text-zinc-400 uppercase">Original</span>
                 <span className="text-sm font-bold text-[var(--text-primary)]">{formatBytes(result.originalSize)}</span>
@@ -984,13 +769,13 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               </div>
             </div>
 
-            <CustomAudioPlayer
+            <div className="audio-result-player"><CustomAudioPlayer
               src={result.url}
               title={result.name}
               subtitle="Processed Output Track"
-            />
+            /></div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="audio-result-actions flex flex-col sm:flex-row gap-3">
               <Button onClick={reset} variant="outline" className="flex-1 h-10 text-xs font-semibold border-[var(--border-color)] rounded-xl">
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Process Another Track
@@ -1014,6 +799,9 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
             </div>
           </Card>
         </div>
+      )}
+          </div>
+        </WorkspaceShell>
       )}
     </div>
   );
