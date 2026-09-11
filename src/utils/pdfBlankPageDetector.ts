@@ -18,13 +18,15 @@ export interface BlankPageDetectionResult {
  */
 export const detectBlankPdfPages = async (
   file: File,
-  thresholdPercent: number = 0.5
+  thresholdPercent: number = 0.02,
+  onProgress?: (inspectedPages: number, totalPages: number) => void
 ): Promise<BlankPageDetectionResult> => {
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({
     data: new Uint8Array(arrayBuffer),
     verbosity: 0,
   });
+  try {
   const pdfDoc = await loadingTask.promise;
   const totalPages = pdfDoc.numPages;
 
@@ -40,19 +42,20 @@ export const detectBlankPdfPages = async (
 
     if (hasText) {
       nonBlankPageNumbers.push(i);
+      onProgress?.(i, totalPages);
+      page.cleanup();
       continue;
     }
 
     // Render a lightweight thumbnail (scale 0.5) to check for visual graphics/scans
     const viewport = page.getViewport({ scale: 0.5 });
     const canvas = document.createElement("canvas");
-    canvas.width = Math.floor(viewport.width);
-    canvas.height = Math.floor(viewport.height);
+    canvas.width = Math.max(1, Math.floor(viewport.width));
+    canvas.height = Math.max(1, Math.floor(viewport.height));
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
     if (!ctx) {
-      blankPageNumbers.push(i);
-      continue;
+      throw new Error('Could not inspect PDF pages. No pages have been removed.');
     }
 
     ctx.fillStyle = "#ffffff";
@@ -65,6 +68,8 @@ export const detectBlankPdfPages = async (
     } else {
       nonBlankPageNumbers.push(i);
     }
+    onProgress?.(i, totalPages);
+    page.cleanup();
   }
 
   return {
@@ -72,6 +77,7 @@ export const detectBlankPdfPages = async (
     nonBlankPageNumbers,
     totalPages,
   };
+  } finally { await loadingTask.destroy(); }
 };
 
 /**

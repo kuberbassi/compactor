@@ -41,7 +41,7 @@ export const PdfCompressPanel: React.FC<PdfCompressPanelProps> = ({
   onRunCompress,
 }) => {
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="pdf-compress-workspace flex-1 flex flex-col min-h-0">
       {/* Upload area */}
       <div className="p-3 border-b border-[var(--border-color)]">
         <FileUploader
@@ -127,7 +127,7 @@ export const PdfCompressPanel: React.FC<PdfCompressPanelProps> = ({
           />
 
           <label className="flex items-center justify-between text-xs text-[var(--text-secondary)] cursor-pointer py-1 select-none">
-            <span>Strip document metadata & bookmarks</span>
+            <span>Strip document metadata</span>
             <input
               type="checkbox"
               checked={removeCompressionMetadata}
@@ -148,4 +148,3 @@ export const PdfCompressPanel: React.FC<PdfCompressPanelProps> = ({
     </div>
   );
 };
-

@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { isCanvasBlank } from "../utils/canvasBlankCheck";
 
 describe("pdfBlankPageDetector", () => {
+  it('does not classify an unreadable canvas as blank', () => {
+    const canvas = document.createElement('canvas');
+    canvas.getContext = vi.fn().mockReturnValue(null);
+    expect(isCanvasBlank(canvas)).toBe(false);
+  });
   it("detects completely white canvas as blank", () => {
     const canvas = document.createElement("canvas");
     canvas.width = 10;
@@ -31,6 +36,30 @@ describe("pdfBlankPageDetector", () => {
     }) as any;
 
     expect(isCanvasBlank(canvas)).toBe(false);
+  });
+
+  it("preserves a page with sparse visible content", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 100;
+    canvas.height = 100;
+    const data = new Uint8ClampedArray(100 * 100 * 4).fill(255);
+    for (let pixel = 0; pixel < 3; pixel++) {
+      const offset = (5050 + pixel) * 4;
+      data[offset] = 80;
+      data[offset + 1] = 80;
+      data[offset + 2] = 80;
+    }
+    canvas.getContext = vi.fn().mockReturnValue({ getImageData: () => ({ data }) }) as any;
+    expect(isCanvasBlank(canvas)).toBe(false);
+  });
+
+  it("treats transparent dark pixels as white after compositing", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 10;
+    canvas.height = 10;
+    const data = new Uint8ClampedArray(10 * 10 * 4);
+    canvas.getContext = vi.fn().mockReturnValue({ getImageData: () => ({ data }) }) as any;
+    expect(isCanvasBlank(canvas)).toBe(true);
   });
 
   it("treats empty zero-dimension canvas as blank safely", () => {

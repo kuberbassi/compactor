@@ -13,14 +13,33 @@ import {
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
+import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../components/Workspace/EditorChrome';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
+import { getAutoSignatureFontSize, getAutoStampFontSize, getClosestPageIndex, getTargetPageIndexes, getWatermarkPatternPositions, togglePageEffect } from '../../utils/pdfEditor';
+import type { TextContent } from 'pdfjs-dist/types/src/display/api';
+import type { PageViewport } from 'pdfjs-dist/types/src/display/page_viewport';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+
+function SelectablePdfTextLayer({ textContent, viewport }: { textContent: TextContent; viewport: PageViewport }) {
+  const layerRef = React.useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const container = layerRef.current;
+    if (!container) return;
+    container.replaceChildren();
+    const textLayer = new pdfjsLib.TextLayer({ textContentSource: textContent, container, viewport });
+    void textLayer.render().catch(error => {
+      if (error?.name !== 'AbortException') console.error('Could not render selectable PDF text:', error);
+    });
+    return () => textLayer.cancel();
+  }, [textContent, viewport]);
+  return <div ref={layerRef} className="pdf-editor__text-layer textLayer" aria-label="Selectable PDF text" />;
+}
 
 export interface AnnotationItem {
   id: string;
   pageIndex: number; // 0-indexed
-  type: 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'redact' | 'stamp' | 'signature' | 'watermark' | 'highlight';
+  type: 'rectangle' | 'circle' | 'line' | 'arrow' | 'text' | 'redact' | 'stamp' | 'signature' | 'highlight';
   name: string;
   x: number; // relative percentage (0 to 100)
   y: number; // relative percentage (0 to 100)
@@ -28,6 +47,8 @@ export interface AnnotationItem {
   height: number; // relative percentage (0 to 100)
   strokeColor: string; // hex or 'transparent'
   fillColor: string; // hex or 'transparent'
+  lastStrokeColor?: string;
+  lastFillColor?: string;
   strokeWidth: number; // px
   opacity: number; // 0.0 to 1.0
   rotation: number; // 0 to 360 deg
@@ -59,6 +80,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   const [currentPage, setCurrentPage] = useState<number>(0); // 0-indexed
   const [pageImages, setPageImages] = useState<string[]>([]);
   const [pageDimensions, setPageDimensions] = useState<{ width: number; height: number }[]>([]);
+  const [pageTextContents, setPageTextContents] = useState<TextContent[]>([]);
+  const [pageViewports, setPageViewports] = useState<PageViewport[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -66,6 +89,21 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   // Default PDF zoom set to 75% for optimal page fitting & accuracy
   const [zoom, setZoom] = useState<number>(85);
   const [showToolDrawer, setShowToolDrawer] = useState(true);
+  const [elementScope, setElementScope] = useState<'current' | 'all'>('current');
+  const [watermarkPages, setWatermarkPages] = useState<number[]>([]);
+  const [patternWatermarkPages, setPatternWatermarkPages] = useState<number[]>([]);
+  const [activeDocumentEffect, setActiveDocumentEffect] = useState<'watermark' | 'pattern' | null>(null);
+  const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
+  const [watermarkOpacity, setWatermarkOpacity] = useState(18);
+  const [watermarkRotation, setWatermarkRotation] = useState(-30);
+  const [watermarkDensity, setWatermarkDensity] = useState(3);
+  const [watermarkFontSize, setWatermarkFontSize] = useState(48);
+  const [patternWatermarkFontSize, setPatternWatermarkFontSize] = useState(11);
+  const [watermarkColor, setWatermarkColor] = useState('#dc2626');
+  const [patternWatermarkText, setPatternWatermarkText] = useState('CONFIDENTIAL');
+  const [patternWatermarkOpacity, setPatternWatermarkOpacity] = useState(18);
+  const [patternWatermarkRotation, setPatternWatermarkRotation] = useState(-30);
+  const [patternWatermarkColor, setPatternWatermarkColor] = useState('#dc2626');
   const [activeTool, setActiveTool] = useState<
     'select' | 'text' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'redact' | 'highlight'
   >(mode === 'redact' ? 'redact' : 'select');
@@ -80,11 +118,31 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
     { label: 'VOID', color: '#d97706', bg: 'rgba(217, 119, 6, 0.1)' },
   ];
 
+  const targetPageIndexes = () => getTargetPageIndexes(elementScope, currentPage, numPages);
+
+  const togglePatternWatermark = () => {
+    const targets = targetPageIndexes();
+    const removing = targets.every(pageIndex => patternWatermarkPages.includes(pageIndex));
+    setPatternWatermarkPages(previous => togglePageEffect(previous, targets));
+    setActiveDocumentEffect(removing ? null : 'pattern');
+    setSelectedId(null);
+    setEditingTextId(null);
+  };
+
+  const toggleWatermark = () => {
+    const targets = targetPageIndexes();
+    const removing = targets.every(pageIndex => watermarkPages.includes(pageIndex));
+    setWatermarkPages(previous => togglePageEffect(previous, targets));
+    setActiveDocumentEffect(removing ? null : 'watermark');
+    setSelectedId(null);
+    setEditingTextId(null);
+  };
+
   const addStampItem = (preset: { label: string; color: string; bg: string }) => {
-    const id = `stamp_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
-    const newAnnot: AnnotationItem = {
-      id,
-      pageIndex: currentPage,
+    const stampId = `stamp_${Date.now()}`;
+    const newAnnotations: AnnotationItem[] = targetPageIndexes().map(pageIndex => ({
+      id: `${stampId}_${pageIndex}_${Math.random().toString(36).slice(2, 6)}`,
+      pageIndex,
       type: 'stamp',
       name: `Stamp (${preset.label})`,
       x: 35,
@@ -99,18 +157,18 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       text: preset.label,
       stampType: preset.label,
       isVisible: true,
-    };
-    setAnnotations(prev => [...prev, newAnnot]);
-    setSelectedId(id);
+    }));
+    setAnnotations(prev => [...prev, ...newAnnotations]);
+    setSelectedId(newAnnotations.find(item => item.pageIndex === currentPage)?.id || newAnnotations[0].id);
     setActiveTool('select');
   };
 
   const addSignatureItem = (signerName: string = 'Verified Signature') => {
-    const id = `sig_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const signatureId = `sig_${Date.now()}`;
     const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const newAnnot: AnnotationItem = {
-      id,
-      pageIndex: currentPage,
+    const newAnnotations: AnnotationItem[] = targetPageIndexes().map(pageIndex => ({
+      id: `${signatureId}_${pageIndex}_${Math.random().toString(36).slice(2, 6)}`,
+      pageIndex,
       type: 'signature',
       name: `Signature (${signerName})`,
       x: 55,
@@ -125,34 +183,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       signerName,
       signDate: dateStr,
       isVisible: true,
-    };
-    setAnnotations(prev => [...prev, newAnnot]);
-    setSelectedId(id);
-    setActiveTool('select');
-  };
-
-  const addWatermarkItem = (text: string = 'CONFIDENTIAL') => {
-    const id = `watermark_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
-    const newAnnot: AnnotationItem = {
-      id,
-      pageIndex: currentPage,
-      type: 'watermark',
-      name: `Watermark (${text})`,
-      x: 10,
-      y: 35,
-      width: 80,
-      height: 30,
-      strokeColor: 'transparent',
-      fillColor: 'transparent',
-      strokeWidth: 0,
-      opacity: 0.25,
-      rotation: -45,
-      text,
-      textColor: '#dc2626',
-      isVisible: true,
-    };
-    setAnnotations(prev => [...prev, newAnnot]);
-    setSelectedId(id);
+    }));
+    setAnnotations(prev => [...prev, ...newAnnotations]);
+    setSelectedId(newAnnotations.find(item => item.pageIndex === currentPage)?.id || newAnnotations[0].id);
     setActiveTool('select');
   };
 
@@ -160,6 +193,14 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   const [annotations, setAnnotations] = useState<AnnotationItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setActiveDocumentEffect(null);
+  }, [activeTool]);
+
+  useEffect(() => {
+    if (selectedId) setActiveDocumentEffect(null);
+  }, [selectedId]);
 
   // Modal dialog states
   const [showRemoveAllConfirm, setShowRemoveAllConfirm] = useState(false);
@@ -221,6 +262,38 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   // Ref for canvas viewport container
   const viewportRef = React.useRef<HTMLDivElement>(null);
 
+  // Keep the active page aligned with the page nearest the viewport center.
+  // This updates the page counter and placement target without requiring a click.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || loading || pageImages.length === 0) return;
+    let frame = 0;
+    const updateCurrentPage = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const viewportRect = viewport.getBoundingClientRect();
+        const pages = Array.from(viewport.querySelectorAll<HTMLElement>('[data-pdf-page-index]'));
+        const closestPage = getClosestPageIndex(
+          { top: viewportRect.top, height: viewport.clientHeight },
+          pages.map(page => {
+            const rect = page.getBoundingClientRect();
+            return { top: rect.top, height: rect.height };
+          }),
+        );
+        setCurrentPage(previous => previous === closestPage ? previous : closestPage);
+      });
+    };
+    updateCurrentPage();
+    viewport.addEventListener('scroll', updateCurrentPage, { passive: true });
+    const resizeObserver = new ResizeObserver(updateCurrentPage);
+    resizeObserver.observe(viewport);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener('scroll', updateCurrentPage);
+      resizeObserver.disconnect();
+    };
+  }, [loading, pageImages.length, zoom]);
+
   // Cursor-anchored Ctrl/Cmd + wheel zoom. Keep ordinary wheel movement for page scrolling.
   useEffect(() => {
     const elem = viewportRef.current;
@@ -275,36 +348,51 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   // Render PDF Pages to high-res image URLs using PDF.js
   useEffect(() => {
     let isMounted = true;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
     const loadPdf = async () => {
       setLoading(true);
+      setPageImages([]);
+      setPageDimensions([]);
+      setPageTextContents([]);
+      setPageViewports([]);
       try {
         const buffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer), verbosity: 0 }).promise;
+        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer), verbosity: 0 });
+        const pdf = await loadingTask.promise;
         const total = pdf.numPages;
         setNumPages(total);
+        const renderDensity = total > 40 ? 1.25 : total > 12 ? 1.5 : Math.min(window.devicePixelRatio || 1, 2);
 
         const imgs: string[] = [];
         const dims: { width: number; height: number }[] = [];
+        const textContents: TextContent[] = [];
+        const textViewports: PageViewport[] = [];
 
         for (let i = 1; i <= total; i++) {
           const page = await pdf.getPage(i);
           const viewport = page.getViewport({ scale: 1.6 });
+          const renderScale = 1.6 * renderDensity;
+          const renderViewport = page.getViewport({ scale: renderScale });
           const canvas = document.createElement('canvas');
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
+          canvas.width = Math.ceil(renderViewport.width);
+          canvas.height = Math.ceil(renderViewport.height);
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            await (page.render as any)({ canvasContext: ctx, viewport, canvas }).promise;
-            imgs.push(canvas.toDataURL('image/jpeg', 0.92));
+            await (page.render as any)({ canvasContext: ctx, viewport: renderViewport, canvas }).promise;
+            imgs.push(canvas.toDataURL('image/jpeg', 0.98));
             dims.push({ width: viewport.width, height: viewport.height });
+            textContents.push(await page.getTextContent());
+            textViewports.push(viewport);
           }
         }
 
         if (isMounted) {
           setPageImages(imgs);
           setPageDimensions(dims);
+          setPageTextContents(textContents);
+          setPageViewports(textViewports);
           setLoading(false);
         }
       } catch (err) {
@@ -313,10 +401,14 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       }
     };
     loadPdf();
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      void loadingTask?.destroy();
+    };
   }, [file]);
 
   const selectedItem = annotations.find(a => a.id === selectedId);
+  const hasDocumentChanges = annotations.length > 0 || watermarkPages.length > 0 || patternWatermarkPages.length > 0;
 
   // Pick color using browser EyeDropper API
   const pickColorFromPage = async (target: 'stroke' | 'fill' | 'text') => {
@@ -449,7 +541,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
     };
   }, [dragState]);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>, pageIndex: number) => {
+    setCurrentPage(pageIndex);
     if (activeTool === 'select') {
       // If clicking directly on empty page canvas, deselect current selection
       if (e.target === e.currentTarget) {
@@ -479,7 +572,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
     setDraftBox({ x, y, w, h });
   };
 
-  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>, pageIndex: number) => {
     if (!isDrawing || !drawStart) return;
     setIsDrawing(false);
 
@@ -495,16 +588,16 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
       const newAnnot: AnnotationItem = {
         id,
-        pageIndex: currentPage,
+        pageIndex,
         type: 'redact',
         name: `Redaction Area #${annotations.filter(a => a.type === 'redact').length + 1}`,
         x,
         y,
         width: w,
         height: h,
-        strokeColor: redactStyle === 'whiteout' ? '#ffffff' : '#000000',
+        strokeColor,
         fillColor: redactStyle === 'whiteout' ? '#ffffff' : '#000000',
-        strokeWidth: 0,
+        strokeWidth,
         opacity: 1,
         rotation: 0,
         text: redactStyle === 'custom-text' ? redactText : (redactStyle === 'whiteout' ? '' : '[REDACTED]'),
@@ -520,7 +613,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
       const newAnnot: AnnotationItem = {
         id,
-        pageIndex: currentPage,
+        pageIndex,
         type: 'text',
         name: `Text Box`,
         x: Math.min(drawStart.x, coords.x),
@@ -532,7 +625,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         strokeWidth: 0,
         opacity,
         rotation: 0,
-        text: 'Type text here...',
+        text: '',
         fontSize,
         textColor: textColor || '#000000',
         fontFamily: fontFamily || 'sans-serif',
@@ -552,7 +645,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
       const newAnnot: AnnotationItem = {
         id,
-        pageIndex: currentPage,
+        pageIndex,
         type: 'highlight',
         name: `Highlight`,
         x,
@@ -577,7 +670,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       const typeName = activeTool.charAt(0).toUpperCase() + activeTool.slice(1);
       const newAnnot: AnnotationItem = {
         id,
-        pageIndex: currentPage,
+        pageIndex,
         type: activeTool,
         name: `New ${typeName}`,
         x,
@@ -732,7 +825,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
   // Save changes & download edited/redacted PDF
   const handleSaveChanges = async () => {
-    if (annotations.length === 0) {
+    if (!hasDocumentChanges) {
       setShowNoAnnotsWarning(true);
       return;
     }
@@ -752,7 +845,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
       for (let pIdx = 0; pIdx < pages.length; pIdx++) {
         const pageAnnots = annotations.filter(a => a.pageIndex === pIdx && a.isVisible);
-        if (pageAnnots.length === 0 && !secureRedaction) continue;
+        const hasWatermark = watermarkPages.includes(pIdx);
+        const hasPatternWatermark = patternWatermarkPages.includes(pIdx);
+        if (pageAnnots.length === 0 && !hasWatermark && !hasPatternWatermark && !secureRedaction) continue;
 
         const page = pages[pIdx];
         const { width: pWidth, height: pHeight } = page.getSize();
@@ -785,6 +880,36 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         }
 
         ctx.scale(scale, scale);
+
+        if (hasWatermark) {
+          ctx.save();
+          ctx.globalAlpha = watermarkOpacity / 100;
+          ctx.fillStyle = watermarkColor;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = `bold ${watermarkFontSize}px sans-serif`;
+          ctx.translate(pWidth / 2, pHeight / 2);
+          ctx.rotate((watermarkRotation * Math.PI) / 180);
+          ctx.fillText(watermarkText || 'WATERMARK', 0, 0, pWidth * 0.8);
+          ctx.restore();
+        }
+
+        if (hasPatternWatermark) {
+          ctx.save();
+          ctx.globalAlpha = patternWatermarkOpacity / 100;
+          ctx.fillStyle = patternWatermarkColor;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = `bold ${patternWatermarkFontSize}px sans-serif`;
+          for (const position of getWatermarkPatternPositions(watermarkDensity)) {
+            ctx.save();
+            ctx.translate(pWidth * position.x / 100, pHeight * position.y / 100);
+            ctx.rotate((patternWatermarkRotation * Math.PI) / 180);
+            ctx.fillText(patternWatermarkText || 'WATERMARK', 0, 0, pWidth / watermarkDensity * 0.9);
+            ctx.restore();
+          }
+          ctx.restore();
+        }
 
         for (const item of pageAnnots) {
           ctx.save();
@@ -820,6 +945,12 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
           if (item.type === 'redact') {
             ctx.fillStyle = item.redactStyle === 'whiteout' ? '#ffffff' : (item.fillColor || '#000000');
             ctx.fillRect(rx, ry, rw, rh);
+
+            if (hasStroke) {
+              ctx.lineWidth = scaledStrokeWidth;
+              ctx.strokeStyle = item.strokeColor;
+              ctx.strokeRect(rx, ry, rw, rh);
+            }
 
             if (item.text && item.redactStyle !== 'whiteout') {
               ctx.fillStyle = '#ffffff';
@@ -915,7 +1046,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             // Stamp text
             ctx.fillStyle = item.strokeColor || '#16a34a';
-            const stampFontSize = Math.max(10, Math.min(rh * 0.45, rw * 0.15));
+            const stampFontSize = item.fontSize
+              ? Math.max(8, item.fontSize * scaleFactor)
+              : getAutoStampFontSize(item.text || item.stampType || 'APPROVED', rw, rh);
             ctx.font = `bold ${stampFontSize}px sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -934,7 +1067,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             // Cursive / Calligraphic Signer Name
             ctx.fillStyle = item.strokeColor || '#2563eb';
-            const sigFontSize = Math.max(12, Math.min(24, rh * 0.38));
+            const sigFontSize = item.fontSize
+              ? Math.max(8, item.fontSize * scaleFactor)
+              : getAutoSignatureFontSize(item.signerName || 'Verified Signature', rw, rh);
             ctx.font = `italic 600 ${sigFontSize}px "Brush Script MT", "Caveat", "Segoe Script", cursive, sans-serif`;
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
@@ -945,13 +1080,6 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             ctx.font = `bold ${Math.max(7, sigFontSize * 0.45)}px monospace`;
             const dateDisplay = item.signDate || new Date().toLocaleDateString();
             ctx.fillText(`✓ DIGITALLY SIGNED · ${dateDisplay}`, rx + 12 * scaleFactor, ry + rh * 0.75);
-          } else if (item.type === 'watermark') {
-            ctx.fillStyle = item.textColor || '#dc2626';
-            const wmFontSize = Math.max(14, Math.min(rh * 0.7, rw * 0.2));
-            ctx.font = `bold ${wmFontSize}px sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(item.text || 'CONFIDENTIAL', rx + rw / 2, ry + rh / 2);
           }
 
           ctx.restore();
@@ -991,7 +1119,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   return (
     <div className="pdf-editor flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]">
       {errorMessage && (
-        <div className="p-3 bg-zinc-950/80 border-b border-zinc-800">
+        <div className="pdf-editor__error p-3 bg-zinc-950/80 border-b border-zinc-800">
           <ErrorBanner 
             message={errorMessage} 
             onDismiss={() => setErrorMessage(null)} 
@@ -1001,7 +1129,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       )}
 
       {/* Top Main Toolbar */}
-      <div className="pdf-editor__toolbar border-b border-[var(--border-color)] bg-[var(--surface-hover)] px-4 py-2.5 flex items-center justify-between gap-3 sticky top-0 z-30 overflow-x-auto flex-nowrap scrollbar-thin">
+      <EditorCommandBar className="pdf-editor__toolbar px-4 py-2.5 justify-between gap-3 sticky top-0 z-30 overflow-x-auto flex-nowrap scrollbar-thin">
         <div className="pdf-editor__document shrink-0" title={file.name}>
           <FileText aria-hidden="true" />
           <span>
@@ -1009,7 +1137,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             <small>{numPages || pageImages.length || 1} {(numPages || pageImages.length) === 1 ? 'page' : 'pages'} · Local document</small>
           </span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="pdf-editor__duplicate-tools flex items-center gap-2 shrink-0" aria-hidden="true">
           {/* Mode Switcher */}
           <div className="bg-[var(--surface-color)] border border-[var(--border-color)] rounded-xl p-1 flex items-center gap-1 shrink-0">
             <button
@@ -1130,7 +1258,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             <button
               type="button"
-              onClick={() => addWatermarkItem()}
+              onClick={toggleWatermark}
               className="h-8 px-2.5 text-xs font-semibold flex items-center gap-1.5 rounded-lg text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)] transition cursor-pointer whitespace-nowrap shrink-0"
               title="Insert Diagonal Watermark"
             >
@@ -1142,22 +1270,25 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
         {/* Selected Element Controls */}
         {mode === 'redact' && activeTool === 'redact' && !selectedItem && (
-          <div className="flex items-center gap-2 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs">
-            <span className="text-[var(--text-secondary)] font-bold">Default Style:</span>
+          <div className="pdf-editor__top-redaction pdf-editor__properties" aria-label="New redaction settings">
+            <span className="pdf-editor__property-label" title="Redaction style"><Shield aria-hidden="true" /><span className="sr-only">Redaction style</span></span>
             <button
               onClick={() => setRedactStyle('blackout')}
+              aria-pressed={redactStyle === 'blackout'}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'blackout' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'}`}
             >
-              Blackout
+              Black
             </button>
             <button
               onClick={() => setRedactStyle('whiteout')}
+              aria-pressed={redactStyle === 'whiteout'}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'whiteout' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'}`}
             >
-              Whiteout
+              White
             </button>
             <button
               onClick={() => setRedactStyle('custom-text')}
+              aria-pressed={redactStyle === 'custom-text'}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer ${redactStyle === 'custom-text' ? 'bg-white text-zinc-950 font-bold shadow-sm' : 'text-[var(--text-secondary)] hover:text-white'}`}
             >
               Label
@@ -1171,38 +1302,50 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 className="bg-transparent border border-[var(--border-color)] px-2 py-0.5 rounded text-xs text-[var(--text-primary)] w-28 font-mono"
               />
             )}
+            <div className="pdf-editor__redaction-border" title="Border for new redactions">
+              <Square aria-hidden="true" />
+              <span className="sr-only">Border</span>
+              <input type="color" value={strokeColor === 'transparent' ? '#000000' : strokeColor} onChange={event => setStrokeColor(event.target.value)} aria-label="Redaction border color" />
+              <button type="button" aria-pressed={strokeWidth > 0} onClick={() => setStrokeWidth(previous => previous > 0 ? 0 : 1)}>{strokeWidth > 0 ? 'Solid' : 'None'}</button>
+              {strokeWidth > 0 && <input className="pdf-editor__property-number" type="number" min="1" max="12" value={strokeWidth} onChange={event => setStrokeWidth(Math.min(12, Math.max(1, Number(event.target.value) || 1)))} aria-label="Redaction border thickness" />}
+            </div>
+            <span className="pdf-editor__redaction-security"><ShieldAlert className="w-3.5 h-3.5" />Permanent on export</span>
           </div>
         )}
 
         {selectedItem && selectedItem.type === 'redact' && (
-          <div className="flex items-center gap-2.5 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs shadow-sm flex-wrap">
-            <span className="text-[var(--text-secondary)] font-bold">Redaction:</span>
+          <div className="pdf-editor__properties flex items-center gap-2.5 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs shadow-sm flex-wrap">
+            <Shield aria-hidden="true" />
+            <span className="sr-only">Redaction style</span>
             <div className="flex items-center gap-1 bg-[var(--surface-hover)] p-0.5 rounded-lg border border-[var(--border-color)]">
               <button
                 type="button"
-                onClick={() => updateSelectedItem({ redactStyle: 'blackout', fillColor: '#000000', strokeColor: '#000000', text: '[REDACTED]' })}
+                onClick={() => updateSelectedItem({ redactStyle: 'blackout', fillColor: '#000000', text: '[REDACTED]' })}
+                aria-pressed={selectedItem.redactStyle !== 'whiteout' && selectedItem.redactStyle !== 'custom-text'}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   selectedItem.redactStyle !== 'whiteout' && selectedItem.redactStyle !== 'custom-text'
                     ? 'bg-white text-zinc-950 shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-white'
                 }`}
               >
-                Blackout
+                Black
               </button>
               <button
                 type="button"
-                onClick={() => updateSelectedItem({ redactStyle: 'whiteout', fillColor: '#ffffff', strokeColor: '#ffffff', text: '' })}
+                onClick={() => updateSelectedItem({ redactStyle: 'whiteout', fillColor: '#ffffff', text: '' })}
+                aria-pressed={selectedItem.redactStyle === 'whiteout'}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   selectedItem.redactStyle === 'whiteout'
                     ? 'bg-white text-zinc-950 shadow-sm'
                     : 'text-[var(--text-secondary)] hover:text-white'
                 }`}
               >
-                Whiteout
+                White
               </button>
               <button
                 type="button"
                 onClick={() => updateSelectedItem({ redactStyle: 'custom-text', text: selectedItem.text && selectedItem.text !== '[REDACTED]' ? selectedItem.text : 'CONFIDENTIAL' })}
+                aria-pressed={selectedItem.redactStyle === 'custom-text'}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   selectedItem.redactStyle === 'custom-text'
                     ? 'bg-white text-zinc-950 shadow-sm'
@@ -1227,12 +1370,13 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             {/* Redaction Fill Color */}
             <div className="flex items-center gap-1.5" title="Redaction Fill Color">
-              <span className="text-[var(--text-secondary)] font-medium">Color:</span>
+              <Highlighter aria-hidden="true" />
+              <span className="sr-only">Redaction color</span>
               <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
                 <input
                   type="color"
                   value={selectedItem.fillColor || (selectedItem.redactStyle === 'whiteout' ? '#ffffff' : '#000000')}
-                  onChange={e => updateSelectedItem({ fillColor: e.target.value, strokeColor: e.target.value })}
+                  onChange={e => updateSelectedItem({ fillColor: e.target.value })}
                   className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
                 />
                 <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] uppercase">
@@ -1252,19 +1396,34 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
+            <div className="pdf-editor__redaction-border" title="Redaction border">
+              <Square aria-hidden="true" />
+              <span className="sr-only">Border</span>
+              <input
+                type="color"
+                value={selectedItem.strokeColor === 'transparent' ? '#000000' : selectedItem.strokeColor}
+                onChange={event => updateSelectedItem({ strokeColor: event.target.value })}
+                aria-label="Redaction border color"
+              />
+              <button type="button" aria-pressed={selectedItem.strokeWidth > 0} onClick={() => updateSelectedItem({ strokeWidth: selectedItem.strokeWidth > 0 ? 0 : 1 })}>
+                {selectedItem.strokeWidth > 0 ? 'Solid' : 'None'}
+              </button>
+              {selectedItem.strokeWidth > 0 && (
+                <>
+                  <input className="pdf-editor__property-number" type="number" min="1" max="12" value={selectedItem.strokeWidth} onChange={event => updateSelectedItem({ strokeWidth: Math.min(12, Math.max(1, Number(event.target.value) || 1)) })} aria-label="Redaction border thickness" />
+                  <span className="pdf-editor__property-unit">px</span>
+                </>
+              )}
+            </div>
+
+            <div className="w-px h-4 bg-[var(--border-color)]" />
+
             {/* Opacity */}
             <div className="flex items-center gap-1.5" title="Opacity">
-              <span className="text-[var(--text-secondary)] font-medium">Opacity:</span>
-              <input
-                type="range"
-                min="0.1"
-                max="1"
-                step="0.05"
-                value={selectedItem.opacity}
-                onChange={e => updateSelectedItem({ opacity: Number(e.target.value) })}
-                className="w-14 accent-white"
-              />
-              <span className="w-7 text-right font-mono text-[11px]">{Math.round(selectedItem.opacity * 100)}%</span>
+              <Eye aria-hidden="true" />
+              <span className="sr-only">Opacity</span>
+              <input className="pdf-editor__property-number" type="number" min="10" max="100" step="5" value={Math.round(selectedItem.opacity * 100)} onChange={e => updateSelectedItem({ opacity: Math.min(100, Math.max(10, Number(e.target.value) || 10)) / 100 })} />
+              <span className="pdf-editor__property-unit">%</span>
             </div>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
@@ -1281,12 +1440,45 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         )}
 
         {selectedItem && selectedItem.type !== 'redact' && (
-          <div className="flex items-center gap-2.5 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs shadow-sm flex-wrap">
+          <div className="pdf-editor__properties flex items-center gap-2.5 bg-[var(--surface-color)] border border-[var(--border-color)] px-3 py-1.5 rounded-xl text-xs shadow-sm flex-wrap">
+            {(selectedItem.type === 'stamp' || selectedItem.type === 'signature') && (
+              <>
+                <div className="pdf-editor__property-command" title={`${selectedItem.type === 'stamp' ? 'Stamp' : 'Signature'} font size`}>
+                  <Type aria-hidden="true" />
+                  <input
+                    className="pdf-editor__property-number"
+                    type="number"
+                    min="8"
+                    max="144"
+                    value={Math.round(selectedItem.fontSize ?? (
+                      selectedItem.type === 'stamp'
+                        ? getAutoStampFontSize(selectedItem.text || selectedItem.stampType || 'APPROVED', (pageDimensions[selectedItem.pageIndex]?.width || 1000) * selectedItem.width / 100, (pageDimensions[selectedItem.pageIndex]?.height || 1400) * selectedItem.height / 100)
+                        : getAutoSignatureFontSize(selectedItem.signerName || 'Verified Signature', (pageDimensions[selectedItem.pageIndex]?.width || 1000) * selectedItem.width / 100, (pageDimensions[selectedItem.pageIndex]?.height || 1400) * selectedItem.height / 100)
+                    ))}
+                    aria-label={`${selectedItem.type === 'stamp' ? 'Stamp' : 'Signature'} font size`}
+                    onChange={event => updateSelectedItem({ fontSize: Math.min(144, Math.max(8, Number(event.target.value) || 8)) })}
+                  />
+                  <span className="pdf-editor__property-unit">pt</span>
+                </div>
+                <button
+                  type="button"
+                  className="pdf-editor__auto-size"
+                  aria-pressed={selectedItem.fontSize === undefined}
+                  onClick={() => updateSelectedItem({ fontSize: undefined })}
+                  title="Automatically fit text to the element"
+                >
+                  <RefreshCw aria-hidden="true" />
+                  <span>Auto</span>
+                </button>
+                <div className="w-px h-4 bg-[var(--border-color)]" />
+              </>
+            )}
             {/* Text Specific Formatting */}
             {selectedItem.type === 'text' && (
               <>
                 <div className="flex items-center gap-1" title="Font Family">
-                  <span className="text-[var(--text-secondary)] font-medium">Font:</span>
+                  <Type aria-hidden="true" />
+                  <span className="sr-only">Font family</span>
                   <Select
                     value={selectedItem.fontFamily || 'sans-serif'}
                     onValueChange={val => val && updateSelectedItem({ fontFamily: val })}
@@ -1303,7 +1495,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 </div>
 
                 <div className="flex items-center gap-1" title="Font Size">
-                  <span className="text-[var(--text-secondary)] font-medium">Size:</span>
+                  <Type aria-hidden="true" />
+                  <span className="sr-only">Font size</span>
                   <Select
                     value={String(selectedItem.fontSize || 16)}
                     onValueChange={val => val && updateSelectedItem({ fontSize: Number(val) })}
@@ -1321,7 +1514,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
                 {/* Font Color */}
                 <div className="flex items-center gap-1.5" title="Font Color">
-                  <span className="text-[var(--text-secondary)] font-medium">Text Color:</span>
+                  <Pipette aria-hidden="true" />
+                  <span className="sr-only">Text color</span>
                   <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
                     <input
                       type="color"
@@ -1347,6 +1541,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 <div className="flex items-center gap-0.5 bg-[var(--surface-hover)] p-0.5 rounded border border-[var(--border-color)]">
                   <button
                     onClick={() => updateSelectedItem({ isBold: !selectedItem.isBold })}
+                    aria-pressed={Boolean(selectedItem.isBold)}
                     className={`p-1 rounded transition cursor-pointer ${selectedItem.isBold ? 'bg-white text-zinc-950 font-bold' : 'text-[var(--text-secondary)]'}`}
                     title="Bold"
                   >
@@ -1354,6 +1549,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                   </button>
                   <button
                     onClick={() => updateSelectedItem({ isItalic: !selectedItem.isItalic })}
+                    aria-pressed={Boolean(selectedItem.isItalic)}
                     className={`p-1 rounded transition cursor-pointer ${selectedItem.isItalic ? 'bg-white text-zinc-950 font-bold' : 'text-[var(--text-secondary)]'}`}
                     title="Italic"
                   >
@@ -1364,6 +1560,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 <div className="flex items-center gap-0.5 bg-[var(--surface-hover)] p-0.5 rounded border border-[var(--border-color)]">
                   <button
                     onClick={() => updateSelectedItem({ textAlign: 'left' })}
+                    aria-pressed={selectedItem.textAlign === 'left' || !selectedItem.textAlign}
                     className={`p-1 rounded transition cursor-pointer ${selectedItem.textAlign === 'left' || !selectedItem.textAlign ? 'bg-white text-zinc-950 font-bold' : 'text-[var(--text-secondary)]'}`}
                     title="Align Left"
                   >
@@ -1371,6 +1568,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                   </button>
                   <button
                     onClick={() => updateSelectedItem({ textAlign: 'center' })}
+                    aria-pressed={selectedItem.textAlign === 'center'}
                     className={`p-1 rounded transition cursor-pointer ${selectedItem.textAlign === 'center' ? 'bg-white text-zinc-950 font-bold' : 'text-[var(--text-secondary)]'}`}
                     title="Align Center"
                   >
@@ -1378,6 +1576,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                   </button>
                   <button
                     onClick={() => updateSelectedItem({ textAlign: 'right' })}
+                    aria-pressed={selectedItem.textAlign === 'right'}
                     className={`p-1 rounded transition cursor-pointer ${selectedItem.textAlign === 'right' ? 'bg-white text-zinc-950 font-bold' : 'text-[var(--text-secondary)]'}`}
                     title="Align Right"
                   >
@@ -1391,7 +1590,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             {/* Stroke / Border Color with quick Solid / None toggle & Eyedropper */}
             <div className="flex items-center gap-1.5" title="Border Color">
-              <span className="text-[var(--text-secondary)] font-medium">Border:</span>
+              <Square aria-hidden="true" />
+              <span className="sr-only">Border</span>
               <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
                 <input
                   type="color"
@@ -1413,7 +1613,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 </button>
               )}
               <button
-                onClick={() => updateSelectedItem({ strokeColor: selectedItem.strokeColor === 'transparent' ? '#ffffff' : 'transparent' })}
+                onClick={() => updateSelectedItem(selectedItem.strokeColor === 'transparent'
+                  ? { strokeColor: selectedItem.lastStrokeColor || '#ffffff' }
+                  : { lastStrokeColor: selectedItem.strokeColor, strokeColor: 'transparent' })}
+                aria-pressed={selectedItem.strokeColor !== 'transparent'}
                 className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase transition cursor-pointer ${
                   selectedItem.strokeColor === 'transparent'
                     ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
@@ -1429,7 +1632,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             {/* Fill / Background Color with quick Solid / Transp. toggle & Eyedropper */}
             {selectedItem.type !== 'line' && selectedItem.type !== 'arrow' && (
               <div className="flex items-center gap-1.5" title="Background Fill">
-                <span className="text-[var(--text-secondary)] font-medium">Fill:</span>
+                <Highlighter aria-hidden="true" />
+                <span className="sr-only">Fill</span>
                 <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
                   <input
                     type="color"
@@ -1451,7 +1655,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                   </button>
                 )}
                 <button
-                  onClick={() => updateSelectedItem({ fillColor: selectedItem.fillColor === 'transparent' ? '#ffffff' : 'transparent' })}
+                  onClick={() => updateSelectedItem(selectedItem.fillColor === 'transparent'
+                    ? { fillColor: selectedItem.lastFillColor || '#ffffff' }
+                    : { lastFillColor: selectedItem.fillColor, fillColor: 'transparent' })}
+                  aria-pressed={selectedItem.fillColor !== 'transparent'}
                   className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase transition cursor-pointer ${
                     selectedItem.fillColor === 'transparent'
                       ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
@@ -1467,16 +1674,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               <>
                 <div className="w-px h-4 bg-[var(--border-color)]" />
                 <div className="flex items-center gap-1.5" title="Thickness">
-                  <span className="text-[var(--text-secondary)] font-medium">Thick:</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="20"
-                    value={selectedItem.strokeWidth}
-                    onChange={e => updateSelectedItem({ strokeWidth: Number(e.target.value) })}
-                    className="w-14 accent-white"
-                  />
-                  <span className="w-5 text-right font-mono text-[11px]">{selectedItem.strokeWidth}px</span>
+                  <Minus aria-hidden="true" />
+                  <span className="sr-only">Thickness</span>
+                  <input className="pdf-editor__property-number" type="number" min="1" max="20" value={selectedItem.strokeWidth} onChange={e => updateSelectedItem({ strokeWidth: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} />
+                  <span className="pdf-editor__property-unit">px</span>
                 </div>
               </>
             )}
@@ -1485,17 +1686,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             {/* Opacity */}
             <div className="flex items-center gap-1.5" title="Opacity">
-              <span className="text-[var(--text-secondary)] font-medium">Opacity:</span>
-              <input
-                type="range"
-                min="0.1"
-                max="1"
-                step="0.05"
-                value={selectedItem.opacity}
-                onChange={e => updateSelectedItem({ opacity: Number(e.target.value) })}
-                className="w-14 accent-white"
-              />
-              <span className="w-7 text-right font-mono text-[11px]">{Math.round(selectedItem.opacity * 100)}%</span>
+              <Eye aria-hidden="true" />
+              <span className="sr-only">Opacity</span>
+              <input className="pdf-editor__property-number" type="number" min="10" max="100" step="5" value={Math.round(selectedItem.opacity * 100)} onChange={e => updateSelectedItem({ opacity: Math.min(100, Math.max(10, Number(e.target.value) || 10)) / 100 })} />
+              <span className="pdf-editor__property-unit">%</span>
             </div>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
@@ -1503,15 +1697,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             {/* Rotation */}
             <div className="flex items-center gap-1.5" title="Rotation Angle">
               <RotateCw className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-              <input
-                type="range"
-                min="0"
-                max="360"
-                value={selectedItem.rotation}
-                onChange={e => updateSelectedItem({ rotation: Number(e.target.value) })}
-                className="w-14 accent-white"
-              />
-              <span className="w-7 text-right font-mono text-[11px]">{selectedItem.rotation}°</span>
+              <input className="pdf-editor__property-number" type="number" min="0" max="359" value={selectedItem.rotation} onChange={e => updateSelectedItem({ rotation: Math.min(359, Math.max(0, Number(e.target.value) || 0)) })} />
+              <span className="pdf-editor__property-unit">°</span>
             </div>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
@@ -1527,14 +1714,127 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
           </div>
         )}
 
+        {activeDocumentEffect && !selectedItem && (
+          <div className="pdf-editor__watermark-toolbar" aria-label="Watermark properties">
+            <div className="pdf-editor__ribbon-group pdf-editor__ribbon-group--content">
+              <div className="pdf-editor__ribbon-row">
+                <label className="pdf-editor__watermark-text" title="Watermark text">
+                  <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                  <span className="sr-only">Text</span>
+                  <input
+                    type="text"
+                    value={activeDocumentEffect === 'pattern' ? patternWatermarkText : watermarkText}
+                    maxLength={48}
+                    aria-label="Watermark text"
+                    onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkText(event.target.value) : setWatermarkText(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="pdf-editor__ribbon-row">
+                <label className="pdf-editor__ribbon-color" title="Watermark color">
+                  <Pipette className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                  <span className="sr-only">Color</span>
+                  <input
+                    className="pdf-editor__watermark-color"
+                    type="color"
+                    value={activeDocumentEffect === 'pattern' ? patternWatermarkColor : watermarkColor}
+                    aria-label="Watermark color"
+                    onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkColor(event.target.value) : setWatermarkColor(event.target.value)}
+                  />
+                </label>
+                {activeDocumentEffect === 'watermark' && (
+                  <label title="Watermark font size">
+                    <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                    <span className="sr-only">Font size</span>
+                    <input
+                      className="pdf-editor__watermark-number"
+                      type="number"
+                      min="12"
+                      max="144"
+                      step="1"
+                      value={watermarkFontSize}
+                      aria-label="Watermark font size"
+                      onChange={event => setWatermarkFontSize(Math.min(144, Math.max(12, Number(event.target.value) || 12)))}
+                    />
+                    <output>pt</output>
+                  </label>
+                )}
+              </div>
+              <small>{activeDocumentEffect === 'pattern' ? 'Pattern text' : 'Watermark text'}</small>
+            </div>
+
+            <div className="pdf-editor__ribbon-group">
+              <div className="pdf-editor__ribbon-row">
+                <label title="Watermark opacity">
+                  <Eye className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                  <span className="sr-only">Opacity</span>
+                  <input className="pdf-editor__watermark-number" type="number" min="5" max="60" value={activeDocumentEffect === 'pattern' ? patternWatermarkOpacity : watermarkOpacity} aria-label="Watermark opacity percentage" onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkOpacity(Math.min(60, Math.max(5, Number(event.target.value) || 5))) : setWatermarkOpacity(Math.min(60, Math.max(5, Number(event.target.value) || 5)))} />
+                  <output>%</output>
+                </label>
+              </div>
+              <div className="pdf-editor__ribbon-row">
+                <label title="Watermark rotation">
+                  <RotateCw className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                  <span className="sr-only">Angle</span>
+                  <input className="pdf-editor__watermark-number" type="number" min="-180" max="180" step="5" value={activeDocumentEffect === 'pattern' ? patternWatermarkRotation : watermarkRotation} aria-label="Watermark rotation angle" onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkRotation(Math.min(180, Math.max(-180, Number(event.target.value) || 0))) : setWatermarkRotation(Math.min(180, Math.max(-180, Number(event.target.value) || 0)))} />
+                  <output>°</output>
+                </label>
+              </div>
+              <small>Appearance</small>
+            </div>
+
+            {activeDocumentEffect === 'pattern' && (
+              <div className="pdf-editor__ribbon-group">
+                <div className="pdf-editor__ribbon-row">
+                  <label title="Pattern watermark font size">
+                    <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                    <span className="sr-only">Tile size</span>
+                    <input
+                      className="pdf-editor__watermark-number"
+                      type="number"
+                      min="6"
+                      max="48"
+                      step="1"
+                      value={patternWatermarkFontSize}
+                      aria-label="Pattern watermark font size"
+                      onChange={event => setPatternWatermarkFontSize(Math.min(48, Math.max(6, Number(event.target.value) || 6)))}
+                    />
+                    <output>pt</output>
+                  </label>
+                </div>
+                <div className="pdf-editor__ribbon-row">
+                  <label title="Pattern spacing">
+                    <Layers className="pdf-editor__ribbon-icon" aria-hidden="true" />
+                    <span className="sr-only">Pattern spacing</span>
+                    <input className="pdf-editor__watermark-number" type="number" min="2" max="6" value={watermarkDensity} aria-label="Pattern spacing" onChange={event => setWatermarkDensity(Math.min(6, Math.max(2, Number(event.target.value) || 2)))} />
+                  </label>
+                </div>
+                <small>Pattern</small>
+              </div>
+            )}
+
+            <button type="button" className="pdf-editor__watermark-done" onClick={() => setActiveDocumentEffect(null)} title="Finish watermark editing">
+              <CheckCircle aria-hidden="true" />
+              <span className="sr-only">Done</span>
+            </button>
+          </div>
+        )}
+
         {/* Zoom Controls */}
         <WorkspaceZoomControls value={zoom} onChange={setZoom} min={40} max={200} />
-      </div>
+      </EditorCommandBar>
 
       {/* Main Workspace (Viewport + Side Layer Panel) */}
       <div className="pdf-editor__workspace flex-1 flex overflow-hidden relative">
         {/* ═══ LEFT SIDEBAR (ImageTools Pattern) ═══ */}
-        <aside className={`shrink-0 border-r border-white/10 bg-[#18191e] transition-[width] duration-200 ease-out select-none flex flex-col z-10 ${showToolDrawer ? 'w-64' : 'w-14'}`}>
+        <EditorSidebar
+          onClickCapture={() => {
+            setActiveDocumentEffect(null);
+            setSelectedId(null);
+            setEditingTextId(null);
+          }}
+          className={`shrink-0 transition-[width] duration-200 ease-out select-none z-10 ${showToolDrawer ? 'w-64' : 'w-14'}`}
+        >
           {!showToolDrawer ? (
             /* Collapsed Icon Rail with Tooltips */
             <div className="h-full flex flex-col items-center py-3 bg-[#18191e] justify-between w-full select-none">
@@ -1698,10 +1998,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             /* Expanded Compact Sidebar */
             <div className="h-full flex flex-col min-h-0 bg-[#18191e]">
               {/* Compact Header with Collapse button */}
-              <div className="h-10 px-3.5 border-b border-white/10 flex items-center justify-between bg-transparent shrink-0">
+              <EditorSidebarHeader className="h-10 px-3.5 shrink-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Tools</span>
-                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400">
+                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400" aria-live="polite">
                     Page {currentPage + 1} of {numPages || 1}
                   </span>
                 </div>
@@ -1713,7 +2013,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 >
                   <PanelLeftClose className="w-3.5 h-3.5" />
                 </button>
-              </div>
+              </EditorSidebarHeader>
 
               {/* Tool Navigation & Canvas Selection */}
               <div className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0">
@@ -1725,6 +2025,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                     <button
                       type="button"
                       onClick={() => onSelectTool?.('pdf-edit')}
+                      aria-current={mode === 'edit' ? 'page' : undefined}
                       className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
                         mode === 'edit'
                           ? 'bg-white text-zinc-950 border-white font-bold shadow-sm'
@@ -1737,6 +2038,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                     <button
                       type="button"
                       onClick={() => onSelectTool?.('pdf-redact')}
+                      aria-current={mode === 'redact' ? 'page' : undefined}
                       className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-semibold transition cursor-pointer border ${
                         mode === 'redact'
                           ? 'bg-white text-zinc-950 border-white font-bold shadow-sm'
@@ -1744,7 +2046,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                       }`}
                     >
                       <Shield className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Redact PDF</span>
+                      <span className="truncate">Redact</span>
                     </button>
                   </div>
                 </div>
@@ -1770,6 +2072,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                         <button
                           key={tool.id}
                           type="button"
+                          data-active={isActive}
+                          aria-pressed={isActive}
                           onClick={() => {
                             setActiveTool(tool.id as any);
                             setEditingTextId(null);
@@ -1787,10 +2091,74 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                     })}
                   </div>
                 </div>
+
+                <div className="pdf-editor__insert-panel">
+                  <div className="pdf-editor__panel-heading">
+                    <span>Insert</span>
+                    <div className="pdf-editor__scope" role="group" aria-label="Apply inserted element to">
+                      <button
+                        type="button"
+                        aria-pressed={elementScope === 'current'}
+                        onClick={() => setElementScope('current')}
+                      >
+                        This page
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={elementScope === 'all'}
+                        onClick={() => setElementScope('all')}
+                      >
+                        All pages
+                      </button>
+                    </div>
+                  </div>
+
+                  <Select onValueChange={value => {
+                    const preset = STAMP_PRESETS.find(item => item.label === value);
+                    if (preset) addStampItem(preset);
+                  }}>
+                    <SelectTrigger className="pdf-editor__insert-action">
+                      <span className="pdf-editor__stamp-trigger-content">
+                        <Stamp aria-hidden="true" />
+                        <strong>Stamp</strong>
+                        <small>Choose style</small>
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STAMP_PRESETS.map(preset => (
+                        <SelectItem key={preset.label} value={preset.label}>{preset.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <button type="button" className="pdf-editor__insert-action" onClick={() => addSignatureItem()}>
+                    <span><Signature aria-hidden="true" />Signature</span>
+                    <small>{elementScope === 'all' ? 'Every page' : `Page ${currentPage + 1}`}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="pdf-editor__insert-action"
+                    aria-pressed={targetPageIndexes().every(pageIndex => watermarkPages.includes(pageIndex))}
+                    onClick={toggleWatermark}
+                  >
+                    <span><b aria-hidden="true">WM</b>Watermark</span>
+                    <small>{targetPageIndexes().every(pageIndex => watermarkPages.includes(pageIndex)) ? 'Applied' : 'Apply'}</small>
+                  </button>
+                  <button
+                    type="button"
+                    className="pdf-editor__insert-action"
+                    aria-pressed={targetPageIndexes().every(pageIndex => patternWatermarkPages.includes(pageIndex))}
+                    onClick={togglePatternWatermark}
+                  >
+                    <span><b aria-hidden="true">WM</b>Pattern watermark</span>
+                    <small>{targetPageIndexes().every(pageIndex => patternWatermarkPages.includes(pageIndex)) ? 'Applied' : 'Apply'}</small>
+                  </button>
+
+                </div>
               </div>
             </div>
           )}
-        </aside>
+        </EditorSidebar>
         {/* PDF Document Canvas Viewport with Non-Passive Wheel Zoom */}
         <div
           ref={viewportRef}
@@ -1810,13 +2178,13 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 return (
                   <div
                     key={pageIdx}
-                    onClick={e => {
+                    data-pdf-page-index={pageIdx}
+                    onClick={event => {
                       setCurrentPage(pageIdx);
-                      // Deselect items when clicking blank space on page
-                      if (e.target === e.currentTarget) {
-                        setSelectedId(null);
-                        setEditingTextId(null);
-                      }
+                      if ((event.target as HTMLElement).closest('.pdf-editor__annotation-layer')) return;
+                      setSelectedId(null);
+                      setEditingTextId(null);
+                      setActiveDocumentEffect(null);
                     }}
                     className={`relative shadow-2xl transition-all rounded-md border ${
                       isCurrent ? 'border-zinc-500 ring-1 ring-zinc-500' : 'border-[var(--border-color)]'
@@ -1830,13 +2198,46 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                       className="w-full h-full object-contain pointer-events-none select-none"
                     />
 
+                    {pageTextContents[pageIdx] && pageViewports[pageIdx] && (
+                      <SelectablePdfTextLayer
+                        textContent={pageTextContents[pageIdx]}
+                        viewport={pageViewports[pageIdx]}
+                      />
+                    )}
+
+                    {watermarkPages.includes(pageIdx) && (
+                      <div
+                        className="pdf-editor__page-watermark-single"
+                        style={{ color: watermarkColor, fontSize: `${watermarkFontSize * 1.6}px`, opacity: watermarkOpacity / 100, transform: `translate(-50%, -50%) rotate(${watermarkRotation}deg)` }}
+                        aria-label="Watermark applied"
+                      >
+                        {watermarkText || 'WATERMARK'}
+                      </div>
+                    )}
+
+                    {patternWatermarkPages.includes(pageIdx) && (
+                      <div
+                        className="pdf-editor__page-watermark"
+                        style={{
+                          opacity: patternWatermarkOpacity / 100,
+                          color: patternWatermarkColor,
+                          fontSize: `${patternWatermarkFontSize * 1.6}px`,
+                        }}
+                        aria-label="Pattern watermark applied"
+                      >
+                        {getWatermarkPatternPositions(watermarkDensity).map((position, index) => (
+                          <span key={index} style={{ left: `${position.x}%`, top: `${position.y}%`, transform: `translate(-50%, -50%) rotate(${patternWatermarkRotation}deg)` }}>{patternWatermarkText || 'WATERMARK'}</span>
+                        ))}
+                      </div>
+                    )}
+
                     {/* Interactive Overlay Layer */}
                     <div
-                      onMouseDown={isCurrent ? handleMouseDown : undefined}
-                      onMouseMove={isCurrent ? handleMouseMove : undefined}
-                      onMouseUp={isCurrent ? handleMouseUp : undefined}
-                      className={`absolute inset-0 ${
-                        activeTool !== 'select' ? 'cursor-crosshair' : 'cursor-default'
+                      onMouseDown={event => handleMouseDown(event, pageIdx)}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={event => handleMouseUp(event, pageIdx)}
+                      className={`pdf-editor__annotation-layer absolute inset-0 ${
+                        activeTool !== 'select' ? 'cursor-crosshair pointer-events-auto' : 'cursor-default pointer-events-none'
                       }`}
                     >
                       {/* Draft Box preview during click-drag creation */}
@@ -1872,6 +2273,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                           return (
                             <div
                               key={item.id}
+                              onClick={e => e.stopPropagation()}
                               onMouseDown={e => {
                                 const rect = e.currentTarget.parentElement?.getBoundingClientRect();
                                 if (rect) startMoveDrag(e, item, rect);
@@ -1880,7 +2282,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                 e.stopPropagation();
                                 if (item.type === 'text') setEditingTextId(item.id);
                               }}
-                              className={`absolute group transition-shadow ${
+                              className={`absolute group transition-shadow pointer-events-auto ${
                                 activeTool === 'select' ? 'cursor-move' : 'cursor-pointer'
                               } ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-black z-20' : ''}`}
                               style={{
@@ -1900,7 +2302,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                   style={{
                                     backgroundColor: item.redactStyle === 'whiteout' ? '#ffffff' : (item.fillColor || '#000000'),
                                     color: '#ffffff',
-                                    border: item.redactStyle === 'whiteout' ? '1px dashed #ccc' : 'none',
+                                    borderStyle: item.strokeWidth > 0 ? 'solid' : 'none',
+                                    borderColor: item.strokeColor === 'transparent' ? 'transparent' : item.strokeColor,
+                                    borderWidth: item.strokeWidth > 0 ? `${item.strokeWidth}px` : 0,
+                                    boxSizing: 'border-box',
                                   }}
                                 >
                                   {item.text}
@@ -1981,7 +2386,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                     setSelectedId(item.id);
                                     setEditingTextId(item.id);
                                   }}
-                                  className="w-full h-full p-1 overflow-visible flex items-start !bg-transparent cursor-text"
+                                  className="pdf-editor__text-box w-full h-full overflow-hidden flex items-start cursor-text"
+                                  style={{
+                                    backgroundColor: item.fillColor && item.fillColor !== 'transparent' ? item.fillColor : 'transparent',
+                                  }}
                                 >
                                   {isEditing ? (
                                     <textarea
@@ -1996,23 +2404,22 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                         e.stopPropagation();
                                         if (e.key === 'Escape') setEditingTextId(null);
                                       }}
+                                      onBlur={() => setEditingTextId(null)}
                                       style={{
-                                        backgroundColor: item.fillColor && item.fillColor !== 'transparent' ? item.fillColor : 'transparent',
-                                        color: item.textColor || '#000000',
+                                        '--annotation-text-color': item.textColor || '#000000',
                                         fontSize: `${item.fontSize || 16}px`,
                                         fontFamily: item.fontFamily === 'serif' ? 'Georgia, serif' : (item.fontFamily === 'monospace' ? 'Courier New, monospace' : 'Inter, sans-serif'),
                                         fontWeight: item.isBold ? 'bold' : 'normal',
                                         fontStyle: item.isItalic ? 'italic' : 'normal',
                                         textAlign: item.textAlign || 'left',
-                                      }}
-                                      className="w-full h-full !bg-transparent border-none focus:outline-none focus:ring-0 resize-none p-0 leading-tight shadow-none cursor-text select-text z-30"
+                                      } as React.CSSProperties & { '--annotation-text-color': string }}
+                                      className="pdf-editor__text-input w-full h-full border-none focus:outline-none focus:ring-0 resize-none leading-snug shadow-none cursor-text select-text z-30"
                                       placeholder="Type text here..."
                                       autoFocus
                                     />
                                   ) : (
                                     <span
                                       style={{
-                                        backgroundColor: item.fillColor && item.fillColor !== 'transparent' ? item.fillColor : 'transparent',
                                         color: item.textColor || '#000000',
                                         fontSize: `${item.fontSize || 16}px`,
                                         fontFamily: item.fontFamily === 'serif' ? 'Georgia, serif' : (item.fontFamily === 'monospace' ? 'Courier New, monospace' : 'Inter, sans-serif'),
@@ -2020,7 +2427,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                         fontStyle: item.isItalic ? 'italic' : 'normal',
                                         textAlign: item.textAlign || 'left',
                                       }}
-                                      className="w-full break-words leading-tight pointer-events-auto !bg-transparent cursor-text"
+                                      className="pdf-editor__text-value w-full h-full break-words whitespace-pre-wrap leading-snug pointer-events-auto cursor-text"
                                     >
                                       {item.text || 'Type text here...'}
                                     </span>
@@ -2049,7 +2456,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                     outlineOffset: '-5px',
                                     color: item.strokeColor || '#16a34a',
                                     backgroundColor: item.fillColor || 'rgba(22, 163, 74, 0.1)',
-                                    fontSize: `${Math.max(10, Math.min(22, (item.fontSize || 14)))}px`,
+                                    fontSize: `${item.fontSize ?? getAutoStampFontSize(item.text || item.stampType || 'APPROVED', pageDimensions[pageIdx].width * item.width / 100, pageDimensions[pageIdx].height * item.height / 100)}px`,
                                   }}
                                 >
                                   {item.text || item.stampType || 'APPROVED'}
@@ -2067,28 +2474,23 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                   }}
                                 >
                                   <div
-                                    className="font-semibold italic text-base leading-tight truncate"
-                                    style={{ fontFamily: '"Brush Script MT", "Caveat", "Segoe Script", cursive, sans-serif' }}
+                                    className="font-semibold italic leading-tight truncate"
+                                    style={{
+                                      fontFamily: '"Brush Script MT", "Caveat", "Segoe Script", cursive, sans-serif',
+                                      fontSize: `${item.fontSize ?? getAutoSignatureFontSize(item.signerName || 'Verified Signature', pageDimensions[pageIdx].width * item.width / 100, pageDimensions[pageIdx].height * item.height / 100)}px`,
+                                    }}
                                   >
                                     {item.signerName || 'Verified Signature'}
                                   </div>
-                                  <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold text-zinc-500 mt-1 uppercase tracking-wider">
+                                  <div
+                                    className="flex items-center gap-1.5 font-mono font-bold text-zinc-500 mt-1 uppercase tracking-wider"
+                                    style={{
+                                      fontSize: `${Math.max(9, (item.fontSize ?? getAutoSignatureFontSize(item.signerName || 'Verified Signature', pageDimensions[pageIdx].width * item.width / 100, pageDimensions[pageIdx].height * item.height / 100)) * 0.45)}px`,
+                                    }}
+                                  >
                                     <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
                                     <span>Digitally Signed · {item.signDate || new Date().toLocaleDateString()}</span>
                                   </div>
-                                </div>
-                              )}
-
-                              {/* Watermark Diagonal Label */}
-                              {item.type === 'watermark' && (
-                                <div
-                                  className="w-full h-full flex items-center justify-center font-black uppercase tracking-widest select-none pointer-events-none text-center"
-                                  style={{
-                                    color: item.textColor || '#dc2626',
-                                    fontSize: `${Math.max(16, Math.min(56, (item.fontSize || 36)))}px`,
-                                  }}
-                                >
-                                  {item.text || 'CONFIDENTIAL'}
                                 </div>
                               )}
 
@@ -2175,7 +2577,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                     </div>
 
                     {/* Page Index Label */}
-                    <div className="absolute top-3 left-3 bg-[var(--surface-color)]/90 backdrop-blur px-2.5 py-1 rounded-lg text-xs font-mono font-bold text-[var(--text-secondary)] border border-[var(--border-color)] shadow-sm">
+                    <div
+                      className="pdf-editor__page-badge absolute top-3 left-3 bg-[var(--surface-color)]/90 backdrop-blur px-2.5 py-1 rounded-lg font-mono font-bold text-[var(--text-secondary)] border border-[var(--border-color)] shadow-sm"
+                      style={{ transform: `scale(${100 / zoom})`, transformOrigin: 'top left' }}
+                    >
                       Page {pageIdx + 1}
                     </div>
                   </div>
@@ -2189,10 +2594,10 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         <div className="pdf-editor__layers w-80 bg-[var(--surface-color)] border-l border-[var(--border-color)] flex flex-col justify-between shrink-0">
           <div>
             {/* Header */}
-            <div className="p-4 border-b border-[var(--border-color)] flex items-center justify-between">
+            <div className="pdf-editor__layers-header p-4 border-b border-[var(--border-color)] flex items-center justify-between">
               <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
                 <Layers className="w-4 h-4 text-white" />
-                <span>{mode === 'redact' ? 'Redaction Layers' : 'Edit PDF'}</span>
+                <span>{mode === 'redact' ? 'Redactions' : 'Layers'}</span>
               </h3>
               <button
                 onClick={removeAllAnnotations}
@@ -2203,20 +2608,40 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             </div>
 
             {/* Reorder Notification Banner */}
-            <div className="m-3 p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-start gap-2 text-xs text-zinc-300">
+            <div className="pdf-editor__layers-hint m-3 p-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-start gap-2 text-xs text-zinc-300">
               <ShieldAlert className="w-4 h-4 text-white shrink-0 mt-0.5" />
-              <span>Click element on page or layer below to select. Drag corner handles to resize.</span>
+              <span>Select an element here or on the page. Drag its handles to resize.</span>
             </div>
 
+            {watermarkPages.length > 0 && (
+              <div className="pdf-editor__document-effect">
+                <div>
+                  <b>Watermark</b>
+                  <small>{watermarkPages.length === numPages ? 'All pages' : `${watermarkPages.length} ${watermarkPages.length === 1 ? 'page' : 'pages'}`}</small>
+                </div>
+                <button type="button" onClick={() => { setWatermarkPages([]); setActiveDocumentEffect(null); }}>Remove</button>
+              </div>
+            )}
+
+            {patternWatermarkPages.length > 0 && (
+              <div className="pdf-editor__document-effect">
+                <div>
+                  <b>Pattern watermark</b>
+                  <small>{patternWatermarkPages.length === numPages ? 'All pages' : `${patternWatermarkPages.length} ${patternWatermarkPages.length === 1 ? 'page' : 'pages'}`}</small>
+                </div>
+                <button type="button" onClick={() => { setPatternWatermarkPages([]); setActiveDocumentEffect(null); }}>Remove</button>
+              </div>
+            )}
+
             {/* Elements / Layers List */}
-            <div className="p-3 overflow-y-auto max-h-[calc(100vh-320px)] space-y-4">
+            <div className="pdf-editor__layers-list p-3 overflow-y-auto max-h-[calc(100vh-320px)] space-y-4">
               {Array.from({ length: numPages }).map((_, pIdx) => {
                 const pageAnnots = [...annotations.filter(a => a.pageIndex === pIdx)].slice().reverse();
                 if (pageAnnots.length === 0) return null;
 
                 return (
-                  <div key={pIdx} className="space-y-1.5">
-                    <div className="text-xs font-bold text-[var(--text-secondary)] px-1">
+                  <div key={pIdx} className="pdf-editor__layer-page space-y-1.5">
+                    <div className="pdf-editor__layer-page-title text-xs font-bold text-[var(--text-secondary)] px-1">
                       Page {pIdx + 1}
                     </div>
 
@@ -2229,7 +2654,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                             setCurrentPage(pIdx);
                             setSelectedId(item.id);
                           }}
-                          className={`p-3 rounded-xl border flex items-center justify-between gap-2 text-xs transition-all cursor-pointer ${
+                          className={`pdf-editor__layer-item p-3 rounded-xl border flex items-center justify-between gap-2 text-xs transition-all cursor-pointer ${
                             isSelected
                               ? 'bg-[var(--surface-hover)] border-white text-white shadow-sm font-bold'
                               : 'bg-[var(--surface-color)] border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]'
@@ -2302,23 +2727,23 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 );
               })}
 
-              {annotations.length === 0 && (
+              {!hasDocumentChanges && (
                 <div className="py-8 text-center text-xs text-[var(--text-tertiary)] italic">
                   {mode === 'redact'
                     ? 'No redactions added yet. Click "Redact Box" above to blackout sensitive areas.'
-                    : 'No elements added yet. Select a shape or text from the toolbar above to start editing.'}
+                    : 'No elements yet. Choose a tool from the left panel to start editing.'}
                 </div>
               )}
             </div>
           </div>
 
           {/* Save & Export Button */}
-          <div className="p-4 border-t border-[var(--border-color)] bg-[var(--surface-color)]">
+          <div className="pdf-editor__layers-footer p-4 border-t border-[var(--border-color)] bg-[var(--surface-color)]">
             <button
               onClick={handleSaveChanges}
-              disabled={saving || annotations.length === 0}
+              disabled={saving || !hasDocumentChanges}
               className={`w-full font-extrabold py-3 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 text-xs transition-all ${
-                annotations.length === 0
+                !hasDocumentChanges
                   ? 'bg-zinc-800 text-zinc-300 border border-zinc-700 cursor-not-allowed opacity-90'
                   : 'bg-white hover:bg-zinc-100 text-zinc-950 border border-white cursor-pointer'
               }`}
@@ -2326,11 +2751,11 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               {saving ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-current" />
-                  <span className="font-extrabold text-xs">Compiling PDF Document...</span>
+                  <span className="font-extrabold text-xs">Building PDF...</span>
                 </>
               ) : (
                 <>
-                  <span className="font-extrabold text-xs">Save & Export Document</span>
+                  <span className="font-extrabold text-xs">Download PDF</span>
                   <ArrowRight className="w-4 h-4 shrink-0 stroke-[3]" />
                 </>
               )}
@@ -2354,7 +2779,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             </div>
 
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-              Are you sure you want to remove all annotations, text boxes, shapes, and redactions from this document?
+              Are you sure you want to remove all annotations, text boxes, shapes, redactions, and document effects?
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -2368,6 +2793,9 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               <button
                 onClick={() => {
                   setAnnotations([]);
+                  setWatermarkPages([]);
+                  setPatternWatermarkPages([]);
+                  setActiveDocumentEffect(null);
                   setSelectedId(null);
                   setEditingTextId(null);
                   setShowRemoveAllConfirm(false);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Trash2 as TrashIcon,
   ZoomIn as ZoomIcon,
@@ -34,6 +34,24 @@ export interface ImagesToPdfPanelProps {
   onRunConvert: () => void;
 }
 
+const ImageQueueThumbnail: React.FC<{ file: File; onOpen: () => void }> = ({ file, onOpen }) => {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    const nextUrl = URL.createObjectURL(file);
+    setUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [file]);
+
+  return (
+    <button type="button" onClick={onOpen} className="w-full aspect-[1/1.2] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden relative cursor-pointer group/imgCard shadow-inner flex items-center justify-center" aria-label={`Preview ${file.name}`}>
+      {url && <img src={url} alt="" className="w-full h-full object-contain bg-zinc-950 group-hover/imgCard:scale-105 transition-transform duration-300" />}
+      <span className="absolute inset-0 bg-black/60 opacity-0 group-hover/imgCard:opacity-100 flex items-center justify-center transition-opacity">
+        <span className="text-[9px] font-bold text-white bg-zinc-950/95 border border-zinc-700 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-lg"><ZoomIcon className="w-3 h-3" /> View Image</span>
+      </span>
+    </button>
+  );
+};
+
 export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
   multipleFiles,
   imgFilter,
@@ -52,7 +70,7 @@ export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
   onRunConvert,
 }) => {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    <div className="images-to-pdf-workspace grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
       <Card className="lg:col-span-8 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
         <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
           <div>
@@ -66,10 +84,9 @@ export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 max-h-[460px] overflow-y-auto pr-1">
           {multipleFiles.map((info, idx) => {
-            const imgUrl = URL.createObjectURL(info.file);
             return (
               <div 
-                key={idx}
+                key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${idx}`}
                 className="bg-zinc-950/60 border border-[var(--border-color)] rounded-xl p-2.5 flex flex-col justify-between items-center relative group hover:border-zinc-500 transition-all shadow-sm select-none"
               >
                 <div className="flex items-center justify-between w-full text-[10px] font-bold text-zinc-400 mb-1">
@@ -85,23 +102,7 @@ export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
                   </button>
                 </div>
 
-                <div 
-                  onClick={() => onPeekImage(idx)}
-                  className="w-full aspect-[1/1.2] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden relative cursor-pointer group/imgCard shadow-inner flex items-center justify-center"
-                  title="Click for PowerToys Peek Zoom View"
-                >
-                  <img 
-                    src={imgUrl} 
-                    alt={info.file.name} 
-                    className="w-full h-full object-cover group-hover/imgCard:scale-105 transition-transform duration-300" 
-                  />
-
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/imgCard:opacity-100 flex items-center justify-center transition-opacity">
-                    <span className="text-[9px] font-bold text-white bg-zinc-950/95 border border-zinc-700 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-lg">
-                      <ZoomIcon className="w-3 h-3 text-white" /> View Image
-                    </span>
-                  </div>
-                </div>
+                <ImageQueueThumbnail file={info.file} onOpen={() => onPeekImage(idx)} />
 
                 <span className="text-[10px] font-medium text-zinc-400 truncate w-full mt-1.5 text-center">
                   {info.file.name}
@@ -133,6 +134,7 @@ export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
           multiple={true}
           label="Append more images"
           onFilesSelected={onAddFiles}
+          compact
         />
       </Card>
 

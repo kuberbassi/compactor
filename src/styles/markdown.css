@@ -1,0 +1,124 @@
+.markdown-view-switcher {
+  display: flex;
+  align-items: center;
+  padding: 0.2rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.7rem;
+  background: var(--surface-color);
+}
+.markdown-view-button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.9rem;
+  padding: 0 0.65rem;
+  border-radius: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.markdown-view-button svg { width: 0.875rem; height: 0.875rem; }
+.markdown-view-button:hover { color: var(--text-primary); background: var(--surface-hover); }
+.markdown-view-button.is-active { color: #18181b; background: #f4f4f5; box-shadow: 0 1px 3px rgba(0,0,0,.24); font-weight: 800; }
+.markdown-format-button { color: var(--text-secondary); }
+.markdown-format-button:hover { color: var(--text-primary); }
+.markdown-format-button.is-danger:hover { color: #fca5a5; background: rgba(239,68,68,.1) !important; }
+.markdown-format-button svg { width: 1rem; height: 1rem; }
+.markdown-format-divider { width: 1px; height: 1rem; flex: none; margin: 0 0.25rem; background: var(--border-color); }
+.markdown-action-label--compact { display: none; }
+.markdown-command-button {
+  min-height: 2.15rem;
+  padding: 0 0.7rem;
+  border-radius: 0.55rem;
+  white-space: nowrap;
+}
+.markdown-command-button svg { width: 0.9rem; height: 0.9rem; }
+
+.markdown-editor .markdown-editor__workspace > .markdown-pdf-preview {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+}
+.markdown-pdf-notice {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 3;
+  max-width: calc(100% - 2rem);
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 0.55rem;
+  background: rgba(24,25,30,.94);
+  color: #d4d4d8;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0,0,0,.28);
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+.markdown-pdf-notice p { color: #fbbf24; }
+.markdown-pdf-notice.is-error { border-color: rgba(248,113,113,.35); color: #fecaca; }
+.markdown-pdf-viewport {
+  flex: 1 1 0;
+  width: 100%;
+  background: #2b2d33;
+}
+.markdown-pdf-viewport:focus-visible { outline: 2px solid #ffffff; outline-offset: -2px; }
+.markdown-pdf-pages {
+  display: flex;
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem;
+}
+.markdown-pdf-page { flex: none; margin: 0; }
+.markdown-pdf-page canvas {
+  display: block;
+  max-width: none;
+  background: white;
+  box-shadow: 0 12px 32px rgba(0,0,0,.34), 0 0 0 1px rgba(255,255,255,.1);
+}
+.markdown-pdf-page.has-error figcaption { text-align: center; color: #fecaca; padding-top: 0.5rem; font-size: 0.6875rem; }
+.markdown-editor .markdown-editor__workspace textarea { color: var(--text-primary) !important; }
+.markdown-source-pane { min-width: 0; }
+.markdown-source-input {
+  box-sizing: border-box;
+  padding: 1.5rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.markdown-editor__formatting { scrollbar-width: none; }
+.markdown-editor__formatting::-webkit-scrollbar { display: none; }
+.markdown-preview-zoom { margin-left: auto; flex: none; }
+@media (max-width: 767px) {
+  .markdown-editor .markdown-editor__workspace { flex-direction: column; }
+  .markdown-editor .markdown-editor__header > div:last-child {
+    width: 100%;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .markdown-editor .markdown-editor__header > div:last-child::-webkit-scrollbar { display: none; }
+  .markdown-editor .markdown-editor__header > div:last-child > .h-6 { display: none; }
+  .markdown-action-label--wide { display: none; }
+  .markdown-action-label--compact { display: inline; }
+  .markdown-editor .markdown-editor__workspace--split { overflow-y: auto !important; }
+  .markdown-editor .markdown-editor__workspace--split > div { flex: none !important; height: 300px !important; min-height: 300px !important; }
+  .markdown-editor .markdown-editor__workspace--split > .markdown-pdf-preview { height: min(62svh, 34rem) !important; min-height: 22rem !important; }
+  .markdown-pdf-pages { padding: 0.875rem; gap: 0.875rem; }
+  .markdown-source-input { padding: 1rem; }
+  .markdown-editor__status { flex-wrap: wrap; gap: 0.4rem; }
+}
+@media (max-width: 520px) {
+  .markdown-view-button { padding-inline: 0.5rem; }
+}

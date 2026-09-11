@@ -30,8 +30,12 @@ export const MergePanel: React.FC<MergePanelProps> = ({
   onClearQueue,
   onRunMerge,
 }) => {
+  const totalPages = multipleFiles.reduce((sum, item) => sum + (item.pageCount || 1), 0);
+  const totalBytes = multipleFiles.reduce((sum, item) => sum + item.file.size, 0);
+  const canMerge = multipleFiles.length > 1;
+
   return (
-    <div className="pdf-mobile-stack grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div className="pdf-merge-workspace pdf-mobile-stack grid grid-cols-1 md:grid-cols-3 gap-4">
       <Card className="md:col-span-2 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
         <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
           <div>
@@ -46,7 +50,7 @@ export const MergePanel: React.FC<MergePanelProps> = ({
         <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
           {multipleFiles.map((info, idx) => (
             <div 
-              key={idx} 
+              key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${idx}`}
               draggable={true}
               onDragStart={(e) => {
                 onSetDraggedQueueIndex(idx);
@@ -121,6 +125,7 @@ export const MergePanel: React.FC<MergePanelProps> = ({
           multiple={true}
           label="Append more files to queue"
           onFilesSelected={onAddFiles}
+          compact
         />
       </Card>
 
@@ -130,15 +135,21 @@ export const MergePanel: React.FC<MergePanelProps> = ({
           <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
             Combines all queued file pages sequentially in the exact order listed (#1 &rarr; #{multipleFiles.length}) into a single unified PDF document.
           </p>
+          <div className="grid grid-cols-2 gap-2 pt-3">
+            <div className="pdf-workflow-stat"><strong>{multipleFiles.length}</strong><span>PDFs</span></div>
+            <div className="pdf-workflow-stat"><strong>{totalPages}</strong><span>Pages</span></div>
+          </div>
+          <p className="text-[10px] text-zinc-500">Combined input: {formatBytes(totalBytes)}</p>
+          {!canMerge && <p className="text-xs text-amber-300">Add one more PDF to enable merging.</p>}
         </div>
         <Button 
           onClick={onRunMerge} 
+          disabled={!canMerge}
           className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs cursor-pointer shadow-sm"
         >
-          Compile PDF Document
+          {canMerge ? 'Compile PDF Document' : 'Waiting for 2 PDFs'}
         </Button>
       </Card>
     </div>
   );
 };
-

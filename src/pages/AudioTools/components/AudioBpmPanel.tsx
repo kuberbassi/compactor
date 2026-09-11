@@ -1,9 +1,9 @@
 import React from 'react';
-import { Disc } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
+import { Disc3, Gauge } from 'lucide-react';
 import { CustomAudioPlayer } from '../../../components/Common/CustomAudioPlayer';
 import type { AudioAnalysisResult } from '../../../utils/audioAnalysis';
+import { formatBytes } from '../../../utils/image';
+import { AudioEditorFrame } from './AudioEditorFrame';
 
 export interface AudioBpmPanelProps {
   file: File;
@@ -11,78 +11,53 @@ export interface AudioBpmPanelProps {
   analysisResult: AudioAnalysisResult | null;
   previewUrl: string | null;
   onReset: () => void;
+  activeTool: string;
+  onSelectTool: (toolId: string) => void;
 }
 
 export const AudioBpmPanel: React.FC<AudioBpmPanelProps> = ({
-  file,
-  analyzingBpm,
-  analysisResult,
-  previewUrl,
-  onReset,
-}) => {
-  return (
-    <div className="audio-mode-workbench audio-analysis-workbench audio-optimizer-workbench">
-      <Card className="audio-editor-panel audio-analysis-panel audio-optimizer-stage">
-        <div className="audio-editor-panel__filebar flex items-center justify-between gap-2 border-b border-[var(--border-color)] pb-3 min-w-0">
-          <div className="flex items-center gap-2 truncate min-w-0 flex-1">
-            <Disc className="w-4 h-4 text-zinc-400 shrink-0" />
-            <span className="text-xs font-bold text-[var(--text-primary)] truncate max-w-[140px] xs:max-w-xs">{file.name}</span>
-          </div>
-          <Button variant="ghost" onClick={onReset} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold shrink-0 whitespace-nowrap cursor-pointer">
-            <span className="hidden xs:inline">Analyze Another</span>
-            <span className="xs:hidden">Reset</span>
-          </Button>
+  file, analyzingBpm, analysisResult, previewUrl, onReset, activeTool, onSelectTool,
+}) => (
+  <AudioEditorFrame
+    file={file}
+    activeTool={activeTool}
+    onSelectTool={onSelectTool}
+    onChangeFile={onReset}
+    className="audio-analysis-editor"
+    controls={
+      <section className="audio-analysis-controls" aria-label="Analysis status">
+        <div className="audio-analysis-status">
+          <span className="audio-section-label">Track analysis</span>
+          <strong aria-live="polite">{analyzingBpm ? 'Analyzing…' : analysisResult ? 'Ready' : 'Waiting'}</strong>
         </div>
-
-        {analyzingBpm ? (
-          <div className="py-12 text-center space-y-3">
-            <div className="w-9 h-9 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs font-mono font-bold text-zinc-300">Analyzing Pitch Profiles & Onset BPM...</p>
+        <p>Tempo, key and Camelot code appear in the preview.</p>
+      </section>
+    }
+  >
+    <section className="audio-analysis-preview" aria-live="polite">
+      {analyzingBpm ? (
+        <div className="audio-preview-empty">
+          <span className="audio-analysis-spinner" aria-hidden="true" />
+          <strong>Analyzing track</strong>
+          <p>Finding the tempo and musical key.</p>
+        </div>
+      ) : analysisResult ? (
+        <>
+          <div className="audio-preview-heading">
+            <div><span>Track analysis</span><h2>Key and tempo</h2></div>
+            <Disc3 aria-hidden="true" />
           </div>
-        ) : analysisResult ? (
-          <div className="space-y-4 sm:space-y-5">
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              <div className="p-3 sm:p-4 rounded-xl bg-zinc-950/70 border border-[var(--border-color)] text-center space-y-1 min-w-0 flex flex-col items-center justify-center min-h-[90px] sm:min-h-[105px]">
-                <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">TEMPO</span>
-                <span className="text-2xl sm:text-4xl font-black text-white block truncate">{analysisResult.bpm}</span>
-                <span className="text-[9px] sm:text-[10px] font-mono font-bold text-emerald-400 block truncate">BEATS PER MINUTE</span>
-              </div>
-
-              <div className="p-3 sm:p-4 rounded-xl bg-zinc-950/70 border border-[var(--border-color)] text-center space-y-1 min-w-0 flex flex-col items-center justify-center min-h-[90px] sm:min-h-[105px]">
-                <span className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">MUSICAL KEY</span>
-                <span className="text-lg sm:text-3xl font-black text-white block truncate leading-tight">{analysisResult.key}</span>
-                <span className="text-[9px] sm:text-[10px] font-mono font-bold text-indigo-400 block truncate">CAMELOT {analysisResult.camelot}</span>
-              </div>
-            </div>
-
-            <div className="p-2.5 sm:p-3 bg-zinc-950/50 border border-[var(--border-color)] rounded-xl flex items-center justify-between gap-1 text-center font-mono text-zinc-400">
-              <div className="flex-1 min-w-0 px-1">
-                <span className="text-zinc-500 block text-[9px] sm:text-[10px] uppercase font-bold truncate">Confidence</span>
-                <strong className="text-white text-xs sm:text-sm block truncate">{analysisResult.confidence}%</strong>
-              </div>
-              <div className="h-6 w-px bg-zinc-800 shrink-0" />
-              <div className="flex-1 min-w-0 px-1">
-                <span className="text-zinc-500 block text-[9px] sm:text-[10px] uppercase font-bold truncate">Sample Rate</span>
-                <strong className="text-white text-xs sm:text-sm block truncate">{analysisResult.sampleRate} Hz</strong>
-              </div>
-              <div className="h-6 w-px bg-zinc-800 shrink-0" />
-              <div className="flex-1 min-w-0 px-1">
-                <span className="text-zinc-500 block text-[9px] sm:text-[10px] uppercase font-bold truncate">Scale</span>
-                <strong className="text-white text-xs sm:text-sm uppercase block truncate">{analysisResult.mode}</strong>
-              </div>
-            </div>
-
-            {previewUrl && (
-              <CustomAudioPlayer
-                src={previewUrl}
-                title={file.name}
-                subtitle="Track Audio Preview"
-              />
-            )}
+          <div className="audio-analysis-results">
+            <article><span>Tempo</span><strong>{analysisResult.bpm}</strong><small>BPM</small></article>
+            <article><span>Musical key</span><strong>{analysisResult.key}</strong><small>Detected tonality</small></article>
+            <article><span>Camelot</span><strong>{analysisResult.camelot}</strong><small>Harmonic mixing code</small></article>
+            <article><span>Scale</span><strong>{analysisResult.mode}</strong><small>{analysisResult.sampleRate} Hz source</small></article>
           </div>
-        ) : null}
-      </Card>
-    </div>
-  );
-};
-
+        </>
+      ) : (
+        <div className="audio-preview-empty"><Gauge aria-hidden="true" /><strong>Preparing analysis</strong><p>The result will appear here when ready.</p></div>
+      )}
+      {previewUrl ? <CustomAudioPlayer className="audio-preview-player" src={previewUrl} title={file.name} subtitle={`${file.name.split('.').pop()?.toUpperCase()} Audio Track · ${formatBytes(file.size)}`} /> : null}
+    </section>
+  </AudioEditorFrame>
+);

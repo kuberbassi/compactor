@@ -8,17 +8,17 @@ export const IllustrationBanner: React.FC<{ type: string }> = ({ type }) => {
     case 'video-compress':
       return (
         <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
-          <div className="w-full max-w-[210px] h-24 rounded-xl border border-purple-500/30 bg-purple-950/30 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
-            <div className="absolute inset-x-3 inset-y-2.5 rounded-lg border border-purple-400/20 flex items-center justify-between px-3">
-              <div className="w-7 h-7 rounded-lg bg-purple-500/30 border border-purple-400/50 flex items-center justify-center shadow">
-                <span className="text-[10px] text-purple-200 font-mono font-bold">4K</span>
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-white/20 bg-white/5 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="absolute inset-x-3 inset-y-2.5 rounded-lg border border-white/15 flex items-center justify-between px-3">
+              <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/30 flex items-center justify-center shadow">
+                <span className="text-[10px] text-zinc-100 font-mono font-bold">4K</span>
               </div>
               <div className="flex gap-1.5 items-center">
-                <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
-                <span className="w-12 h-1 bg-purple-400/40 rounded-full" />
+                <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" />
+                <span className="w-12 h-1 bg-white/30 rounded-full" />
               </div>
-              <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-400/30 flex items-center justify-center shadow">
-                <span className="text-[9px] text-purple-300 font-mono font-bold">720p</span>
+              <div className="w-7 h-7 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center shadow">
+                <span className="text-[9px] text-zinc-300 font-mono font-bold">720p</span>
               </div>
             </div>
           </div>
@@ -69,13 +69,13 @@ export const IllustrationBanner: React.FC<{ type: string }> = ({ type }) => {
     case 'pdf-edit':
       return (
         <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
-          <div className="w-full max-w-[210px] h-24 rounded-xl border border-violet-500/30 bg-gradient-to-br from-violet-950/60 to-zinc-950/80 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
-            <div className="relative w-16 h-18 rounded-md bg-zinc-100 border border-violet-300/70 shadow-lg p-2">
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-white/20 bg-gradient-to-br from-zinc-800/60 to-zinc-950/80 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="relative w-16 h-18 rounded-md bg-zinc-100 border border-white/70 shadow-lg p-2">
               <div className="h-1 w-9 rounded bg-zinc-400/60 mb-1.5" />
               <div className="h-1 w-11 rounded bg-zinc-300 mb-1" />
               <div className="h-1 w-8 rounded bg-zinc-300" />
-              <div className="absolute left-3 bottom-3 w-7 h-4 border-2 border-violet-500 rounded-sm bg-violet-200/40" />
-              <div className="absolute -right-2 top-4 w-6 h-6 rounded-full bg-violet-500 border-2 border-zinc-950 text-white text-xs font-black flex items-center justify-center shadow-lg">
+              <div className="absolute left-3 bottom-3 w-7 h-4 border-2 border-zinc-700 rounded-sm bg-zinc-200/40" />
+              <div className="absolute -right-2 top-4 w-6 h-6 rounded-full bg-white border-2 border-zinc-950 text-zinc-950 text-xs font-black flex items-center justify-center shadow-lg">
                 T
               </div>
             </div>
@@ -342,29 +342,29 @@ export const IllustrationBanner: React.FC<{ type: string }> = ({ type }) => {
     case 'audio-joiner':
       return (
         <div className="w-full h-full flex items-center justify-center relative p-3 select-none">
-          <div className="w-full max-w-[210px] h-24 rounded-xl border border-violet-500/30 bg-gradient-to-br from-violet-950/60 to-zinc-950/80 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-24 h-8 rounded-full bg-violet-500/10 blur-xl" />
+          <div className="w-full max-w-[210px] h-24 rounded-xl border border-white/20 bg-gradient-to-br from-zinc-800/60 to-zinc-950/80 backdrop-blur-md relative overflow-hidden flex items-center justify-center shadow-xl">
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-24 h-8 rounded-full bg-white/10 blur-xl" />
             <div className="flex flex-col gap-1.5">
               {/* Track bars */}
               <div className="flex items-center gap-1.5">
-                <div className="flex items-center gap-0.5 bg-zinc-900 border border-violet-500/40 rounded px-1.5 py-1">
+                <div className="flex items-center gap-0.5 bg-zinc-900 border border-white/25 rounded px-1.5 py-1">
                   {[2,4,6,4,3,5,3].map((h, i) => (
-                    <div key={i} style={{height: `${h * 2}px`}} className="w-0.5 rounded-sm bg-violet-400/70" />
+                    <div key={i} style={{height: `${h * 2}px`}} className="w-0.5 rounded-sm bg-white/70" />
                   ))}
                 </div>
-                <span className="text-violet-400 font-bold text-sm">+</span>
-                <div className="flex items-center gap-0.5 bg-zinc-900 border border-violet-500/40 rounded px-1.5 py-1">
+                <span className="text-white font-bold text-sm">+</span>
+                <div className="flex items-center gap-0.5 bg-zinc-900 border border-white/25 rounded px-1.5 py-1">
                   {[3,5,4,6,3,4,2].map((h, i) => (
-                    <div key={i} style={{height: `${h * 2}px`}} className="w-0.5 rounded-sm bg-violet-300/70" />
+                    <div key={i} style={{height: `${h * 2}px`}} className="w-0.5 rounded-sm bg-white/60" />
                   ))}
                 </div>
               </div>
               {/* Arrow + merged */}
               <div className="flex items-center justify-center gap-1.5">
-                <span className="text-violet-400 font-bold text-xs animate-pulse">→</span>
-                <div className="flex items-center gap-0.5 bg-violet-900/40 border border-violet-400/60 rounded px-2 py-1">
+                <span className="text-white font-bold text-xs animate-pulse">→</span>
+                <div className="flex items-center gap-0.5 bg-white/10 border border-white/35 rounded px-2 py-1">
                   {[2,3,5,7,5,6,4,5,3,4,2].map((h, i) => (
-                    <div key={i} style={{height: `${h * 2}px`}} className="w-0.5 rounded-sm bg-violet-300" />
+                    <div key={i} style={{height: `${h * 2}px`}} className="w-0.5 rounded-sm bg-white" />
                   ))}
                 </div>
               </div>

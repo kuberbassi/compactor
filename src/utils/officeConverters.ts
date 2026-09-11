@@ -1,6 +1,7 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import type { Content } from "pdfmake/interfaces";
+import { createStructuredPdf } from "./markdownPdf";
+import { escapeHtml } from "./htmlText";
 import { unzipSync, strFromU8 } from "fflate";
-import { safeHtml2Canvas } from "./domSanitizer";
 
 export type OfficeConversionProgress = (percent: number, status: string) => void;
 
@@ -44,13 +45,17 @@ export const parseXlsxWorkbook = async (file: File): Promise<{ sheetName: string
         cellNodes.forEach((c) => {
           const type = c.getAttribute("t");
           const vNode = c.querySelector("v");
-          const val = vNode?.textContent || "";
+          const val = type === 'inlineStr' ? c.querySelector('is')?.textContent || '' : vNode?.textContent || '';
+          const columnLetters = c.getAttribute('r')?.match(/^[A-Z]+/i)?.[0].toUpperCase();
+          const column = columnLetters ? Array.from(columnLetters).reduce((value, letter) => value * 26 + letter.charCodeAt(0) - 64, 0) - 1 : rowData.length;
+          if (column > 16383) throw new Error('Spreadsheet column is outside the XLSX limit.');
+          while (rowData.length < column) rowData.push('');
 
           if (type === "s" && val !== "") {
             const sIdx = parseInt(val, 10);
-            rowData.push(sharedStrings[sIdx] || "");
+            rowData[column] = sharedStrings[sIdx] || "";
           } else {
-            rowData.push(val);
+            rowData[column] = val;
           }
         });
         if (rowData.length > 0) rows.push(rowData);
@@ -61,11 +66,12 @@ export const parseXlsxWorkbook = async (file: File): Promise<{ sheetName: string
         rows: rows.length > 0 ? rows : [["(Empty Sheet)"]],
       });
     }
-  } catch {
-    // Non-zip file (e.g. CSV or TSV)
+  } catch (error) {
+    if (/\.xlsx$/i.test(file.name)) throw new Error('Could not read this XLSX workbook.', { cause: error });
   }
 
   if (sheets.length === 0) {
+    if (/\.xlsx$/i.test(file.name)) throw new Error('No readable worksheets found in this XLSX workbook.');
     // Fallback: treat as plain text / CSV
     const text = await file.text();
     const rows = text
@@ -81,84 +87,17 @@ export const parseXlsxWorkbook = async (file: File): Promise<{ sheetName: string
 /**
  * Converts an XLSX / CSV spreadsheet to a styled multi-page PDF document.
  */
-export const xlsxToPdf = async (
-  file: File,
-  onProgress?: OfficeConversionProgress
-): Promise<Blob> => {
-  onProgress?.(15, "Parsing spreadsheet sheets & cell matrix...");
+export const xlsxToPdf = async (file: File, onProgress?: OfficeConversionProgress): Promise<Blob> => {
+  onProgress?.(15, "Parsing spreadsheet cells...");
   const sheets = await parseXlsxWorkbook(file);
-
-  onProgress?.(40, "Formatting high-fidelity spreadsheet tables...");
-  const host = document.createElement("div");
-  host.setAttribute("aria-hidden", "true");
-  Object.assign(host.style, {
-    position: "fixed",
-    left: "0",
-    top: "0",
-    width: "1100px",
-    background: "#ffffff",
-    color: "#0f172a",
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-    padding: "40px",
-    zIndex: "-9999",
-    opacity: "1",
-    pointerEvents: "none",
+  const content: Content[] = [];
+  sheets.forEach((sheet, index) => {
+    content.push({ text: sheet.sheetName, fontSize: 18, bold: true, margin: [0, 0, 0, 12], ...(index ? { pageBreak: 'before' as const } : {}) });
+    const columns = Math.max(1, ...sheet.rows.map(row => row.length));
+    content.push({ table: { headerRows: 1, widths: Array(columns).fill('*'), body: sheet.rows.map((row, i) => Array.from({ length: columns }, (_, col) => ({ text: row[col] || '', bold: i === 0, fillColor: i === 0 ? '#e8edf4' : '#ffffff', margin: [2, 4, 2, 4] }))) }, layout: 'lightHorizontalLines' });
   });
-
-  const pdfDoc = await PDFDocument.create();
-
-  for (let sIdx = 0; sIdx < sheets.length; sIdx++) {
-    const sheet = sheets[sIdx];
-    onProgress?.(45 + Math.round((sIdx / sheets.length) * 45), `Rendering ${sheet.sheetName}...`);
-
-    host.innerHTML = `
-      <div style="margin-bottom: 30px;">
-        <h2 style="font-size: 20px; font-weight: 800; color: #1e293b; margin: 0 0 4px 0;">${file.name.replace(/\.[^/.]+$/, "")}</h2>
-        <span style="font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">${sheet.sheetName}</span>
-      </div>
-      <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: left;">
-        <thead>
-          <tr style="background: #f1f5f9; border-bottom: 2px solid #cbd5e1;">
-            ${(sheet.rows[0] || []).map((col, i) => `<th style="padding: 8px 12px; font-weight: 700; color: #334155; border: 1px solid #cbd5e1;">${col || `Col ${i + 1}`}</th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${sheet.rows.slice(1, 100).map((row, rIdx) => `
-            <tr style="background: ${rIdx % 2 === 0 ? "#ffffff" : "#f8fafc"}; border-bottom: 1px solid #e2e8f0;">
-              ${row.map((cell) => `<td style="padding: 7px 12px; border: 1px solid #e2e8f0; color: #1e293b;">${cell}</td>`).join("")}
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    `;
-
-    document.body.appendChild(host);
-    const canvas = await safeHtml2Canvas(host, {
-      scale: 2,
-      backgroundColor: "#ffffff"
-    });
-    document.body.removeChild(host);
-
-    const imgBlob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/jpeg", 0.94));
-    const imgBytes = await imgBlob.arrayBuffer();
-    const embedded = await pdfDoc.embedJpg(imgBytes);
-
-    const pdfPageWidth = 595.28; // A4 portrait points
-    const scaleFactor = pdfPageWidth / canvas.width;
-    const pdfPageHeight = canvas.height * scaleFactor;
-
-    const page = pdfDoc.addPage([pdfPageWidth, pdfPageHeight]);
-    page.drawImage(embedded, {
-      x: 0,
-      y: 0,
-      width: pdfPageWidth,
-      height: pdfPageHeight,
-    });
-  }
-
-  onProgress?.(95, "Compiling PDF document...");
-  const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
-  return new Blob([pdfBytes as any], { type: "application/pdf" });
+  onProgress?.(70, "Paginating spreadsheet tables...");
+  return createStructuredPdf({ info: { title: file.name }, pageSize: 'A4', pageOrientation: 'landscape', pageMargins: 36, defaultStyle: { font: 'Roboto', fontSize: 9 }, content });
 };
 
 /**
@@ -166,13 +105,13 @@ export const xlsxToPdf = async (
  */
 export const xlsxToHtml = async (file: File): Promise<string> => {
   const sheets = await parseXlsxWorkbook(file);
-  let html = `<!doctype html><html><head><meta charset="utf-8"><title>${file.name}</title><style>body{font-family:system-ui,-apple-system,sans-serif;padding:32px;background:#f8fafc;color:#0f172a;}h1{font-size:22px;}h2{font-size:16px;color:#475569;margin-top:28px;}table{width:100%;border-collapse:collapse;margin-bottom:32px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);}th,td{padding:10px 14px;border:1px solid #e2e8f0;font-size:13px;}th{background:#f1f5f9;font-weight:700;color:#1e293b;}tr:nth-child(even){background:#f8fafc;}</style></head><body><h1>${file.name}</h1>`;
+  let html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(file.name)}</title><style>body{font-family:system-ui,-apple-system,sans-serif;padding:32px;background:#f8fafc;color:#0f172a;}h1{font-size:22px;}h2{font-size:16px;color:#475569;margin-top:28px;}table{width:100%;border-collapse:collapse;margin-bottom:32px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);}th,td{padding:10px 14px;border:1px solid #e2e8f0;font-size:13px;}th{background:#f1f5f9;font-weight:700;color:#1e293b;}tr:nth-child(even){background:#f8fafc;}</style></head><body><h1>${escapeHtml(file.name)}</h1>`;
 
   for (const sheet of sheets) {
-    html += `<h2>${sheet.sheetName}</h2><table>`;
+    html += `<h2>${escapeHtml(sheet.sheetName)}</h2><table>`;
     sheet.rows.forEach((row, i) => {
       const tag = i === 0 ? "th" : "td";
-      html += `<tr>${row.map((c) => `<${tag}>${c}</${tag}>`).join("")}</tr>`;
+      html += `<tr>${row.map((c) => `<${tag}>${escapeHtml(c)}</${tag}>`).join("")}</tr>`;
     });
     html += `</table>`;
   }
@@ -181,115 +120,21 @@ export const xlsxToHtml = async (file: File): Promise<string> => {
   return html;
 };
 
-const sanitizeForPdf = (text: string): string => {
-  return text
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, '-')
-    .replace(/[\u2026]/g, '...')
-    .replace(/[^\t\n\r -\u007E\u00A0-\u00FF]/g, ' ');
-};
-
-/**
- * Converts a PPTX presentation to a multi-page PDF presentation.
- */
-export const pptxToPdf = async (
-  file: File,
-  onProgress?: OfficeConversionProgress
-): Promise<Blob> => {
-  onProgress?.(15, "Extracting presentation slide structure...");
-  const buffer = new Uint8Array(await file.arrayBuffer());
-  const unzipped = unzipSync(buffer);
-
-  const slideKeys = Object.keys(unzipped)
-    .filter((k) => k.startsWith("ppt/slides/slide") && k.endsWith(".xml"))
-    .sort((a, b) => {
-      const numA = parseInt(a.replace(/[^0-9]/g, ""), 10) || 0;
-      const numB = parseInt(b.replace(/[^0-9]/g, ""), 10) || 0;
-      return numA - numB;
-    });
-
-  const pdfDoc = await PDFDocument.create();
-  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const regularFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  // Widescreen 16:9 PDF dimensions in points
-  const slideWidth = 960;
-  const slideHeight = 540;
-
-  for (let idx = 0; idx < slideKeys.length; idx++) {
-    onProgress?.(25 + Math.round((idx / slideKeys.length) * 65), `Compiling slide ${idx + 1} of ${slideKeys.length}...`);
-    const xmlStr = strFromU8(unzipped[slideKeys[idx]]);
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlStr, "application/xml");
-
-    // Extract all text paragraphs
-    const paragraphs: string[] = [];
-    const pNodes = doc.querySelectorAll("p");
-    pNodes.forEach((p) => {
-      const text = p.textContent?.trim();
-      if (text) paragraphs.push(text);
-    });
-
-    const page = pdfDoc.addPage([slideWidth, slideHeight]);
-
-    // Draw Slide Background
-    page.drawRectangle({
-      x: 0,
-      y: 0,
-      width: slideWidth,
-      height: slideHeight,
-      color: rgb(0.98, 0.98, 0.99),
-    });
-
-    // Draw Slide Header Accent
-    page.drawRectangle({
-      x: 0,
-      y: slideHeight - 8,
-      width: slideWidth,
-      height: 8,
-      color: rgb(0.2, 0.4, 0.9),
-    });
-
-    // Draw Slide Number
-    page.drawText(`${idx + 1}`, {
-      x: slideWidth - 50,
-      y: 30,
-      size: 14,
-      font: regularFont,
-      color: rgb(0.5, 0.5, 0.5),
-    });
-
-    // Draw Title
-    const rawTitle = paragraphs[0] || `Slide ${idx + 1}`;
-    const title = sanitizeForPdf(rawTitle).substring(0, 75);
-    page.drawText(title, {
-      x: 60,
-      y: slideHeight - 70,
-      size: 28,
-      font,
-      color: rgb(0.1, 0.15, 0.25),
-    });
-
-    // Draw Content Paragraphs
-    let currentY = slideHeight - 130;
-    const bodyParagraphs = paragraphs.slice(1);
-
-    for (const bodyP of bodyParagraphs) {
-      if (currentY < 60) break;
-      const cleanBody = sanitizeForPdf(bodyP).substring(0, 100);
-      page.drawText(`- ${cleanBody}`, {
-        x: 80,
-        y: currentY,
-        size: 16,
-        font: regularFont,
-        color: rgb(0.2, 0.25, 0.35),
-      });
-      currentY -= 32;
-    }
-  }
-
-  onProgress?.(95, "Finalizing presentation PDF...");
-  const pdfBytes = await pdfDoc.save({ useObjectStreams: true });
-  return new Blob([pdfBytes as any], { type: "application/pdf" });
+/** Extract slide text into readable pages; original slide artwork is not reproduced. */
+export const pptxToPdf = async (file: File, onProgress?: OfficeConversionProgress): Promise<Blob> => {
+  onProgress?.(15, 'Extracting slide text...');
+  const unzipped = unzipSync(new Uint8Array(await file.arrayBuffer()));
+  const keys = Object.keys(unzipped).filter(key => /^ppt\/slides\/slide\d+\.xml$/.test(key))
+    .sort((a, b) => Number(a.match(/slide(\d+)/)?.[1]) - Number(b.match(/slide(\d+)/)?.[1]));
+  if (!keys.length) throw new Error('No readable slides found in this PPTX file.');
+  const content: Content[] = [];
+  keys.forEach((key, index) => {
+    const xml = new DOMParser().parseFromString(strFromU8(unzipped[key]), 'application/xml');
+    const paragraphs = Array.from(xml.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 'p'))
+      .map(p => Array.from(p.getElementsByTagNameNS('http://schemas.openxmlformats.org/drawingml/2006/main', 't')).map(t => t.textContent || '').join(''));
+    content.push({ text: `Slide ${index + 1}`, fontSize: 10, color: '#64748b', margin: [0, 0, 0, 10], ...(index ? { pageBreak: 'before' as const } : {}) });
+    paragraphs.forEach((text, i) => content.push({ text, bold: i === 0, fontSize: i === 0 ? 24 : 14, margin: [0, 0, 0, 12] }));
+  });
+  onProgress?.(70, 'Paginating slide text...');
+  return createStructuredPdf({ info: { title: file.name }, pageSize: { width: 960, height: 540 }, pageMargins: 48, defaultStyle: { font: 'Roboto', fontSize: 14 }, content });
 };

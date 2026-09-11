@@ -45,7 +45,7 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'video',
+    label: 'Video',
     defaultHref: 'video-compressor',
     items: [
       { label: 'Compress Video', href: 'video-compressor', icon: Video },
@@ -55,22 +55,22 @@ const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
-    label: 'pdf',
+    label: 'PDF',
     defaultHref: 'pdf-edit',
     items: [
       { label: 'Edit PDF', href: 'pdf-edit', icon: FileText },
       { label: 'Compress PDF', href: 'pdf-compress', icon: Sliders },
       { label: 'Merge PDF', href: 'pdf-merge', icon: FilePlus },
       { label: 'Split PDF', href: 'pdf-split', icon: Scissors },
-      { label: 'Redact & Annotate', href: 'pdf-redact', icon: ShieldOff },
+      { label: 'Redact PDF', href: 'pdf-redact', icon: ShieldOff },
       { label: 'Flatten PDF', href: 'pdf-flatten', icon: Lock },
-      { label: 'OCR & Searchable PDF', href: 'pdf-ocr', icon: FileText },
-      { label: 'Protect Password', href: 'pdf-protect', icon: Lock },
+      { label: 'Make PDF Searchable', href: 'pdf-ocr', icon: FileText },
+      { label: 'Protect PDF', href: 'pdf-protect', icon: Lock },
       { label: 'Organize Pages', href: 'pdf-organize', icon: Layers },
     ]
   },
   {
-    label: 'images',
+    label: 'Images',
     defaultHref: 'image-optimizer',
     items: [
       { label: 'Edit an Image', href: 'image-optimizer', icon: ImageIcon },
@@ -78,20 +78,20 @@ const NAV_GROUPS: NavGroup[] = [
     ]
   },
   {
-    label: 'audio',
+    label: 'Audio',
     defaultHref: 'audio-optimizer',
     items: [
       { label: 'Compress Audio', href: 'audio-optimizer', icon: Music },
-      { label: 'Audio Joiner', href: 'audio-joiner', icon: Layers },
+      { label: 'Join Audio', href: 'audio-joiner', icon: Layers },
       { label: 'Key & BPM Finder', href: 'audio-bpm-finder', icon: Disc },
       { label: 'Pitch & Speed', href: 'audio-pitch-speed', icon: Sliders }
     ]
   },
   {
-    label: 'convert',
+    label: 'Convert',
     defaultHref: 'universal-converter',
     items: [
-      { label: 'Universal Converter', href: 'universal-converter', icon: RefreshCw },
+      { label: 'Convert Files', href: 'universal-converter', icon: RefreshCw },
       { label: 'Edit Metadata', href: 'metadata-editor', icon: Tag }
     ]
   }

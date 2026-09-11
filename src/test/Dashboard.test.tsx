@@ -12,12 +12,12 @@ describe('Dashboard Component', () => {
   it('shows popular tools first and expands the complete library on request', () => {
     render(<Dashboard onSelectTool={vi.fn()} processedCount={{ count: 1500000, scope: 'global' }} />);
     expect(screen.getByText('Compress a video')).toBeInTheDocument();
-    expect(screen.queryByText('Page Organizer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Organize Pages')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /View all/i }));
-    expect(screen.getByText('Page Organizer')).toBeInTheDocument();
+    expect(screen.getByText('Organize Pages')).toBeInTheDocument();
     expect(screen.getByText('Merge PDF')).toBeInTheDocument();
     expect(screen.getByText('Edit PDF')).toBeInTheDocument();
-    expect(screen.getByText('Markdown Workspace')).toBeInTheDocument();
+    expect(screen.getByText('Markdown to PDF')).toBeInTheDocument();
   });
 
   it('triggers onSelectTool when a tool card is clicked', () => {
@@ -32,8 +32,8 @@ describe('Dashboard Component', () => {
     fireEvent.click(screen.getByRole('button', { name: /View all/i }));
     const pdfButtons = screen.getAllByRole('button', { name: /PDF/i });
     fireEvent.click(pdfButtons[0]);
-    expect(screen.getByText('Page Organizer')).toBeInTheDocument();
+    expect(screen.getByText('Organize Pages')).toBeInTheDocument();
     expect(screen.getByText('Edit PDF')).toBeInTheDocument();
-    expect(screen.getByText('Markdown Workspace')).toBeInTheDocument();
+    expect(screen.getByText('Markdown to PDF')).toBeInTheDocument();
   });
 });

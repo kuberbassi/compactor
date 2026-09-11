@@ -1,3 +1,4 @@
+import { escapeHtml } from './htmlText';
 /**
  * Universal Lossless Conversion Helpers for Images, Audio, Documents, and Data
  */
@@ -271,14 +272,14 @@ export const csvToHtmlTable = (csvText: string, title = 'Converted Data'): strin
   const jsonStr = csvToJson(csvText);
   const data = JSON.parse(jsonStr);
   if (!Array.isArray(data) || data.length === 0) {
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title></head><body><pre>${csvText}</pre></body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title></head><body><pre>${escapeHtml(csvText)}</pre></body></html>`;
   }
   
   const headers = Object.keys(data[0]);
-  const headerHtml = headers.map(h => `<th style="border: 1px solid #27272a; padding: 10px 14px; background: #18181b; color: #f4f4f5; text-align: left; font-weight: 700;">${h}</th>`).join('');
+  const headerHtml = headers.map(h => `<th style="border: 1px solid #27272a; padding: 10px 14px; background: #18181b; color: #f4f4f5; text-align: left; font-weight: 700;">${escapeHtml(h)}</th>`).join('');
   const rowsHtml = data.map((row, idx) => {
     const bg = idx % 2 === 0 ? '#09090b' : '#141417';
-    const cells = headers.map(h => `<td style="border: 1px solid #27272a; padding: 10px 14px; color: #e4e4e7;">${row[h] || ''}</td>`).join('');
+    const cells = headers.map(h => `<td style="border: 1px solid #27272a; padding: 10px 14px; color: #e4e4e7;">${escapeHtml(row[h] || '')}</td>`).join('');
     return `<tr style="background: ${bg};">${cells}</tr>`;
   }).join('');
   
@@ -287,7 +288,7 @@ export const csvToHtmlTable = (csvText: string, title = 'Converted Data'): strin
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 32px; background: #09090b; color: #f4f4f5; }
     h2 { font-size: 20px; font-weight: 800; margin-bottom: 16px; letter-spacing: -0.02em; }
@@ -295,7 +296,7 @@ export const csvToHtmlTable = (csvText: string, title = 'Converted Data'): strin
   </style>
 </head>
 <body>
-  <h2>${title}</h2>
+  <h2>${escapeHtml(title)}</h2>
   <table>
     <thead><tr>${headerHtml}</tr></thead>
     <tbody>${rowsHtml}</tbody>
@@ -308,21 +309,21 @@ export const csvToHtmlTable = (csvText: string, title = 'Converted Data'): strin
  * Wraps text or markdown content into a styled HTML document string
  */
 export const textToHtml = (content: string, title = 'Document'): string => {
-  const paragraphs = content.split(/\n\n+/).map(p => `<p style="margin-bottom: 16px; line-height: 1.6;">${p.replace(/\n/g, '<br/>')}</p>`).join('');
+  const paragraphs = content.split(/\n\n+/).map(p => `<p style="margin-bottom: 16px; line-height: 1.6;">${escapeHtml(p).replace(/\n/g, '<br/>')}</p>`).join('');
   
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>${title}</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px 24px; background: #09090b; color: #f4f4f5; font-size: 15px; }
     h1 { font-size: 28px; font-weight: 800; border-bottom: 1px solid #27272a; padding-bottom: 16px; margin-bottom: 24px; }
   </style>
 </head>
 <body>
-  <h1>${title}</h1>
+  <h1>${escapeHtml(title)}</h1>
   ${paragraphs}
 </body>
 </html>`;

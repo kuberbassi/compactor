@@ -788,7 +788,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
   return (
     <div className={`tool-layout image-tool-layout ${files.length > 0 || processing || results.length > 0 ? 'has-active-session' : 'is-empty-session'}`}>
       <ToolHeader
-        title="Image Optimizer"
+        title="Images"
         description="Compress, convert, resize, crop, and edit images right in your browser." 
         icon={ImageIcon} 
         onGoHome={() => {
@@ -802,7 +802,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
           label="Image tools"
           activeId="image-optimizer"
           options={[
-            { id: 'image-optimizer', label: 'Optimize' },
+            { id: 'image-optimizer', label: 'Edit' },
             { id: 'rasterbator', label: 'Poster' },
           ]}
           onSelect={onSelectTool}
@@ -825,7 +825,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
       {(files.length > 0 || processing || results.length > 0) && (
         <WorkspaceShell
           className="workspace-shell--embedded"
-          title="Image Optimizer"
+          title="Images"
           fileName={activeFile?.name || (files.length > 1 ? `${files.length} images` : 'Image workspace')}
           fileMeta={activeFile ? `${formatBytes(activeFile.size)}${activeSettings?.origWidth ? ` · ${activeSettings.origWidth} × ${activeSettings.origHeight}px` : ''}` : `${files.length} files in queue`}
           status={processing ? 'Processing' : results.length > 0 ? 'Export ready' : 'Ready to edit'}
@@ -1129,7 +1129,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
 
             {/* Image preview and asset queue */}
             <div className="image-editor-stage">
-            <div ref={previewViewportRef} className="image-preview-viewport flex-1 bg-[var(--bg-color)] relative overflow-auto">
+            <div ref={previewViewportRef} className="image-preview-viewport workbench-scroll-region flex-1 bg-[var(--bg-color)] relative">
               {/* Subtle checker background */}
               <div className="absolute inset-0 opacity-[0.03]"
                 style={{ backgroundImage: 'repeating-conic-gradient(#fff 0% 25%, transparent 0% 50%)', backgroundSize: '20px 20px' }} />

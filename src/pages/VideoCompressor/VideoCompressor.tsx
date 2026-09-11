@@ -415,17 +415,17 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
   const getToolTitle = () => {
     if (sourceIsGif) return 'GIF Compressor';
     if (mode === 'mute') return 'Mute Video';
-    if (mode === 'to-text') return 'Video to Text Transcriber';
-    if (mode === 'whatsapp') return 'WhatsApp Video Compressor (≤16MB)';
-    if (mode === 'discord') return 'Discord Video Compressor (≤10MB)';
-    if (mode === 'tiktok') return 'TikTok Video Compressor (≤72MB)';
-    if (mode === 'instagram') return 'Instagram Video Compressor (≤100MB)';
-    if (mode === 'x') return 'Twitter/X Video Compressor (≤512MB)';
-    if (mode === 'telegram') return 'Telegram Video Compressor (≤2GB)';
-    if (mode === 'facebook') return 'Facebook Video Compressor (≤4GB)';
-    if (mode === 'youtube') return 'YouTube Video Compressor (≤500MB)';
-    if (mode === 'convert') return 'Video Format Converter';
-    return 'Video Studio';
+    if (mode === 'to-text') return 'Video to Text';
+    if (mode === 'whatsapp') return 'Compress for WhatsApp';
+    if (mode === 'discord') return 'Compress for Discord';
+    if (mode === 'tiktok') return 'Compress for TikTok';
+    if (mode === 'instagram') return 'Compress for Instagram';
+    if (mode === 'x') return 'Compress for X';
+    if (mode === 'telegram') return 'Compress for Telegram';
+    if (mode === 'facebook') return 'Compress for Facebook';
+    if (mode === 'youtube') return 'Compress for YouTube';
+    if (mode === 'convert') return 'Convert Video';
+    return 'Video';
   };
 
   return (

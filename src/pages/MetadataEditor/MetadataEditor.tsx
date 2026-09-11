@@ -194,7 +194,7 @@ export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUpl
   return (
     <div className={`tool-layout metadata-tool-layout ${file || result || processing || reading ? 'has-active-session' : 'is-empty-session'}`}>
       <ToolHeader 
-        title="Metadata Editor" 
+        title="File Details"
         description="Edit titles, artist tags, album details, and artwork directly in your browser with zero server uploads." 
         icon={TagIcon} 
         fileName={file?.name || result?.name}
@@ -204,7 +204,7 @@ export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUpl
           activeId="metadata-editor"
           options={[
             { id: 'universal-converter', label: 'Convert' },
-            { id: 'metadata-editor', label: 'Metadata' },
+            { id: 'metadata-editor', label: 'Details' },
           ]}
           onSelect={onSelectTool}
         /> : undefined}

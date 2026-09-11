@@ -51,7 +51,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-organize',
-    title: 'Page Organizer',
+    title: 'Organize Pages',
     subtitle: 'Reorder & rotate pages',
     description: 'Rearrange, rotate, or delete PDF pages visually with clear thumbnails.',
     category: 'PDF',
@@ -96,7 +96,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-stamps',
-    title: 'Document Stamps',
+    title: 'Stamp PDF',
     subtitle: 'Brand PDF with watermark',
     description: 'Apply text or image stamps (APPROVED, CONFIDENTIAL) with opacity control.',
     category: 'PDF',
@@ -105,7 +105,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-protect',
-    title: 'Protect Password',
+    title: 'Protect PDF',
     subtitle: 'Encrypt PDF with AES',
     description: 'Encrypt PDF files with passwords to prevent unauthorized viewing.',
     category: 'PDF',
@@ -150,7 +150,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'pdf-word-to-pdf',
-    title: 'Markdown Workspace',
+    title: 'Markdown to PDF',
     subtitle: 'Write Markdown & export PDF',
     description: 'Write Markdown with a formatting toolbar, live split preview, templates, and local PDF export.',
     category: 'PDF',
@@ -179,7 +179,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'rasterbator',
-    title: 'Make a poster (Rasterbator)',
+    title: 'Make a Poster',
     subtitle: 'Print big wall posters',
     description: 'Split one photo across multiple printable A4 or A3 grid pages.',
     category: 'IMAGE',
@@ -199,7 +199,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'audio-joiner',
-    title: 'Audio Joiner',
+    title: 'Join Audio',
     subtitle: 'Merge multiple audio files',
     description: 'Combine and merge multiple audio tracks sequentially into a single track.',
     category: 'AUDIO & CONVERT',
@@ -208,7 +208,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'audio-bpm-finder',
-    title: 'Key & BPM Finder',
+    title: 'Find Key & BPM',
     subtitle: 'Detect Musical Key & Tempo',
     description: 'Analyze tempo (BPM), musical key and Camelot wheel code 100% client-side.',
     category: 'AUDIO & CONVERT',
@@ -217,7 +217,7 @@ export const TOOLS: ToolItem[] = [
   },
   {
     id: 'audio-pitch-speed',
-    title: 'Pitch & Speed Changer',
+    title: 'Pitch & Speed',
     subtitle: 'Transpose Pitch & Tempo',
     description: 'Adjust pitch (-12 to +12 semitones) and playback speed (0.5x to 2.0x).',
     category: 'AUDIO & CONVERT',

@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { PDFDocument } from 'pdf-lib';
 import { zipSync, strToU8 } from "fflate";
-import { parseXlsxWorkbook, xlsxToHtml, pptxToPdf } from "../utils/officeConverters";
+import { parseXlsxWorkbook, xlsxToHtml, pptxToPdf, xlsxToPdf } from "../utils/officeConverters";
 
 describe("officeConverters", () => {
+  afterEach(() => vi.unstubAllGlobals());
   it("parses fallback plain text / CSV rows into sheets correctly", async () => {
     const csvContent = "Name,Age,Role\nAlice,30,Developer\nBob,25,Designer";
     const file = new File([csvContent], "data.csv", { type: "text/csv" });
@@ -26,6 +29,8 @@ describe("officeConverters", () => {
   });
 
   it("converts PPTX slide structures to multi-page PDF documents", async () => {
+    const font = readFileSync('node_modules/@fontsource/roboto-mono/files/roboto-mono-latin-400-normal.woff');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength) }));
     const slide1Xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
         <p:spTree>
@@ -50,6 +55,38 @@ describe("officeConverters", () => {
     expect(pdfBlob).toBeInstanceOf(Blob);
     expect(pdfBlob.type).toBe("application/pdf");
     expect(pdfBlob.size).toBeGreaterThan(500);
+    if (process.env.PDF_QA_OUTPUT) {
+      mkdirSync('.cache/pdf-qa', { recursive: true });
+      writeFileSync('.cache/pdf-qa/slides.pdf', new Uint8Array(await pdfBlob.arrayBuffer()));
+    }
+  });
+
+  it('preserves missing columns and inline strings instead of shifting values', async () => {
+    const bytes = zipSync({ 'xl/worksheets/sheet1.xml': strToU8('<worksheet><sheetData><row><c r="A1" t="inlineStr"><is><t>Name</t></is></c><c r="C1"><v>42</v></c></row></sheetData></worksheet>') });
+    const sheets = await parseXlsxWorkbook(new File([bytes], 'sparse.xlsx'));
+    expect(sheets[0].rows[0]).toEqual(['Name', '', '42']);
+  });
+
+  it('escapes user cells and filenames in exported HTML', async () => {
+    const html = await xlsxToHtml(new File(['Header\n<script>alert(1)</script>'], '<img>.csv'));
+    expect(html).not.toContain('<script>');
+    expect(html).not.toContain('<img>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('rejects broken workbooks instead of treating ZIP bytes as CSV', async () => {
+    await expect(parseXlsxWorkbook(new File(['broken'], 'bad.xlsx'))).rejects.toThrow('Could not read');
+  });
+
+  it('paginates spreadsheets beyond 100 rows without screenshot pages', async () => {
+    const csv = 'Row,Value\n' + Array.from({ length: 140 }, (_, i) => `${i},Entry ${i}`).join('\n');
+    const blob = await xlsxToPdf(new File([csv], 'long.csv'));
+    const pdf = await PDFDocument.load(await blob.arrayBuffer());
+    expect(pdf.getPageCount()).toBeGreaterThan(2);
+    expect(pdf.getPage(0).getWidth()).toBeGreaterThan(pdf.getPage(0).getHeight());
+    if (process.env.PDF_QA_OUTPUT) {
+      mkdirSync('.cache/pdf-qa', { recursive: true });
+      writeFileSync('.cache/pdf-qa/spreadsheet.pdf', new Uint8Array(await blob.arrayBuffer()));
+    }
   });
 });
-

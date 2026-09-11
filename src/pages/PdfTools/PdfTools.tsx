@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
+import { ToolModeSwitcher } from '../../components/Common/ToolModeSwitcher';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
 import { PdfEditor } from './PdfEditor';
 import { MarkdownEditor } from './MarkdownEditor';
@@ -40,7 +41,9 @@ import {
   PanelLeft, PanelLeftClose
 } from 'lucide-react';
 import { WorkspaceShell } from '../../components/Workspace/WorkspaceShell';
+import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../components/Workspace/EditorChrome';
 import { Button } from '../../components/ui/button';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger } from '../../components/ui/select';
 import { pathForTool } from '../../config/toolRoutes';
 
 interface PdfToolsProps {
@@ -61,8 +64,8 @@ interface PageItem {
   thumbnailUrl?: string;
 }
 
-import { TOOL_GROUPS, PDF_MODE_TABS, CANVAS_PDF_TOOLS, WORKFLOW_CATEGORIES, parsePageRanges } from './pdfToolsConfig';
-import type { WorkflowCategoryId, CompressionResult } from './pdfToolsConfig';
+import { TOOL_GROUPS, PDF_MODE_TABS, CANVAS_PDF_TOOLS, parsePageRanges } from './pdfToolsConfig';
+import type { CompressionResult } from './pdfToolsConfig';
 export type { CompressionResult };
 import { LivePdfPreview } from './components/LivePdfPreview';
 import { PageOrganizer } from './components/PageOrganizer';
@@ -74,7 +77,6 @@ import { PdfResultViews } from './components/PdfResultViews';
 
 export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(toolId || 'pdf-organize');
-  const [selectedWorkflowCategory, setSelectedWorkflowCategory] = useState<WorkflowCategoryId>('all');
 
   // Global execution states
   const [processing, setProcessing] = useState(false);
@@ -105,15 +107,19 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   // Page Organizer state
   const [pagesList, setPagesList] = useState<PageItem[]>([]);
   const [peekPageIndex, setPeekPageIndex] = useState<number | null>(null);
+  const [blankPageScan, setBlankPageScan] = useState<{ status: 'idle' | 'scanning' | 'ready' | 'none' | 'error'; indexes: number[]; inspected: number; total: number }>({ status: 'idle', indexes: [], inspected: 0, total: 0 });
+  const fileLoadTokenRef = useRef(0);
 
   // Tool list stays available but yields space once a file is active.
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
 
   useEffect(() => {
-    if (singleFile || multipleFiles.length > 0) {
+    if (singleFile) {
+      setIsSidebarCollapsed(false);
+    } else if (multipleFiles.length > 0) {
       setIsSidebarCollapsed(true);
     }
-  }, [singleFile, multipleFiles]);
+  }, [singleFile, multipleFiles.length]);
 
   // Tool specific configuration states
   const [pageRangeText, setPageRangeText] = useState('1-2');
@@ -124,6 +130,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const [pageNumberPosition, setPageNumberPosition] = useState<'top' | 'bottom'>('bottom');
   const [cropMarginsPct, setCropMarginsPct] = useState<number>(10);
+  const [organizerAddPageNumbers, setOrganizerAddPageNumbers] = useState(false);
+  const [organizerCropEnabled, setOrganizerCropEnabled] = useState(false);
   
   const [signatureText, setSignatureText] = useState('Authorized Signatory');
   const [signaturePos, setSignaturePos] = useState<'bottom-right' | 'bottom-left' | 'top-right' | 'center'>('bottom-right');
@@ -151,6 +159,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   // PDF to Images Extracted Output List
   const [pdfExportImgFormat, setPdfExportImgFormat] = useState<'png' | 'jpg'>('png');
+  const [pdfExportMode, setPdfExportMode] = useState<'png' | 'jpg' | 'markdown'>('png');
   const [flattenMode, setFlattenMode] = useState<'forms' | 'complete'>('complete');
   const [flattenQuality, setFlattenQuality] = useState<'standard' | 'high' | 'print'>('high');
   const [extractedImages, setExtractedImages] = useState<{ pageNumber: number; blob: Blob; url: string }[]>([]);
@@ -205,6 +214,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     setMultipleFiles([]);
     setSingleFile(null);
     setPagesList([]);
+    fileLoadTokenRef.current += 1;
+    setBlankPageScan({ status: 'idle', indexes: [], inspected: 0, total: 0 });
     setPeekPageIndex(null);
     setDraggedQueueIndex(null);
     setShowPassword(false);
@@ -213,6 +224,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     setProgress(0);
     setProcessing(false);
     setCompressionResults([]);
+    setOrganizerAddPageNumbers(false);
+    setOrganizerCropEnabled(false);
   };
 
   useEffect(() => {
@@ -264,6 +277,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     setProcessing(true);
     setStatusText('Analyzing PDF security & page structure...');
     const f = selectedFiles[0];
+    const loadToken = ++fileLoadTokenRef.current;
 
     const secStatus = await checkPdfEncryptionStatus(f);
     setPdfIsEncrypted(secStatus.isEncrypted);
@@ -271,6 +285,9 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
     const count = secStatus.pageCount;
     setSingleFile({ file: f, pageCount: count });
+    if (activeTool === 'pdf-protect' || activeTool === 'pdf-unlock') {
+      setActiveTool(secStatus.isEncrypted ? 'pdf-unlock' : 'pdf-protect');
+    }
     setPageRangeText(`1-${Math.min(count, 3)}`);
 
     const items: PageItem[] = [];
@@ -278,15 +295,37 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       items.push({ id: `page-${i}-${Date.now()}`, originalIndex: i, rotation: 0 });
     }
     setPagesList(items);
+    setBlankPageScan({ status: 'scanning', indexes: [], inspected: 0, total: count });
     setProcessing(false);
 
-    renderPdfThumbnails(f, Math.min(count, 100), 1.5).then(thumbs => {
+    const thumbnailScale = count > 150 ? 0.5 : count > 75 ? 0.75 : 1.25;
+    const detectedBlankIndexes: number[] = [];
+    let assessmentFailed = false;
+    renderPdfThumbnails(f, count, thumbnailScale, undefined, (pageIndex, thumbnailUrl) => {
+      if (fileLoadTokenRef.current !== loadToken) return;
+      if (!thumbnailUrl) return;
+      const pageId = items[pageIndex]?.id;
+      setPagesList(previous => previous.map(item => item.id === pageId ? { ...item, thumbnailUrl } : item));
+    }, (pageIndex, isBlank) => {
+      if (fileLoadTokenRef.current !== loadToken) return;
+      if (isBlank === null) assessmentFailed = true;
+      if (isBlank) detectedBlankIndexes.push(pageIndex);
+      setBlankPageScan({ status: 'scanning', indexes: [...detectedBlankIndexes], inspected: pageIndex + 1, total: count });
+    }).then(thumbs => {
+      if (fileLoadTokenRef.current !== loadToken) return;
+      if (!thumbs || thumbs.length !== count) assessmentFailed = true;
       if (thumbs && thumbs.length > 0) {
-        setPagesList(prev => prev.map((item, idx) => ({
-          ...item,
-          thumbnailUrl: thumbs[idx] || undefined
-        })));
+        setPagesList(previous => previous.map(item => {
+          const pageIndex = items.findIndex(source => source.id === item.id);
+          return pageIndex >= 0 ? { ...item, thumbnailUrl: thumbs[pageIndex] || item.thumbnailUrl } : item;
+        }));
       }
+      setBlankPageScan({
+        status: assessmentFailed ? 'error' : detectedBlankIndexes.length > 0 ? 'ready' : 'none',
+        indexes: [...detectedBlankIndexes],
+        inspected: count,
+        total: count,
+      });
     });
   };
 
@@ -301,7 +340,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   };
 
   const selectedPagesInSplit = singleFile ? parsePageRanges(pageRangeText, singleFile.pageCount) : [];
-  const isImmersivePdfEditor = Boolean((singleFile && (activeTool === 'pdf-edit' || activeTool === 'pdf-redact')) || activeTool === 'pdf-word-to-pdf');
+  const isImmersivePdfEditor = Boolean(singleFile || multipleFiles.length > 0 || activeTool === 'pdf-word-to-pdf');
 
   const togglePageInSplitRange = (pNum: number) => {
     let current = new Set(selectedPagesInSplit);
@@ -385,6 +424,33 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     })));
   };
 
+  const handleImageFilesSelected = async (selectedFiles: File[]) => {
+    const supported = selectedFiles.filter(file =>
+      ['image/png', 'image/jpeg', 'image/webp'].includes(file.type.toLowerCase()) ||
+      /\.(png|jpe?g|webp)$/i.test(file.name)
+    );
+    if (supported.length === 0) return;
+    await handleMultipleFilesSelected(supported);
+  };
+
+  const removeBlankPagesFromOrganizer = () => {
+    if (!singleFile || blankPageScan.status !== 'ready') return;
+    setErrorMessage(null);
+    try {
+      const blankOriginalIndexes = new Set(blankPageScan.indexes);
+      const removableCount = pagesList.filter(page => blankOriginalIndexes.has(page.originalIndex)).length;
+      if (removableCount === pagesList.length && removableCount > 0) {
+        throw new Error('Every remaining page appears blank. No pages were removed; review the document manually.');
+      }
+      setPagesList(previous => previous.filter(page => !blankOriginalIndexes.has(page.originalIndex)));
+      setBlankPageScan(previous => ({ ...previous, status: 'none', indexes: [] }));
+      setProgress(100);
+      setStatusText(removableCount === 0 ? 'No blank pages found' : `Removed ${removableCount} blank ${removableCount === 1 ? 'page' : 'pages'}`);
+    } catch (error) {
+      setErrorMessage(`Blank-page detection failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   // --- RUN ACTIONS ---
   const runOrganize = async () => {
     if (!singleFile || pagesList.length === 0) return;
@@ -396,7 +462,15 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         originalIndex: item.originalIndex,
         rotation: item.rotation
       }));
-      const blob = await reorganizePdfPages(singleFile.file, specs);
+      let blob = await reorganizePdfPages(singleFile.file, specs);
+      if (organizerCropEnabled) {
+        setStatusText('Cropping margins...');
+        blob = await cropPdfMargins(new File([blob], singleFile.file.name, { type: 'application/pdf' }), cropMarginsPct);
+      }
+      if (organizerAddPageNumbers) {
+        setStatusText('Adding page numbers...');
+        blob = await addPageNumbersToPdf(new File([blob], singleFile.file.name, { type: 'application/pdf' }), pageNumberPosition);
+      }
       setProgress(90);
       setResultSize(blob.size);
       setResultUrl(URL.createObjectURL(blob));
@@ -694,11 +768,15 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const runPdfToImages = async () => {
     if (!singleFile) return;
+    if (pdfExportMode === 'markdown') {
+      await runPdfToMd();
+      return;
+    }
     setProcessing(true); setProgress(40);
     setErrorMessage(null);
     setStatusText(`Rendering ${singleFile.pageCount} pages at 300 DPI high-resolution...`);
     try {
-      const images = await renderPdfPagesToImages(singleFile.file, pdfExportImgFormat, 2.5);
+      const images = await renderPdfPagesToImages(singleFile.file, pdfExportMode, 2.5);
       setProgress(95);
       setExtractedImages(images);
       onUploadSuccess();
@@ -855,14 +933,24 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   };
 
   const getToolTitle = () => {
+    if (activeTool === 'pdf-edit') return 'Edit PDF';
+    if (activeTool === 'pdf-word-to-pdf') return 'Markdown to PDF';
+    if (activeTool === 'pdf-unlock') return 'Unlock PDF';
+    if (activeTool === 'pdf-to-word') return 'PDF to Markdown';
+    if (!singleFile && multipleFiles.length === 0 && activeTool === 'pdf-organize') return 'PDF Tools';
     for (const group of TOOL_GROUPS) {
       const match = group.items.find(i => i.id === activeTool);
       if (match) return match.label;
     }
-    return 'PDF Tools';
+    return 'PDF';
   };
 
   const getToolDesc = () => {
+    if (!singleFile && multipleFiles.length === 0 && activeTool === 'pdf-organize') {
+      return 'Choose a document once, then organize, optimize, secure, or convert it in one workspace';
+    }
+    if (activeTool === 'pdf-unlock') return 'Remove password protection from an encrypted PDF';
+    if (activeTool === 'pdf-to-word') return 'Extract the structured text layer as Markdown';
     for (const group of TOOL_GROUPS) {
       const match = group.items.find(i => i.id === activeTool);
       if (match) return match.desc;
@@ -886,6 +974,9 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   });
 
   const hasPdfSession = Boolean(singleFile || multipleFiles.length > 0 || resultUrl || compressionResults.length > 0 || extractedImages.length > 0 || processing || activeTool === 'pdf-word-to-pdf');
+  const activePdfSection = activeTool === 'pdf-word-to-pdf'
+    ? 'pdf-word-to-pdf'
+    : CANVAS_PDF_TOOLS.has(activeTool) ? 'pdf-edit' : 'pdf-organize';
 
   const selectPdfMode = (tool: string) => {
     reset();
@@ -893,8 +984,63 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     window.history.pushState(null, '', pathForTool(tool));
   };
 
+  const selectWorkflowTool = (tool: string) => {
+    setErrorMessage(null);
+    if (resultUrl) URL.revokeObjectURL(resultUrl);
+    compressionResults.forEach(result => {
+      if (result.url) URL.revokeObjectURL(result.url);
+    });
+    setResultUrl(null);
+    setResultName('');
+    setResultSize(0);
+    setExtractedImages([]);
+    setCompressionResults([]);
+
+    if ((tool === 'pdf-merge' || tool === 'pdf-compress') && singleFile) {
+      setMultipleFiles(previous => previous.some(item => item.file === singleFile.file)
+        ? previous
+        : [{ ...singleFile }, ...previous]);
+    } else if (tool !== 'pdf-jpg-to-pdf' && !singleFile && multipleFiles[0]?.file.type.includes('pdf')) {
+      void handleSingleFileSelected([multipleFiles[0].file]);
+    }
+
+    const resolvedTool = tool === 'pdf-protect' && singleFile && pdfIsEncrypted ? 'pdf-unlock' : tool;
+    setActiveTool(resolvedTool);
+    window.history.pushState(null, '', pathForTool(resolvedTool));
+  };
+
+  const workflowSelectionValue = ['pdf-unlock', 'pdf-flatten', 'pdf-flatten-forms', 'pdf-flatten-entire', 'pdf-remove-metadata'].includes(activeTool)
+    ? 'pdf-protect'
+    : activeTool === 'pdf-to-word' ? 'pdf-to-image' : activeTool;
+  const activeWorkflowTool = TOOL_GROUPS.flatMap(group => group.items).find(item => item.id === workflowSelectionValue);
+  const workflowPicker = activePdfSection === 'pdf-organize' && (singleFile || multipleFiles.length > 0) ? (
+    <div className="pdf-workflow-picker">
+      <Select value={workflowSelectionValue} onValueChange={value => value && selectWorkflowTool(value)}>
+        <SelectTrigger aria-label="Choose PDF tool">
+          <span className="pdf-workflow-picker__value">
+            {activeWorkflowTool && <activeWorkflowTool.icon aria-hidden="true" />}
+            <span>{activeWorkflowTool?.label || 'Choose a tool'}</span>
+          </span>
+        </SelectTrigger>
+        <SelectContent align="end" className="pdf-workflow-picker__menu">
+          {TOOL_GROUPS.map(group => (
+            <SelectGroup key={group.id}>
+              <SelectLabel>{group.title}</SelectLabel>
+              {group.items.map(item => (
+                <SelectItem key={item.id} value={item.id}>
+                  <item.icon aria-hidden="true" />
+                  <span>{item.label}</span>
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  ) : null;
+
   return (
-    <div className={`tool-layout pdf-tool-layout ${hasPdfSession ? 'has-active-session' : 'is-empty-session'} ${isImmersivePdfEditor ? 'pdf-tool-layout--immersive' : ''}`}>
+    <div className={`tool-layout pdf-tool-layout ${hasPdfSession ? 'has-active-session' : 'is-empty-session'} ${isImmersivePdfEditor ? 'pdf-tool-layout--immersive' : ''} ${singleFile && activeTool === 'pdf-organize' ? 'pdf-tool-layout--organizer' : ''}`}>
       <ToolHeader 
         title={getToolTitle()} 
         description={getToolDesc()} 
@@ -907,23 +1053,9 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
           }
         }}
         actions={!processing && !resultUrl && compressionResults.length === 0 && extractedImages.length === 0 ? (
-          <div className="pdf-mode-switcher" aria-label="PDF workflow modes">
-            {PDF_MODE_TABS.map(modeTab => (
-              <button
-                key={modeTab.id}
-                type="button"
-                aria-pressed={
-                  modeTab.id === 'pdf-word-to-pdf'
-                    ? activeTool === 'pdf-word-to-pdf'
-                    : modeTab.id === 'pdf-edit'
-                    ? CANVAS_PDF_TOOLS.has(activeTool)
-                    : !CANVAS_PDF_TOOLS.has(activeTool) && activeTool !== 'pdf-word-to-pdf'
-                }
-                onClick={() => selectPdfMode(modeTab.id)}
-              >
-                {modeTab.label}
-              </button>
-            ))}
+          <div className="pdf-header-actions">
+            {!(singleFile && activeTool === 'pdf-organize') && workflowPicker}
+            <ToolModeSwitcher label="PDF sections" activeId={activePdfSection} options={PDF_MODE_TABS} onSelect={selectPdfMode} />
           </div>
         ) : undefined}
       />
@@ -942,65 +1074,6 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                 message={errorMessage} 
                 onDismiss={() => setErrorMessage(null)} 
               />
-            )}
-
-            {/* Workflow Category Navigation & Quick Tool Strip */}
-            {!CANVAS_PDF_TOOLS.has(activeTool) && activeTool !== 'pdf-word-to-pdf' && (
-              <div className="pdf-workflows-nav space-y-3 bg-zinc-950/60 p-3 sm:p-4 rounded-2xl border border-[var(--border-color)]">
-                {/* Category Filter Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none" role="tablist" aria-label="Workflow Categories">
-                  {WORKFLOW_CATEGORIES.map(cat => {
-                    const isSelected = selectedWorkflowCategory === cat.id;
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        role="tab"
-                        aria-selected={isSelected}
-                        onClick={() => setSelectedWorkflowCategory(cat.id)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                          isSelected
-                            ? 'bg-white text-zinc-950 shadow-sm border border-white'
-                            : 'bg-zinc-900/70 text-zinc-400 hover:text-white hover:bg-zinc-800/80 border border-zinc-800/60'
-                        }`}
-                      >
-                        {cat.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Workflow Tools Grid / Strip */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                  {TOOL_GROUPS
-                    .filter(group => selectedWorkflowCategory === 'all' || group.id === selectedWorkflowCategory)
-                    .flatMap(group => group.items)
-                    .map(item => {
-                      const isActive = activeTool === item.id;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => {
-                            setActiveTool(item.id);
-                            window.history.pushState(null, '', pathForTool(item.id));
-                            reset();
-                          }}
-                          className={`flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all cursor-pointer border ${
-                            isActive
-                              ? 'bg-white text-zinc-950 border-white shadow-md font-bold'
-                              : 'bg-zinc-900/50 hover:bg-zinc-800/60 text-zinc-300 hover:text-white border-zinc-800/80'
-                          }`}
-                        >
-                          <item.icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-zinc-950' : 'text-zinc-400'}`} />
-                          <div className="min-w-0 flex-1">
-                            <span className="block text-xs font-semibold truncate">{item.label}</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
             )}
 
             {/* 0. EDIT PDF & REDACT WORKSPACE */}
@@ -1041,8 +1114,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                 {!singleFile ? (
                   <FileUploader 
                     accept=".pdf"
-                    label="Select PDF file to organize pages"
-                    subLabel="Visual thumbnail organizer for page reordering, rotation & deletion"
+                    label="Choose a PDF to open the tools workspace"
+                    subLabel="Upload once, then organize pages or switch to optimization, security, and conversion tools"
                     onFilesSelected={handleSingleFileSelected}
                     maxSizeMB={200}
                   />
@@ -1057,6 +1130,18 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                     onPeekPage={setPeekPageIndex}
                     onReset={reset}
                     onRunOrganize={runOrganize}
+                    onRemoveBlankPages={removeBlankPagesFromOrganizer}
+                    blankPageStatus={blankPageScan.status}
+                    blankPageCount={pagesList.filter(page => blankPageScan.indexes.includes(page.originalIndex)).length}
+                    addPageNumbers={organizerAddPageNumbers}
+                    onAddPageNumbersChange={setOrganizerAddPageNumbers}
+                    pageNumberPosition={pageNumberPosition}
+                    onPageNumberPositionChange={setPageNumberPosition}
+                    cropEnabled={organizerCropEnabled}
+                    onCropEnabledChange={setOrganizerCropEnabled}
+                    cropMarginsPct={cropMarginsPct}
+                    onCropMarginsChange={setCropMarginsPct}
+                    toolSelector={workflowPicker}
                   />
                 )}
               </div>
@@ -1071,7 +1156,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                     multiple={true}
                     label="Upload PDF files to merge"
                     subLabel="Choose multiple PDF documents to compile sequentially in order"
-                    onFilesSelected={handleMultipleFilesSelected}
+                    onFilesSelected={handleImageFilesSelected}
                     maxSizeMB={150}
                   />
                 ) : (
@@ -1081,7 +1166,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                     onMoveQueueItem={moveQueueItem}
                     onRemoveQueueItem={(idx) => setMultipleFiles(prev => prev.filter((_, i) => i !== idx))}
                     onSetDraggedQueueIndex={setDraggedQueueIndex}
-                    onAddFiles={handleMultipleFilesSelected}
+                    onAddFiles={handleImageFilesSelected}
                     onClearQueue={reset}
                     onRunMerge={runMerge}
                   />
@@ -1163,6 +1248,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                   />
                 ) : (
                   <WorkspaceShell
+                    className="pdf-single-workflow"
                     title={getToolTitle()}
                     fileName={singleFile.file.name}
                     fileMeta={`${singleFile.pageCount} pages · ${formatBytes(singleFile.file.size)}`}
@@ -1195,7 +1281,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                   >
                     <div className={`image-workbench ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
                       {/* ── LEFT SIDEBAR ── */}
-                      <aside className={`image-workbench__sidebar ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
+                      <EditorSidebar className={`image-workbench__sidebar ${isSidebarCollapsed ? 'is-collapsed' : ''}`}>
                         {isSidebarCollapsed ? (
                           <div className="h-full flex flex-col items-center py-3 bg-[#18191e] justify-between w-full select-none">
                             <button
@@ -1234,7 +1320,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                           </div>
                         ) : (
                           <div className="h-full flex flex-col min-h-0 bg-[#18191e]">
-                            <div className="h-10 px-3.5 border-b border-white/10 flex items-center justify-between bg-transparent shrink-0">
+                            <EditorSidebarHeader className="h-10 px-3.5 shrink-0">
                               <div className="flex items-center gap-2">
                                 <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">PDF Controls</span>
                                 <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400">
@@ -1249,11 +1335,12 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                               >
                                 <PanelLeftClose className="w-3.5 h-3.5" />
                               </button>
-                            </div>
+                            </EditorSidebarHeader>
 
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
                               <PdfInspectorPanel 
                                 activeTool={activeTool}
+                                onSelectTool={selectWorkflowTool}
                                 pagesList={pagesList}
                                 stampPreset={stampPreset}
                                 setStampPreset={setStampPreset}
@@ -1273,8 +1360,11 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                                 setSignatureColor={setSignatureColor}
                                 signatureTargetPages={signatureTargetPages}
                                 setSignatureTargetPages={setSignatureTargetPages}
-                                pdfExportImgFormat={pdfExportImgFormat}
-                                setPdfExportImgFormat={setPdfExportImgFormat}
+                                pdfExportMode={pdfExportMode}
+                                setPdfExportMode={mode => {
+                                  setPdfExportMode(mode);
+                                  if (mode !== 'markdown') setPdfExportImgFormat(mode);
+                                }}
                                 flattenMode={flattenMode}
                                 setFlattenMode={setFlattenMode}
                                 flattenQuality={flattenQuality}
@@ -1332,11 +1422,11 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                             </div>
                           </div>
                         )}
-                      </aside>
+                      </EditorSidebar>
 
                       {/* ── RIGHT MAIN PREVIEW STAGE ── */}
                       <div className="image-workbench__main flex flex-col h-full overflow-hidden bg-[#111216]">
-                        <div className="image-filebar h-10 border-b border-white/10 bg-[#18191e] flex items-center px-4 gap-3 text-xs text-zinc-400 shrink-0 justify-between">
+                        <EditorCommandBar className="image-filebar pdf-workflow-filebar h-10 px-4 gap-3 text-xs text-zinc-400 shrink-0 justify-between">
                           <div className="flex items-center gap-3 min-w-0">
                             <span className="font-semibold text-white truncate max-w-[220px]">{singleFile.file.name}</span>
                             <span className="text-zinc-500">{formatBytes(singleFile.file.size)}</span>
@@ -1344,12 +1434,36 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
                               {singleFile.pageCount} Pages
                             </span>
                           </div>
-                          <Button variant="ghost" onClick={reset} className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 text-xs h-7 px-2 font-semibold">
-                            Change File
-                          </Button>
-                        </div>
+                          <div className="pdf-workflow-filebar__actions">
+                            {workflowPicker}
+                            <Button variant="ghost" onClick={reset} className="pdf-workflow-filebar__change text-xs h-7 px-2 font-semibold">
+                              Change file
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeTool === 'pdf-split') runSplit();
+                                else if (activeTool === 'pdf-watermark') runWatermark();
+                                else if (activeTool === 'pdf-page-numbers') runPageNumbers();
+                                else if (activeTool === 'pdf-protect') runProtect();
+                                else if (activeTool === 'pdf-unlock') runUnlock();
+                                else if (activeTool === 'pdf-remove-metadata') runRemoveMetadata();
+                                else if (activeTool === 'pdf-sign') runSign();
+                                else if (activeTool === 'pdf-to-word') runPdfToMd();
+                                else if (activeTool === 'pdf-crop-tool') runCrop();
+                                else if (activeTool === 'pdf-stamps') runStamps();
+                                else if (activeTool === 'pdf-flatten' || activeTool === 'pdf-flatten-forms' || activeTool === 'pdf-flatten-entire') runFlatten();
+                                else if (activeTool === 'pdf-ocr') runOcr();
+                                else if (activeTool === 'pdf-to-image') runPdfToImages();
+                              }}
+                              className="pdf-workflow-filebar__export"
+                            >
+                              Apply &amp; Export <ArrowRight aria-hidden="true" />
+                            </button>
+                          </div>
+                        </EditorCommandBar>
 
-                        <div className="image-preview-viewport flex-1 bg-[#111216] relative overflow-auto p-4 sm:p-6 flex items-center justify-center">
+                        <div className="image-preview-viewport workbench-scroll-region flex-1 bg-[#111216] relative p-4 sm:p-6 flex items-center justify-center">
                           <LivePdfPreview 
                             activeTool={activeTool}
                             singleFile={singleFile}

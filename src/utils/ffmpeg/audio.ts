@@ -51,6 +51,31 @@ export const parseMediaTagsFromFFmpegLog = (log: string): MetadataTags => {
   };
 };
 
+export const buildAudioFilters = (
+  options: AudioCompressOptions,
+  effectiveDuration: number,
+): string[] => {
+  const filters: string[] = [];
+  if (options.removeSilence) {
+    filters.push('silenceremove=start_periods=1:start_duration=0.2:start_threshold=-40dB:stop_periods=-1:stop_duration=0.8:stop_threshold=-40dB');
+  }
+  if (options.noiseReduction) {
+    filters.push('highpass=f=75', 'afftdn=nr=10:nf=-35', 'lowpass=f=12000');
+  }
+  if (options.bassBoost) filters.push('bass=g=5:f=110:w=0.6');
+  if (options.normalizeAudio) filters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
+
+  const fadeIn = Math.min(Math.max(options.fadeInDuration ?? 0, 0), effectiveDuration);
+  const fadeOut = Math.min(Math.max(options.fadeOutDuration ?? 0, 0), effectiveDuration);
+  if (fadeIn > 0) filters.push(`afade=t=in:ss=0:d=${fadeIn}`);
+  // Reversing applies the fade to the actual processed tail, including when silence removal changes duration.
+  if (fadeOut > 0) filters.push('areverse', `afade=t=in:ss=0:d=${fadeOut}`, 'areverse');
+
+  if (options.channels === 'mono') filters.push('aformat=channel_layouts=mono');
+  if (options.channels === 'stereo') filters.push('aformat=channel_layouts=stereo');
+  return filters;
+};
+
 /**
  * Compress, trim or convert an audio file using FFmpeg WASM
  */
@@ -90,8 +115,7 @@ export const compressAudio = async (
       duration = hours * 3600 + mins * 60 + secs;
       onLog(`Parsed audio duration: ${duration.toFixed(2)}s`);
     } else {
-      duration = 600; // Fallback
-      onLog("Could not parse audio duration, using default fallback (600s)");
+      throw new Error('Could not read the audio duration. Try a supported audio file.');
     }
   } else {
     onLog(`Using pre-calculated audio duration: ${duration.toFixed(2)}s`);
@@ -103,43 +127,21 @@ export const compressAudio = async (
   }
 
   const effectiveDuration = activeIntervals.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
-  const audioFilters: string[] = [];
-  if (options.normalizeAudio) {
-    audioFilters.push('loudnorm=I=-16:TP=-1.5:LRA=11');
-  }
-  if (options.fadeInDuration && options.fadeInDuration > 0) {
-    audioFilters.push(`afade=t=in:ss=0:d=${options.fadeInDuration}`);
-  }
-  if (options.fadeOutDuration && options.fadeOutDuration > 0 && effectiveDuration > options.fadeOutDuration) {
-    const fadeStart = Math.max(0, effectiveDuration - options.fadeOutDuration);
-    audioFilters.push(`afade=t=out:st=${fadeStart.toFixed(2)}:d=${options.fadeOutDuration}`);
-  }
-  if (options.removeSilence) {
-    audioFilters.push('silenceremove=stop_periods=-1:stop_duration=0.8:stop_threshold=-40dB');
-  }
-  if (options.noiseReduction) {
-    audioFilters.push('highpass=f=75,lowpass=f=12000');
-  }
-  if (options.bassBoost) {
-    audioFilters.push('bass=g=5:f=110:w=0.6');
-  }
-  if (options.channels === 'mono') {
-    audioFilters.push('aformat=channel_layouts=mono');
-  } else if (options.channels === 'stereo') {
-    audioFilters.push('aformat=channel_layouts=stereo');
-  }
+  const audioFilters = buildAudioFilters(options, effectiveDuration);
 
   const args: string[] = [];
 
   if (activeIntervals.length === 1) {
     const { start, end } = activeIntervals[0];
-    const isTrimmed = start > 0.05 || (duration > 0 && Math.abs(end - duration) > 0.1);
     args.push('-i', inputName, '-vn');
+    const filters: string[] = [];
+    const isTrimmed = start > 0.001 || Math.abs(end - duration) > 0.001;
     if (isTrimmed) {
-      args.push('-ss', start.toString(), '-to', end.toString(), '-avoid_negative_ts', 'make_zero');
+      filters.push(`atrim=start=${start}:end=${end}`, 'asetpts=PTS-STARTPTS');
     }
-    if (audioFilters.length > 0) {
-      args.push('-af', audioFilters.join(','));
+    filters.push(...audioFilters);
+    if (filters.length > 0) {
+      args.push('-af', filters.join(','));
     }
   } else {
     args.push('-i', inputName, '-vn');

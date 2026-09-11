@@ -20,7 +20,12 @@ describe('universal converter capability registry', () => {
     expect([...getSupportedTargets('pdf')]).toEqual(['docx', 'txt']);
     expect([...getSupportedTargets('docx')]).toEqual(['pdf', 'txt', 'html']);
     expect(getSupportedTargets('pdf').has('doc')).toBe(false);
-    expect([...getSupportedTargets('pptx')]).toEqual(['pdf', 'txt']);
+    expect([...getSupportedTargets('pptx')]).toEqual(['pdf']);
+    expect([...getSupportedTargets('xlsx')]).toEqual(['pdf', 'html']);
+    for (const format of ['doc', 'xls', 'ppt', 'rtf', 'tiff', 'tga', 'yaml', 'xml', 'tsv', 'ico']) {
+      expect(isSupportedSourceFormat(format)).toBe(false);
+      expect(getSupportedTargets(format).size).toBe(0);
+    }
   });
 
   it('removes formats that have no installed source conversion path', () => {

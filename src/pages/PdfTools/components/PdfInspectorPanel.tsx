@@ -19,6 +19,7 @@ import type { PageItem } from './PageOrganizer';
 
 export interface PdfInspectorPanelProps {
   activeTool: string;
+  onSelectTool?: (tool: string) => void;
   pagesList: PageItem[];
   stampPreset: string;
   setStampPreset: (preset: any) => void;
@@ -38,8 +39,8 @@ export interface PdfInspectorPanelProps {
   setSignatureColor: (color: 'blue' | 'black' | 'red') => void;
   signatureTargetPages: 'last-page' | 'first-page' | 'all-pages';
   setSignatureTargetPages: (target: 'last-page' | 'first-page' | 'all-pages') => void;
-  pdfExportImgFormat: 'png' | 'jpg';
-  setPdfExportImgFormat: (fmt: 'png' | 'jpg') => void;
+  pdfExportMode: 'png' | 'jpg' | 'markdown';
+  setPdfExportMode: (mode: 'png' | 'jpg' | 'markdown') => void;
   flattenMode: 'complete' | 'forms';
   setFlattenMode: (mode: 'complete' | 'forms') => void;
   flattenQuality: 'standard' | 'high' | 'print';
@@ -73,6 +74,7 @@ export interface PdfInspectorPanelProps {
 
 export const PdfInspectorPanel: React.FC<PdfInspectorPanelProps> = ({
   activeTool,
+  onSelectTool,
   rotateDegrees = 90,
   setRotateDegrees,
   pagesList,
@@ -94,8 +96,8 @@ export const PdfInspectorPanel: React.FC<PdfInspectorPanelProps> = ({
   setSignatureColor,
   signatureTargetPages,
   setSignatureTargetPages,
-  pdfExportImgFormat,
-  setPdfExportImgFormat,
+  pdfExportMode,
+  setPdfExportMode,
   flattenMode,
   setFlattenMode,
   flattenQuality,
@@ -126,6 +128,22 @@ export const PdfInspectorPanel: React.FC<PdfInspectorPanelProps> = ({
 }) => {
   return (
     <div className="space-y-4">
+      {['pdf-protect', 'pdf-unlock', 'pdf-flatten', 'pdf-flatten-forms', 'pdf-flatten-entire', 'pdf-remove-metadata'].includes(activeTool) && (
+        <div className="pdf-security-actions" role="navigation" aria-label="PDF security actions">
+          <button type="button" className={activeTool === 'pdf-protect' || activeTool === 'pdf-unlock' ? 'is-active' : ''} onClick={() => onSelectTool?.(pdfIsEncrypted ? 'pdf-unlock' : 'pdf-protect')}>
+            <LockIcon aria-hidden="true" /><span>{pdfIsEncrypted ? 'Unlock' : 'Password'}</span>
+          </button>
+          <button type="button" className={activeTool === 'pdf-flatten-forms' ? 'is-active' : ''} onClick={() => onSelectTool?.('pdf-flatten-forms')}>
+            <FileText aria-hidden="true" /><span>Flatten forms</span>
+          </button>
+          <button type="button" className={activeTool === 'pdf-flatten' || activeTool === 'pdf-flatten-entire' ? 'is-active' : ''} onClick={() => onSelectTool?.('pdf-flatten-entire')}>
+            <ShieldIcon aria-hidden="true" /><span>Flatten PDF</span>
+          </button>
+          <button type="button" className={activeTool === 'pdf-remove-metadata' ? 'is-active' : ''} onClick={() => onSelectTool?.('pdf-remove-metadata')}>
+            <CheckCircle aria-hidden="true" /><span>Metadata</span>
+          </button>
+        </div>
+      )}
       {activeTool === 'pdf-stamps' && (
         <div className="space-y-4 pt-1">
           <div className="space-y-1">
@@ -302,12 +320,12 @@ export const PdfInspectorPanel: React.FC<PdfInspectorPanelProps> = ({
 
       {activeTool === 'pdf-to-image' && (
         <div className="space-y-3 pt-1">
-          <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Image Export Quality & Format</label>
-          <div className="grid grid-cols-2 gap-2">
+          <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Export format</label>
+          <div className="grid grid-cols-1 gap-2">
             <button
-              onClick={() => setPdfExportImgFormat('png')}
+              onClick={() => setPdfExportMode('png')}
               className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                pdfExportImgFormat === 'png'
+                pdfExportMode === 'png'
                   ? 'border-white bg-zinc-800 text-white shadow-sm'
                   : 'border-zinc-800 bg-zinc-950/40 text-zinc-400'
               }`}
@@ -315,14 +333,24 @@ export const PdfInspectorPanel: React.FC<PdfInspectorPanelProps> = ({
               PNG (Lossless 300 DPI)
             </button>
             <button
-              onClick={() => setPdfExportImgFormat('jpg')}
+              onClick={() => setPdfExportMode('jpg')}
               className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                pdfExportImgFormat === 'jpg'
+                pdfExportMode === 'jpg'
                   ? 'border-white bg-zinc-800 text-white shadow-sm'
                   : 'border-zinc-800 bg-zinc-950/40 text-zinc-400'
               }`}
             >
               JPG (Compressed 300 DPI)
+            </button>
+            <button
+              onClick={() => setPdfExportMode('markdown')}
+              className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                pdfExportMode === 'markdown'
+                  ? 'border-white bg-zinc-800 text-white shadow-sm'
+                  : 'border-zinc-800 bg-zinc-950/40 text-zinc-400'
+              }`}
+            >
+              Markdown (Structured Text)
             </button>
           </div>
         </div>
@@ -711,4 +739,3 @@ export const PdfInspectorPanel: React.FC<PdfInspectorPanelProps> = ({
     </div>
   );
 };
-

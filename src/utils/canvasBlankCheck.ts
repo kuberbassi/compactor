@@ -1,16 +1,17 @@
 ﻿/**
  * Checks if a rendered canvas is essentially a blank white page.
- * Samples RGB channels: pixels with R>240, G>240, B>240 are considered "white/blank".
+ * Conservatively checks for visible ink after compositing transparency onto white.
+ * The low default tolerance avoids deleting pages that contain a small page number,
+ * faint scan, signature, rule, or other sparse but intentional content.
  */
 export const isCanvasBlank = (
   canvas: HTMLCanvasElement,
-  thresholdPercent: number = 0.5 // Default: < 0.5% non-white pixels = blank
+  thresholdPercent: number = 0.02
 ): boolean => {
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return true;
-
   const { width, height } = canvas;
   if (width === 0 || height === 0) return true;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return false; // An unreadable page is not evidence of a blank page.
 
   const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
@@ -23,9 +24,12 @@ export const isCanvasBlank = (
     const b = data[i + 2];
     const a = data[i + 3];
 
-    // Transparent or pure/near-white is considered blank
     if (a < 15) continue;
-    if (r < 240 || g < 240 || b < 240) {
+    const alpha = a / 255;
+    const compositedR = 255 - (255 - r) * alpha;
+    const compositedG = 255 - (255 - g) * alpha;
+    const compositedB = 255 - (255 - b) * alpha;
+    if (compositedR < 247 || compositedG < 247 || compositedB < 247) {
       nonWhitePixels++;
     }
   }

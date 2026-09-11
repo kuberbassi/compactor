@@ -1,5 +1,5 @@
 import { traceImageToSvg } from './svgTracer';
-import { imagesToPdf, textToPdf } from './pdf';
+import { imagesToPdf, markdownToPdf, textToPdf } from './pdf';
 import { getFFmpeg, transcodeFormatLossless } from './ffmpeg';
 import { loadImage } from './image';
 import {
@@ -131,7 +131,8 @@ export const convertUniversalFile = async (
 
   if (target === 'pdf' && ['txt', 'md', 'html', 'json', 'csv'].includes(ext)) {
     onProgress(40, 'Compiling document content into PDF...');
-    return { blob: await textToPdf(await file.text(), file.name), name: outputName(file, 'pdf') };
+    const convert = ext === 'md' ? markdownToPdf : textToPdf;
+    return { blob: await convert(await file.text(), file.name), name: outputName(file, 'pdf') };
   }
 
   if (target === 'wav' && ['mp3', 'aac', 'm4a', 'flac', 'ogg', 'opus', 'weba', 'wav', 'aiff', 'aif'].includes(ext)) {

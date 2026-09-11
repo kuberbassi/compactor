@@ -7,7 +7,7 @@ interface FooterProps { onNavigate?: (href: string) => void }
 
 const FOOTER_GROUPS = [
   { title: 'Popular', links: [['Compress PDF', 'pdf-compress'], ['Edit PDF', 'pdf-edit'], ['Convert files', 'universal-converter'], ['Compress video', 'video-compressor']] },
-  { title: 'Create', links: [['Edit an image', 'image-optimizer'], ['Markdown workspace', 'pdf-word-to-pdf'], ['Make a poster', 'rasterbator'], ['Join audio', 'audio-joiner']] },
+  { title: 'Create', links: [['Edit an image', 'image-optimizer'], ['Markdown to PDF', 'pdf-word-to-pdf'], ['Make a poster', 'rasterbator'], ['Join audio', 'audio-joiner']] },
   { title: 'Utilities', links: [['Organize PDF', 'pdf-organize'], ['PDF to Markdown', 'pdf-to-word'], ['Edit metadata', 'metadata-editor'], ['Key & BPM finder', 'audio-bpm-finder']] },
 ] as const;
 

@@ -23,7 +23,13 @@ export function WorkspaceZoomControls({
       <button type="button" onClick={() => onChange(Math.max(min, value - step))} disabled={value <= min} aria-label="Zoom out">
         <ZoomOut aria-hidden="true" />
       </button>
-      <button type="button" onClick={() => onChange(100)} className="workspace-zoom-controls__value" title="Reset zoom to 100%">
+      <button
+        type="button"
+        onClick={() => onChange(100)}
+        className="workspace-zoom-controls__value"
+        title="Reset zoom to 100%"
+        aria-label={`Reset zoom to 100%, current zoom ${value}%`}
+      >
         {value}%
       </button>
       <button type="button" onClick={() => onChange(Math.min(max, value + step))} disabled={value >= max} aria-label="Zoom in">

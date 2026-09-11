@@ -324,7 +324,7 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onSelectTool
             label="Image tools"
             activeId="rasterbator"
             options={[
-              { id: 'image-optimizer', label: 'Optimize' },
+              { id: 'image-optimizer', label: 'Edit' },
               { id: 'rasterbator', label: 'Poster' },
             ]}
             onSelect={onSelectTool}

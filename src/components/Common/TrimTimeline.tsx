@@ -8,8 +8,7 @@ import {
   ChevronRight,
   GripVertical,
   Trash2,
-  Layers,
-  Sparkles
+  Layers
 } from 'lucide-react';
 import { Button } from '../ui/button';
 
@@ -30,6 +29,7 @@ interface TrimTimelineProps {
   onSeek: (time: number) => void;
   onChange: (segments: TrimSegment[], mode: 'keep-selected' | 'cut-selected') => void;
   className?: string;
+  showFadeControls?: boolean;
 }
 
 export const TrimTimeline: React.FC<TrimTimelineProps> = ({
@@ -40,6 +40,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
   onSeek,
   onChange,
   className = '',
+  showFadeControls = true,
 }) => {
   const [editorMode, setEditorMode] = useState<'range' | 'multi'>('range');
   
@@ -101,8 +102,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         start: Math.max(0, rangeStart),
         end: Math.min(duration, rangeEnd),
         mode: 'keep',
-        fadeIn,
-        fadeOut,
+        ...(showFadeControls ? { fadeIn, fadeOut } : {}),
       };
       onChangeRef.current([activeSeg], 'keep-selected');
     } else {
@@ -110,7 +110,7 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
         onChangeRef.current(segments, compileMode);
       }
     }
-  }, [editorMode, rangeStart, rangeEnd, fadeIn, fadeOut, segments, compileMode, duration]);
+  }, [editorMode, rangeStart, rangeEnd, fadeIn, fadeOut, segments, compileMode, duration, showFadeControls]);
 
   const formatTime = useCallback((secs: number) => {
     if (!Number.isFinite(secs) || secs < 0) return '00:00.0';
@@ -449,12 +449,12 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
                 title="Drag center to slide trimmed window"
               >
                 {/* Fade In visual indicator */}
-                {fadeIn && (
+                {showFadeControls && fadeIn && (
                   <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-emerald-500/40 to-transparent pointer-events-none border-l-2 border-emerald-400" />
                 )}
 
                 {/* Fade Out visual indicator */}
-                {fadeOut && (
+                {showFadeControls && fadeOut && (
                   <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-emerald-500/40 to-transparent pointer-events-none border-r-2 border-emerald-400" />
                 )}
 
@@ -634,44 +634,31 @@ export const TrimTimeline: React.FC<TrimTimelineProps> = ({
             </div>
           </div>
 
-          {/* Fade Polish Toggles */}
-          <div className="trim-timeline-fades flex items-center justify-between p-3 rounded-xl bg-zinc-950/60 border border-white/10 text-xs">
-            <div className="trim-timeline-fades__label flex items-center gap-1.5 text-zinc-300 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
-              <span>
-                Audio fades
-                <small>Smooth the clip edges</small>
-              </span>
-            </div>
+          {showFadeControls && <div className="trim-timeline-fades" aria-label="Audio fades">
+            <span className="trim-timeline-fades__label">Fade</span>
             <div className="trim-timeline-fades__actions flex items-center gap-2" role="group" aria-label="Audio fade controls">
               <button
                 type="button"
                 onClick={() => setFadeIn(prev => !prev)}
                 aria-pressed={fadeIn}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                  fadeIn
-                    ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
-                    : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'
-                }`}
+                aria-label="Fade in, 1.5 seconds"
+                className={fadeIn ? 'is-active' : ''}
               >
-                <span>Fade in</span>
+                <span>In</span>
                 <small>1.5s</small>
               </button>
               <button
                 type="button"
                 onClick={() => setFadeOut(prev => !prev)}
                 aria-pressed={fadeOut}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                  fadeOut
-                    ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 shadow-sm'
-                    : 'bg-white/5 border-white/10 text-zinc-400 hover:text-white hover:bg-white/10'
-                }`}
+                aria-label="Fade out, 1.5 seconds"
+                className={fadeOut ? 'is-active' : ''}
               >
-                <span>Fade out</span>
+                <span>Out</span>
                 <small>1.5s</small>
               </button>
             </div>
-          </div>
+          </div>}
         </div>
       ) : (
         /* Multi-Cut Splitter Controls */

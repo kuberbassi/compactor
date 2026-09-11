@@ -1,129 +1,82 @@
 import React from 'react';
-import { Layers, ArrowUp, ArrowDown, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Layers, Trash2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
 import { FileUploader } from '../../../components/Common/FileUploader';
 import { formatBytes } from '../../../utils/image';
+import { AudioEditorFrame } from './AudioEditorFrame';
 
 export interface AudioJoinerPanelProps {
+  file: File;
   joinFiles: File[];
   setJoinFiles: React.Dispatch<React.SetStateAction<File[]>>;
   onFilesSelected: (files: File[]) => void;
   onRunJoin: () => void;
+  onReset: () => void;
+  activeTool: string;
+  onSelectTool: (toolId: string) => void;
 }
 
 export const AudioJoinerPanel: React.FC<AudioJoinerPanelProps> = ({
-  joinFiles,
-  setJoinFiles,
-  onFilesSelected,
-  onRunJoin,
+  file, joinFiles, setJoinFiles, onFilesSelected, onRunJoin, onReset, activeTool, onSelectTool,
 }) => {
+  const totalSize = joinFiles.reduce((total, track) => total + track.size, 0);
+  const sequenceTitle = joinFiles.length === 0
+    ? 'Select tracks to start a sequence'
+    : joinFiles.length === 1
+      ? 'Add one more track'
+      : `${joinFiles.length} tracks ready to join`;
+  const moveTrack = (index: number, direction: -1 | 1) => {
+    const next = [...joinFiles];
+    [next[index], next[index + direction]] = [next[index + direction], next[index]];
+    setJoinFiles(next);
+  };
+
   return (
-    <div className="audio-mode-workbench audio-joiner-workbench w-full max-w-2xl mx-auto space-y-4 sm:space-y-6">
-      {joinFiles.length === 0 ? (
+    <AudioEditorFrame
+      file={file}
+      activeTool={activeTool}
+      onSelectTool={onSelectTool}
+      onChangeFile={onReset}
+      className="audio-join-editor"
+      controls={
+        <section className="audio-join-controls">
+          <div className="audio-join-controls__heading"><span className="audio-section-label">Track queue</span><strong>{joinFiles.length}</strong></div>
+          <div className="audio-join-controls__list">
+            {joinFiles.map((track, index) => (
+              <article key={`${track.name}:${track.size}:${track.lastModified}:${index}`}>
+                <span className="audio-queue-index">{index + 1}</span>
+                <div><strong title={track.name}>{track.name}</strong><small>{formatBytes(track.size)}</small></div>
+                <nav aria-label={`Reorder ${track.name}`}>
+                  <button type="button" disabled={index === 0} onClick={() => moveTrack(index, -1)} aria-label="Move up"><ArrowUp /></button>
+                  <button type="button" disabled={index === joinFiles.length - 1} onClick={() => moveTrack(index, 1)} aria-label="Move down"><ArrowDown /></button>
+                  <button type="button" onClick={() => setJoinFiles(current => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="Remove track"><Trash2 /></button>
+                </nav>
+              </article>
+            ))}
+          </div>
+        </section>
+      }
+      action={<Button type="button" disabled={joinFiles.length < 2} onClick={onRunJoin} className="audio-editor-primary-action">{joinFiles.length < 2 ? 'Join tracks' : `Join ${joinFiles.length} tracks`} <span>→</span></Button>}
+    >
+      <section className="audio-join-preview">
+        <div className="audio-preview-heading">
+          <div><span>Merge sequence</span><h2>{sequenceTitle}</h2></div>
+          <Layers aria-hidden="true" />
+        </div>
+        <div className="audio-join-summary">
+          <article><span>Tracks</span><strong>{joinFiles.length}</strong><small>In playback order</small></article>
+          <article><span>Source size</span><strong>{formatBytes(totalSize)}</strong><small>Before joining</small></article>
+        </div>
         <FileUploader
           accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus"
-          multiple={true}
-          label="Select multiple audio tracks to combine"
-          subLabel="Arrange tracks in custom sequence & join without quality degradation"
+          multiple
+          compact
+          label={joinFiles.length ? 'Add another track' : 'Select audio tracks'}
+          subLabel="Choose files or drop them here"
           onFilesSelected={onFilesSelected}
           maxSizeMB={150}
         />
-      ) : (
-        <div className="audio-append-box mb-3">
-          <FileUploader
-            accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus"
-            multiple={true}
-            label="Append more tracks to merge"
-            subLabel="Supported: MP3, WAV, M4A, FLAC, OGG, AAC, OPUS"
-            onFilesSelected={onFilesSelected}
-            maxSizeMB={150}
-            compact={true}
-          />
-        </div>
-      )}
-
-      {joinFiles.length > 0 && (
-        <Card className="audio-editor-panel audio-joiner-panel border-[var(--border-color)] bg-[var(--surface-color)] p-4 sm:p-6 space-y-4 sm:space-y-5 rounded-2xl shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
-            <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">
-              Audio Queue ({joinFiles.length} Tracks)
-            </span>
-            <Button variant="ghost" onClick={() => setJoinFiles([])} className="text-rose-400 hover:text-rose-300 text-xs h-7 px-2 font-semibold cursor-pointer">
-              Clear All
-            </Button>
-          </div>
-
-          <div className="audio-joiner-queue space-y-2 max-h-64 overflow-y-auto pr-1">
-            {joinFiles.map((f, idx) => (
-              <div key={idx} className="audio-joiner-track flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-zinc-950/60 border border-[var(--border-color)] text-xs text-[var(--text-primary)] min-w-0 gap-2">
-                <div className="flex items-center gap-2 sm:gap-3 truncate flex-1 min-w-0 pr-1">
-                  <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 font-mono text-[10px] flex items-center justify-center font-bold shrink-0">
-                    {idx + 1}
-                  </span>
-                  <div className="min-w-0 flex-1 truncate">
-                    <span className="truncate font-semibold text-xs block max-w-[140px] xs:max-w-xs">{f.name}</span>
-                    <span className="text-[10px] text-zinc-500 font-mono block sm:hidden">{formatBytes(f.size)}</span>
-                  </div>
-                  <span className="text-[10px] text-zinc-500 font-mono shrink-0 hidden sm:inline">{formatBytes(f.size)}</span>
-                </div>
-
-                <div className="flex items-center gap-0.5 shrink-0">
-                  {idx > 0 && (
-                    <Button 
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const copy = [...joinFiles];
-                        [copy[idx - 1], copy[idx]] = [copy[idx], copy[idx - 1]];
-                        setJoinFiles(copy);
-                      }}
-                      className="h-7 w-7 text-zinc-400 hover:text-white cursor-pointer"
-                      title="Move Up"
-                    >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-                  {idx < joinFiles.length - 1 && (
-                    <Button 
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const copy = [...joinFiles];
-                        [copy[idx + 1], copy[idx]] = [copy[idx], copy[idx + 1]];
-                        setJoinFiles(copy);
-                      }}
-                      className="h-7 w-7 text-zinc-400 hover:text-white cursor-pointer"
-                      title="Move Down"
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </Button>
-                  )}
-                  <Button 
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setJoinFiles(joinFiles.filter((_, i) => i !== idx))}
-                    className="h-7 w-7 text-zinc-500 hover:text-rose-400 cursor-pointer"
-                    title="Remove Track"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <Button 
-            onClick={onRunJoin} 
-            disabled={joinFiles.length < 2}
-            className="w-full h-11 bg-white text-black hover:bg-zinc-200 font-bold text-xs sm:text-sm rounded-xl shadow-sm cursor-pointer disabled:opacity-50"
-          >
-            <Layers className="w-4 h-4 mr-2" />
-            <span>Merge {joinFiles.length} Audio Tracks</span>
-          </Button>
-        </Card>
-      )}
-    </div>
+      </section>
+    </AudioEditorFrame>
   );
 };
-

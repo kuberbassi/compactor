@@ -64,7 +64,11 @@ export const getActiveIntervals = (
       const isKeep = seg.mode === 'keep';
       return compileMode === 'keep-selected' ? isKeep : !isKeep;
     })
-    .map(seg => ({ start: seg.start, end: seg.end }))
+    .map(seg => ({
+      start: Math.max(0, Math.min(duration, seg.start)),
+      end: Math.max(0, Math.min(duration, seg.end)),
+    }))
+    .filter(interval => Number.isFinite(interval.start) && Number.isFinite(interval.end) && interval.end > interval.start)
     .sort((a, b) => a.start - b.start);
 
   return mergeIntervals(rawIntervals);

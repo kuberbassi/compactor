@@ -1,18 +1,64 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Bold, Italic, Strikethrough, Code, Heading1, Heading2, Heading3, Heading4,
   List, ListOrdered, CheckSquare, Quote, Terminal, Table as TableIcon,
   Link as LinkIcon, Image as ImageIcon, Minus, Eraser, FileText, Download,
-  Eye, Columns3, Edit3, Copy, Check, RefreshCw
+  Eye, Columns2, Edit3, Copy, Check, RefreshCw
 } from 'lucide-react';
-import { renderedElementToPdf } from '../../utils/pdf';
+import type { LucideIcon } from 'lucide-react';
+import { compileMarkdownPdf } from '../../utils/markdownPdf';
+import { MarkdownPdfPreview } from './components/MarkdownPdfPreview';
+import '../../styles/markdown.css';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
+import { WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
 
 interface MarkdownEditorProps {
   initialContent?: string;
   onGoHome?: () => void;
   onExportSuccess?: () => void;
+}
+
+type ViewMode = 'split' | 'edit' | 'preview';
+
+function ViewModeButton({ mode, activeMode, label, Icon, onSelect }: {
+  mode: ViewMode;
+  activeMode: ViewMode;
+  label: string;
+  Icon: LucideIcon;
+  onSelect: (mode: ViewMode) => void;
+}) {
+  const active = mode === activeMode;
+  return <button
+    type="button"
+    onClick={() => onSelect(mode)}
+    aria-pressed={active}
+    className={`markdown-view-button ${active ? 'is-active' : ''}`}
+  >
+    <Icon aria-hidden="true" />
+    <span>{label}</span>
+  </button>;
+}
+
+function FormattingButton({ label, Icon, onClick, tone }: {
+  label: string;
+  Icon: LucideIcon;
+  onClick: () => void;
+  tone?: 'danger';
+}) {
+  return <button
+    type="button"
+    onClick={onClick}
+    className={`markdown-format-button ${tone ? `is-${tone}` : ''}`}
+    title={label}
+    aria-label={label}
+  >
+    <Icon aria-hidden="true" />
+  </button>;
+}
+
+function ToolbarDivider() {
+  return <span className="markdown-format-divider" aria-hidden="true" />;
 }
 
 const TEMPLATES = [
@@ -143,28 +189,47 @@ POST \`/api/v1/documents/compile\`
   }
 ];
 
-const safePreviewUrl = (value: string, allowMail = false): string => {
-  const trimmed = value.trim();
-  if (/^(https?:\/\/|#|\/)/i.test(trimmed)) return trimmed.replace(/"/g, '&quot;');
-  if (allowMail && /^mailto:/i.test(trimmed)) return trimmed.replace(/"/g, '&quot;');
-  return '#';
-};
-
 export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   initialContent,
   onExportSuccess
 }) => {
   const [selectedTemplateName, setSelectedTemplateName] = useState<string>('GitHub README');
   const [markdown, setMarkdown] = useState<string>(
-    initialContent || TEMPLATES[0].content
+    initialContent ?? TEMPLATES[0].content
   );
-  const [viewMode, setViewMode] = useState<'split' | 'edit' | 'preview'>('split');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => window.matchMedia?.('(max-width: 767px)').matches ? 'edit' : 'split');
   const [copied, setCopied] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const previewRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const suppressEditorScrollRef = useRef(false);
+  const [retry, setRetry] = useState(0);
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const [splitScrollProgress, setSplitScrollProgress] = useState(0);
+  const [compiled, setCompiled] = useState<{ key: string; blob: Blob; warnings: string[] } | null>(null);
+  const [compileError, setCompileError] = useState<{ key: string; message: string } | null>(null);
+  const compileQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const documentKey = JSON.stringify([markdown, selectedTemplateName]);
+  const ready = compiled?.key === documentKey;
+  const failed = compileError?.key === documentKey;
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      compileQueue.current = compileQueue.current.catch(() => undefined).then(async () => {
+        if (cancelled) return;
+        try {
+          const result = await compileMarkdownPdf(markdown, selectedTemplateName);
+          if (!cancelled) { setCompiled({ key: documentKey, ...result }); setCompileError(null); }
+        } catch (error) {
+          if (!cancelled) setCompileError({ key: documentKey, message: error instanceof Error ? error.message : 'Could not compile PDF.' });
+        }
+      });
+    }, 450);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [markdown, selectedTemplateName, documentKey, retry]);
 
   // Helper to insert markdown text at cursor position
   const insertFormatting = (prefix: string, suffix: string = '', defaultText: string = '') => {
@@ -208,13 +273,13 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     insertFormatting('', tableMd, '');
   };
 
-  const handleCopyMarkdown = () => {
+  const handleCopyMarkdown = async () => {
     try {
-      navigator.clipboard.writeText(markdown);
+      await navigator.clipboard.writeText(markdown);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
-      console.error('Failed copying markdown:', err);
+      setErrorMessage(err instanceof Error ? err.message : 'Could not copy Markdown.');
     }
   };
 
@@ -231,12 +296,11 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = useCallback(async () => {
     setIsExporting(true);
     try {
-      const preview = previewRef.current;
-      if (!preview) throw new Error('Open Split or Preview mode before exporting.');
-      const pdfBlob = await renderedElementToPdf(preview, selectedTemplateName || 'Markdown document');
+      if (!ready || !compiled) throw new Error('Wait for the updated PDF preview before downloading.');
+      const pdfBlob = compiled.blob;
       const url = URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
@@ -245,7 +309,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       if (onExportSuccess) onExportSuccess();
     } catch (err) {
       console.error('Failed exporting MD to PDF:', err);
@@ -253,133 +317,37 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
     } finally {
       setIsExporting(false);
     }
-  };
+  }, [compiled, onExportSuccess, ready, selectedTemplateName]);
+
+  useEffect(() => {
+    const handlePrintShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'p') return;
+      if (!editorRef.current?.contains(document.activeElement)) return;
+      event.preventDefault();
+      void handleExportPdf();
+    };
+    window.addEventListener('keydown', handlePrintShortcut);
+    return () => window.removeEventListener('keydown', handlePrintShortcut);
+  }, [handleExportPdf]);
 
   // Stats
   const wordsCount = markdown.trim() ? markdown.trim().split(/\s+/).length : 0;
   const charsCount = markdown.length;
   const readTimeMin = Math.ceil(wordsCount / 200);
-
-  // Parse inline markdown syntax safely
-  const parseInlineMarkdown = (text: string): string => {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/!\[(.*?)\]\((.*?)\)/g, (_, alt, url) => `<img src="${safePreviewUrl(url)}" alt="${alt.replace(/"/g, '&quot;')}" class="max-w-full rounded-xl my-3 border border-[var(--border-color)] shadow-md" />`)
-      .replace(/\[(.*?)\]\((.*?)\)/g, (_, label, url) => `<a href="${safePreviewUrl(url, true)}" target="_blank" rel="noopener noreferrer" class="text-white underline font-bold hover:text-zinc-300 transition">${label}</a>`)
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="font-extrabold text-[var(--text-primary)]">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em class="italic text-[var(--text-primary)]">$1</em>')
-      .replace(/~~(.*?)~~/g, '<del class="line-through text-[var(--text-tertiary)]">$1</del>')
-      .replace(/`([^`]+)`/g, '<code class="bg-zinc-800 text-zinc-100 px-1.5 py-0.5 rounded border border-zinc-700 font-mono text-[11px]">$1</code>');
-  };
-
-  // Render full HTML preview of Markdown
-  const renderMarkdownToHtml = (md: string): string => {
-    if (!md) return '';
-
-    let content = md;
-    const codeBlocks: string[] = [];
-
-    // Extract codeblocks first to prevent inner parsing conflict
-    content = content.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-      const placeholder = `___CODEBLOCK_${codeBlocks.length}___`;
-      const escapedCode = code.replace(/</g, '&lt;').replace(/>/g, '&gt;').trim();
-      codeBlocks.push(
-        `<div class="my-4 rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950 font-mono text-xs shadow-md">
-          <div class="bg-zinc-900 px-4 py-1.5 border-b border-zinc-800 text-zinc-400 text-[11px] font-bold uppercase flex justify-between items-center">
-            <span>${lang || 'code'}</span>
-          </div>
-          <pre class="p-4 overflow-x-auto text-zinc-200 leading-relaxed font-mono"><code>${escapedCode}</code></pre>
-        </div>`
-      );
-      return placeholder;
-    });
-
-    const lines = content.split('\n');
-    const resultLines: string[] = [];
-    let inTable = false;
-    let tableHeaderProcessed = false;
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trimEnd();
-
-      if (line.includes('___CODEBLOCK_')) {
-        if (inTable) { resultLines.push('</tbody></table></div>'); inTable = false; }
-        const index = parseInt(line.match(/___CODEBLOCK_(\d+)___/)?.[1] || '0', 10);
-        resultLines.push(codeBlocks[index] || '');
-        continue;
-      }
-
-      // GFM Tables
-      if (line.startsWith('|') && line.endsWith('|')) {
-        if (!inTable) {
-          resultLines.push('<div class="overflow-x-auto my-4 rounded-xl border border-[var(--border-color)] shadow-sm"><table class="w-full text-left border-collapse text-xs">');
-          inTable = true;
-          tableHeaderProcessed = false;
-        }
-
-        if (line.includes('---')) {
-          tableHeaderProcessed = true;
-          resultLines.push('<tbody class="divide-y divide-[var(--border-color)] bg-[var(--surface-color)]">');
-          continue;
-        }
-
-        const cells = line.split('|').slice(1, -1);
-        if (!tableHeaderProcessed) {
-          resultLines.push('<thead class="bg-[var(--surface-hover)] font-bold text-[var(--text-primary)] border-b border-[var(--border-color)]"><tr>');
-          cells.forEach(c => {
-            resultLines.push(`<th class="px-4 py-3 border-r border-[var(--border-color)] last:border-r-0 font-bold">${parseInlineMarkdown(c.trim())}</th>`);
-          });
-          resultLines.push('</tr></thead>');
-        } else {
-          resultLines.push('<tr class="hover:bg-[var(--surface-hover)] transition">');
-          cells.forEach(c => {
-            resultLines.push(`<td class="px-4 py-2.5 border-r border-[var(--border-color)] last:border-r-0 text-[var(--text-primary)]">${parseInlineMarkdown(c.trim())}</td>`);
-          });
-          resultLines.push('</tr>');
-        }
-        continue;
-      } else if (inTable) {
-        resultLines.push('</tbody></table></div>');
-        inTable = false;
-      }
-
-      // Block Elements
-      if (line.startsWith('# ')) {
-        resultLines.push(`<h1 class="text-2xl font-black text-[var(--text-primary)] mt-6 mb-3 border-b border-[var(--border-color)] pb-2 tracking-tight">${parseInlineMarkdown(line.slice(2))}</h1>`);
-      } else if (line.startsWith('## ')) {
-        resultLines.push(`<h2 class="text-xl font-bold text-[var(--text-primary)] mt-5 mb-2 tracking-tight">${parseInlineMarkdown(line.slice(3))}</h2>`);
-      } else if (line.startsWith('### ')) {
-        resultLines.push(`<h3 class="text-lg font-bold text-[var(--text-primary)] mt-4 mb-1.5">${parseInlineMarkdown(line.slice(4))}</h3>`);
-      } else if (line.startsWith('#### ')) {
-        resultLines.push(`<h4 class="text-base font-bold text-[var(--text-secondary)] mt-3 mb-1">${parseInlineMarkdown(line.slice(5))}</h4>`);
-      } else if (line.startsWith('> ')) {
-        resultLines.push(`<blockquote class="border-l-4 border-white pl-4 py-2.5 my-3 text-[var(--text-primary)] bg-[var(--surface-hover)] rounded-r-xl font-medium italic shadow-xs">${parseInlineMarkdown(line.slice(2))}</blockquote>`);
-      } else if (line.startsWith('- [x] ') || line.startsWith('* [x] ')) {
-        resultLines.push(`<div class="flex items-center gap-2.5 my-1.5 text-xs text-[var(--text-primary)] font-medium"><span class="w-4 h-4 rounded bg-white text-zinc-950 flex items-center justify-center font-extrabold text-[10px] shrink-0">✓</span><span>${parseInlineMarkdown(line.slice(6))}</span></div>`);
-      } else if (line.startsWith('- [ ] ') || line.startsWith('* [ ] ')) {
-        resultLines.push(`<div class="flex items-center gap-2.5 my-1.5 text-xs text-[var(--text-secondary)] font-medium"><span class="w-4 h-4 rounded border border-zinc-600 bg-transparent flex items-center justify-center shrink-0"></span><span>${parseInlineMarkdown(line.slice(6))}</span></div>`);
-      } else if (line.startsWith('- ') || line.startsWith('* ')) {
-        resultLines.push(`<li class="ml-5 list-disc text-[var(--text-primary)] my-1 text-xs leading-relaxed">${parseInlineMarkdown(line.slice(2))}</li>`);
-      } else if (/^\d+\.\s/.test(line)) {
-        const text = line.replace(/^\d+\.\s/, '');
-        resultLines.push(`<li class="ml-5 list-decimal text-[var(--text-primary)] my-1 text-xs leading-relaxed">${parseInlineMarkdown(text)}</li>`);
-      } else if (line.startsWith('---') || line.startsWith('***')) {
-        resultLines.push(`<hr class="my-6 border-[var(--border-color)]" />`);
-      } else if (line.trim() === '') {
-        resultLines.push(`<div class="h-2"></div>`);
-      } else {
-        resultLines.push(`<p class="text-[var(--text-primary)] my-2 text-xs leading-relaxed font-sans">${parseInlineMarkdown(line)}</p>`);
-      }
-    }
-
-    if (inTable) resultLines.push('</tbody></table></div>');
-    return resultLines.join('\n');
-  };
+  const syncEditorScroll = useCallback((progress: number) => {
+    if (viewMode !== 'split' || !textareaRef.current) return;
+    const textarea = textareaRef.current;
+    const maxScroll = textarea.scrollHeight - textarea.clientHeight;
+    if (maxScroll <= 0) return;
+    const target = maxScroll * progress;
+    if (Math.abs(textarea.scrollTop - target) <= 1) return;
+    suppressEditorScrollRef.current = true;
+    textarea.scrollTop = target;
+    requestAnimationFrame(() => { suppressEditorScrollRef.current = false; });
+  }, [viewMode]);
 
   return (
-    <div className="markdown-editor flex flex-col h-full flex-1 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
+    <div ref={editorRef} className="markdown-editor flex flex-col h-full flex-1 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
       {errorMessage && (
         <div className="p-3 bg-zinc-950/80 border-b border-zinc-800">
           <ErrorBanner 
@@ -395,7 +363,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         {/* Template selector */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 bg-[var(--surface-color)] px-3 py-1 rounded-xl border border-[var(--border-color)] text-xs">
-            <span className="text-[var(--text-secondary)] font-semibold whitespace-nowrap">Template:</span>
+            <span className="text-[var(--text-secondary)] font-semibold whitespace-nowrap">Template</span>
             <Select
               value={selectedTemplateName}
               onValueChange={(tName) => {
@@ -425,187 +393,134 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           <div className="h-6 w-px bg-[var(--border-color)]" />
 
           {/* View Switcher */}
-          <div className="flex items-center bg-[var(--surface-color)] p-1 rounded-xl border border-[var(--border-color)]">
-            <button
-              onClick={() => setViewMode('split')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'split'
-                  ? 'bg-white text-zinc-950 font-extrabold shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)] font-medium'
-              }`}
-            >
-              <Columns3 className="w-3.5 h-3.5" />
-              <span>Split</span>
-            </button>
-            <button
-              onClick={() => setViewMode('edit')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'edit'
-                  ? 'bg-white text-zinc-950 font-extrabold shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)] font-medium'
-              }`}
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Editor</span>
-            </button>
-            <button
-              onClick={() => setViewMode('preview')}
-              className={`px-3 py-1.5 rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 ${
-                viewMode === 'preview'
-                  ? 'bg-white text-zinc-950 font-extrabold shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-white hover:bg-[var(--surface-hover)] font-medium'
-              }`}
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span>Preview</span>
-            </button>
+          <div className="markdown-view-switcher" role="group" aria-label="Workspace view">
+            <ViewModeButton mode="split" activeMode={viewMode} label="Split" Icon={Columns2} onSelect={setViewMode} />
+            <ViewModeButton mode="edit" activeMode={viewMode} label="Write" Icon={Edit3} onSelect={setViewMode} />
+            <ViewModeButton mode="preview" activeMode={viewMode} label="Preview" Icon={Eye} onSelect={setViewMode} />
           </div>
 
           <div className="h-6 w-px bg-[var(--border-color)]" />
 
           {/* Actions */}
           <button
+            type="button"
+            aria-label="Copy Markdown"
             onClick={handleCopyMarkdown}
-            className={`px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition font-extrabold cursor-pointer ${
+            className={`markdown-command-button text-xs flex items-center gap-1.5 transition font-extrabold cursor-pointer ${
               copied
                 ? 'bg-emerald-500 text-black border border-emerald-400'
                 : 'bg-zinc-900 text-white hover:bg-zinc-800 border border-zinc-700'
             }`}
-            title="Copy Full Markdown Content"
+            title="Copy Markdown"
           >
             {copied ? <Check className="w-4 h-4 text-black stroke-[3]" /> : <Copy className="w-4 h-4 text-white stroke-[2.5]" />}
-            <span>{copied ? 'Copied!' : 'Copy MD'}</span>
+            <span className="markdown-action-label markdown-action-label--wide">{copied ? 'Copied' : 'Copy'}</span>
+            <span className="markdown-action-label markdown-action-label--compact">{copied ? 'Copied' : 'Copy'}</span>
           </button>
 
           <button
+            type="button"
+            aria-label="Download Markdown"
             onClick={handleDownloadMdFile}
-            className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs flex items-center gap-1.5 border border-zinc-700 transition font-extrabold cursor-pointer"
-            title="Download .md file"
+            className="markdown-command-button bg-zinc-900 hover:bg-zinc-800 text-white text-xs flex items-center gap-1.5 border border-zinc-700 transition font-extrabold cursor-pointer"
+            title="Download Markdown"
           >
             <FileText className="w-4 h-4 text-white stroke-[2.5]" />
-            <span>Save .MD</span>
+            <span className="markdown-action-label markdown-action-label--wide">Markdown</span>
+            <span className="markdown-action-label markdown-action-label--compact">MD</span>
           </button>
 
           <button
+            type="button"
+            aria-label="Download PDF"
             onClick={handleExportPdf}
-            disabled={isExporting}
-            className="bg-zinc-900 hover:bg-zinc-800 text-white font-extrabold text-xs px-4 py-2 rounded-xl border border-zinc-700 shadow-md flex items-center gap-2 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50"
+            disabled={isExporting || !ready}
+            className="markdown-command-button bg-zinc-900 hover:bg-zinc-800 text-white font-extrabold text-xs border border-zinc-700 shadow-md flex items-center gap-1.5 cursor-pointer transition-all active:scale-[0.98] disabled:opacity-50"
             style={{ backgroundColor: '#18181b', color: '#ffffff' }}
+            title="Download PDF"
           >
             {isExporting ? (
               <RefreshCw className="w-4 h-4 animate-spin shrink-0 text-white" style={{ color: '#ffffff' }} />
             ) : (
               <Download className="w-4 h-4 shrink-0 stroke-[2.5] text-white" style={{ color: '#ffffff', stroke: '#ffffff' }} />
             )}
-            <span className="font-extrabold text-xs text-white" style={{ color: '#ffffff' }}>Compile PDF</span>
+            <span className="markdown-action-label markdown-action-label--wide font-extrabold text-xs text-white" style={{ color: '#ffffff' }}>PDF</span>
+            <span className="markdown-action-label markdown-action-label--compact font-extrabold text-xs text-white" style={{ color: '#ffffff' }}>PDF</span>
           </button>
         </div>
       </div>
 
       {/* Rich Formatting Toolbar */}
       <div className="markdown-editor__formatting border-b border-[var(--border-color)] bg-[var(--surface-color)] px-6 py-2 flex items-center gap-1 overflow-x-auto text-[var(--text-secondary)]" aria-label="Markdown formatting toolbar">
-        <button onClick={() => insertFormatting('**', '**', 'bold text')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Bold (**text**)">
-          <Bold className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertFormatting('*', '*', 'italic text')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Italic (*text*)">
-          <Italic className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertFormatting('~~', '~~', 'strikethrough')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Strikethrough (~~text~~)">
-          <Strikethrough className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertFormatting('`', '`', 'code')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Inline Code (`code`)">
-          <Code className="w-4 h-4" />
-        </button>
-
-        <div className="h-4 w-px bg-[var(--border-color)] mx-1" />
-
-        <button onClick={() => insertLinePrefix('# ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Heading 1">
-          <Heading1 className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertLinePrefix('## ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Heading 2">
-          <Heading2 className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertLinePrefix('### ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Heading 3">
-          <Heading3 className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertLinePrefix('#### ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Heading 4">
-          <Heading4 className="w-4 h-4" />
-        </button>
-
-        <div className="h-4 w-px bg-[var(--border-color)] mx-1" />
-
-        <button onClick={() => insertLinePrefix('- ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Bulleted List">
-          <List className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertLinePrefix('1. ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Numbered List">
-          <ListOrdered className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertLinePrefix('- [ ] ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Task Checklist">
-          <CheckSquare className="w-4 h-4" />
-        </button>
-
-        <div className="h-4 w-px bg-[var(--border-color)] mx-1" />
-
-        <button onClick={() => insertLinePrefix('> ')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Blockquote">
-          <Quote className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertFormatting('\n```typescript\n', '\n```\n', '// code here')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Code Block">
-          <Terminal className="w-4 h-4" />
-        </button>
-        <button onClick={insertTable} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Insert Table">
-          <TableIcon className="w-4 h-4" />
-        </button>
-
-        <div className="h-4 w-px bg-[var(--border-color)] mx-1" />
-
-        <button onClick={() => insertFormatting('[', '](https://example.com)', 'link text')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Insert Link">
-          <LinkIcon className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertFormatting('![', '](https://example.com/image.png)', 'alt text')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Insert Image">
-          <ImageIcon className="w-4 h-4" />
-        </button>
-        <button onClick={() => insertFormatting('\n---\n')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg transition cursor-pointer" title="Horizontal Divider">
-          <Minus className="w-4 h-4" />
-        </button>
-
-        <div className="h-4 w-px bg-[var(--border-color)] mx-1" />
-
-        <button onClick={() => setMarkdown('')} className="p-1.5 hover:bg-[var(--surface-hover)] hover:text-white rounded-lg text-[var(--text-secondary)] transition cursor-pointer" title="Clear Text">
-          <Eraser className="w-4 h-4" />
-        </button>
+        <FormattingButton label="Bold (**text**)" Icon={Bold} onClick={() => insertFormatting('**', '**', 'bold text')} />
+        <FormattingButton label="Italic (*text*)" Icon={Italic} onClick={() => insertFormatting('*', '*', 'italic text')} />
+        <FormattingButton label="Strikethrough (~~text~~)" Icon={Strikethrough} onClick={() => insertFormatting('~~', '~~', 'strikethrough')} />
+        <FormattingButton label="Inline code (`code`)" Icon={Code} onClick={() => insertFormatting('`', '`', 'code')} />
+        <ToolbarDivider />
+        <FormattingButton label="Heading 1" Icon={Heading1} onClick={() => insertLinePrefix('# ')} />
+        <FormattingButton label="Heading 2" Icon={Heading2} onClick={() => insertLinePrefix('## ')} />
+        <FormattingButton label="Heading 3" Icon={Heading3} onClick={() => insertLinePrefix('### ')} />
+        <FormattingButton label="Heading 4" Icon={Heading4} onClick={() => insertLinePrefix('#### ')} />
+        <ToolbarDivider />
+        <FormattingButton label="Bulleted list" Icon={List} onClick={() => insertLinePrefix('- ')} />
+        <FormattingButton label="Numbered list" Icon={ListOrdered} onClick={() => insertLinePrefix('1. ')} />
+        <FormattingButton label="Task checklist" Icon={CheckSquare} onClick={() => insertLinePrefix('- [ ] ')} />
+        <ToolbarDivider />
+        <FormattingButton label="Blockquote" Icon={Quote} onClick={() => insertLinePrefix('> ')} />
+        <FormattingButton label="Code block" Icon={Terminal} onClick={() => insertFormatting('\n```typescript\n', '\n```\n', '// code here')} />
+        <FormattingButton label="Table" Icon={TableIcon} onClick={insertTable} />
+        <ToolbarDivider />
+        <FormattingButton label="Link" Icon={LinkIcon} onClick={() => insertFormatting('[', '](https://example.com)', 'link text')} />
+        <FormattingButton label="Image" Icon={ImageIcon} onClick={() => insertFormatting('![', '](https://example.com/image.png)', 'alt text')} />
+        <FormattingButton label="Horizontal rule" Icon={Minus} onClick={() => insertFormatting('\n---\n')} />
+        <ToolbarDivider />
+        <FormattingButton label="Clear Markdown" Icon={Eraser} tone="danger" onClick={() => setMarkdown('')} />
+        {viewMode !== 'edit' && <WorkspaceZoomControls
+          value={previewZoom}
+          onChange={setPreviewZoom}
+          min={60}
+          max={250}
+          step={10}
+          className="markdown-preview-zoom"
+        />}
       </div>
 
       {/* Main Workspace */}
-      <div className="markdown-editor__workspace flex-1 flex flex-col md:flex-row overflow-hidden relative">
+      <div className={`markdown-editor__workspace markdown-editor__workspace--${viewMode} flex-1 flex flex-col md:flex-row overflow-hidden relative`}>
         {/* Raw Markdown Editor Area */}
         {(viewMode === 'split' || viewMode === 'edit') && (
-          <div className="flex-1 flex flex-col bg-[var(--bg-color)] border-b md:border-b-0 md:border-r border-[var(--border-color)] p-4 sm:p-6 overflow-hidden min-h-[300px] md:min-h-0">
+          <div className="markdown-source-pane flex-1 flex flex-col bg-[var(--bg-color)] border-b md:border-b-0 md:border-r border-[var(--border-color)] overflow-hidden min-h-[300px] md:min-h-0">
             <textarea
               ref={textareaRef}
               value={markdown}
               onChange={e => setMarkdown(e.target.value)}
+              onScroll={viewMode === 'split' ? event => {
+                if (suppressEditorScrollRef.current) return;
+                const node = event.currentTarget;
+                const maxScroll = node.scrollHeight - node.clientHeight;
+                setSplitScrollProgress(maxScroll > 0 ? node.scrollTop / maxScroll : 0);
+              } : undefined}
               placeholder="Start writing Markdown..."
-              className="w-full h-full bg-transparent text-[var(--text-primary)] font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder:text-[var(--text-tertiary)]"
+              className="markdown-source-input w-full h-full bg-transparent text-[var(--text-primary)] font-mono text-sm leading-relaxed resize-none focus:outline-none placeholder:text-[var(--text-tertiary)]"
               aria-label="Markdown source"
             />
           </div>
         )}
 
-        {/* Rendered Live Preview Area */}
-        {(viewMode === 'split' || viewMode === 'preview' || viewMode === 'edit') && (
-          <div
-            className={viewMode === 'edit'
-              ? 'markdown-export-preview'
-              : 'flex-1 bg-[var(--bg-color)] p-4 sm:p-8 overflow-y-auto min-h-[300px] md:min-h-0'}
-            aria-hidden={viewMode === 'edit'}
-          >
-            <div ref={previewRef} id="markdown-preview-container" className="max-w-3xl mx-auto bg-[var(--surface-color)] border border-[var(--border-color)] rounded-2xl p-4 sm:p-8 shadow-2xl">
-              <div
-                dangerouslySetInnerHTML={{
-                  __html: renderMarkdownToHtml(markdown),
-                }}
-              />
-            </div>
+        {viewMode !== 'edit' && (
+          <div className="markdown-pdf-preview" aria-busy={!ready && !failed}>
+            {(!ready || failed || Boolean(compiled?.warnings.length)) && <div className={`markdown-pdf-notice ${failed ? 'is-error' : ''}`} role="status">
+              {failed ? compileError.message : !ready ? 'Updating PDF preview...' : null}
+              {failed && <button className="underline ml-2" onClick={() => setRetry(value => value + 1)}>Retry</button>}
+              {ready && compiled.warnings.map(warning => <p key={warning}>{warning}</p>)}
+            </div>}
+            {compiled && <MarkdownPdfPreview
+              blob={compiled.blob}
+              zoom={previewZoom}
+              onZoomChange={setPreviewZoom}
+              scrollProgress={viewMode === 'split' ? splitScrollProgress : undefined}
+              onScrollProgress={viewMode === 'split' ? syncEditorScroll : undefined}
+            />}
           </div>
         )}
       </div>
@@ -618,7 +533,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
           <span><strong>{readTimeMin}</strong> min read</span>
         </div>
         <div className="flex items-center gap-2 font-mono">
-          <span>Markdown Workspace</span>
+          <span>{failed ? 'Preview unavailable' : ready ? 'Ready to download' : 'Updating preview...'}</span>
         </div>
       </div>
     </div>

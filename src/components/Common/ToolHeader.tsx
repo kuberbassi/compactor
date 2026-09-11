@@ -11,6 +11,7 @@ interface ToolHeaderProps {
   actions?: React.ReactNode;
   fileName?: string;
   fileMeta?: string;
+  backLabel?: string;
 }
 
 export const ToolHeader: React.FC<ToolHeaderProps> = ({
@@ -19,7 +20,8 @@ export const ToolHeader: React.FC<ToolHeaderProps> = ({
   icon: Icon,
   onGoHome,
   badge,
-  actions
+  actions,
+  backLabel = 'Back to all tools',
 }) => {
   return (
     <header className="tool-layout__header">
@@ -49,8 +51,8 @@ export const ToolHeader: React.FC<ToolHeaderProps> = ({
           size="sm" 
           onClick={onGoHome} 
           className="tool-layout__back"
-          aria-label="Back to all tools"
-          title="Back to all tools"
+          aria-label={backLabel}
+          title={backLabel}
         >
           <ArrowLeft aria-hidden="true" />
         </Button>

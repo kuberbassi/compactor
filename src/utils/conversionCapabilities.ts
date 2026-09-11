@@ -1,6 +1,6 @@
 export const SUPPORTED_SOURCE_FORMATS = [
-  'pdf', 'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls', 'txt', 'md', 'csv', 'tsv', 'json', 'xml', 'yaml', 'yml', 'rtf', 'html',
-  'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'svg', 'avif', 'ico', 'tiff', 'tif', 'tga',
+  'pdf', 'docx', 'pptx', 'xlsx', 'txt', 'md', 'csv', 'json', 'html',
+  'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'svg', 'avif',
   'mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'opus', 'weba', 'wma', 'aiff', 'aif', 'alac', 'mka', 'ac3', 'dts', 'amr',
   'mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'vob', 'mpeg', 'mpg', 'ts', 'm2ts', 'wmv', 'asf', 'ogv', '3gp', '3g2', 'm4v', 'f4v',
 ] as const;
@@ -16,24 +16,26 @@ export const getSupportedTargets = (extension: string): Set<string> => {
   const VIDEO_SOURCES = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'flv', 'vob', 'mpeg', 'mpg', 'ts', 'm2ts', 'wmv', 'asf', 'ogv', '3gp', '3g2', 'm4v', 'f4v'];
   const AUDIO_SOURCES = ['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg', 'opus', 'weba', 'wma', 'aiff', 'aif', 'alac', 'mka', 'ac3', 'dts', 'amr'];
 
-  if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'svg', 'avif', 'ico', 'tiff', 'tif', 'tga'].includes(source)) {
+  if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'svg', 'avif'].includes(source)) {
     ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico', 'svg'].forEach(target => targets.add(target));
     if (['avif', 'svg'].includes(source)) targets.delete('svg');
-    if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff', 'tif'].includes(source)) targets.add('pdf');
+    if (['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(source)) targets.add('pdf');
   } else if (source === 'pdf') {
     ['docx', 'txt'].forEach(target => targets.add(target));
-  } else if (['docx', 'doc'].includes(source)) {
+  } else if (source === 'docx') {
     ['pdf', 'txt', 'html'].forEach(target => targets.add(target));
-  } else if (['xlsx', 'xls'].includes(source)) {
-    ['pdf', 'html', 'json', 'csv'].forEach(target => targets.add(target));
-  } else if (['pptx', 'ppt'].includes(source)) {
-    ['pdf', 'txt'].forEach(target => targets.add(target));
-  } else if (['txt', 'md', 'rtf', 'html'].includes(source)) {
-    ['pdf', 'docx', 'html', 'txt'].forEach(target => targets.add(target));
-  } else if (['csv', 'tsv'].includes(source)) {
+  } else if (source === 'xlsx') {
+    ['pdf', 'html'].forEach(target => targets.add(target));
+  } else if (source === 'pptx') {
+    targets.add('pdf');
+  } else if (['txt', 'md'].includes(source)) {
+    ['pdf', 'docx', 'html'].forEach(target => targets.add(target));
+  } else if (source === 'html') {
+    targets.add('pdf');
+  } else if (source === 'csv') {
     ['json', 'html', 'pdf'].forEach(target => targets.add(target));
-  } else if (['json', 'xml', 'yaml', 'yml'].includes(source)) {
-    ['csv', 'pdf', 'json', 'txt'].forEach(target => targets.add(target));
+  } else if (source === 'json') {
+    ['csv', 'pdf'].forEach(target => targets.add(target));
   } else if (VIDEO_SOURCES.includes(source)) {
     // Video → all video containers + audio extraction
     ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv', 'mpeg', 'mpg', 'ts', 'm2ts', 'wmv', 'ogv', '3gp', 'm4v', 'gif',

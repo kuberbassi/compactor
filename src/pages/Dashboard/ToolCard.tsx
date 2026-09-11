@@ -3,7 +3,7 @@ import { ArrowUpRight, FileAudio, FileImage, FileText, FileVideo, RefreshCw, Shi
 import type { ToolItem } from './types';
 import { pathForTool } from '../../config/toolRoutes';
 
-const ACCENTS = ['#8b7cff', '#65d6ad', '#ffb86b', '#61b8ff', '#ef7fa8', '#a4d65e'];
+const TOOL_ACCENT = '#f4f4f5';
 
 function ToolIcon({ tool }: { tool: ToolItem }) {
   if (tool.id === 'metadata-editor') return <ShieldCheck />;
@@ -14,8 +14,8 @@ function ToolIcon({ tool }: { tool: ToolItem }) {
   return <FileAudio />;
 }
 
-export function ToolCard({ tool, onSelectTool, index = 0 }: { tool: ToolItem; onSelectTool: (toolId: string) => void; index?: number }) {
-  return <a href={pathForTool(tool.id)} onClick={event => { event.preventDefault(); onSelectTool(tool.id); }} className="tool-card-v2" style={{ '--tool-accent': ACCENTS[index % ACCENTS.length] } as CSSProperties}>
+export function ToolCard({ tool, onSelectTool }: { tool: ToolItem; onSelectTool: (toolId: string) => void; index?: number }) {
+  return <a href={pathForTool(tool.id)} onClick={event => { event.preventDefault(); onSelectTool(tool.id); }} className="tool-card-v2" style={{ '--tool-accent': TOOL_ACCENT } as CSSProperties}>
     <div className="tool-card-v2__top"><div className="tool-card-v2__icon"><ToolIcon tool={tool} /></div><span>{tool.category === 'AUDIO & CONVERT' ? 'AUDIO' : tool.category}</span><ArrowUpRight className="tool-card-v2__arrow" /></div>
     <div><h3>{tool.title}</h3><p>{tool.description}</p></div>
     <div className="tool-card-v2__meta"><span>{tool.subtitle}</span><span>Open tool <ArrowUpRight /></span></div>

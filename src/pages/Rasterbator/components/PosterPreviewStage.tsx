@@ -178,7 +178,7 @@ export const PosterPreviewStage: React.FC<PosterPreviewStageProps> = ({
   }
 
   return (
-    <div ref={posterViewportRef} className="image-preview-viewport flex-1 bg-[var(--bg-color)] relative overflow-auto">
+    <div ref={posterViewportRef} className="image-preview-viewport workbench-scroll-region flex-1 bg-[var(--bg-color)] relative">
       {/* Subtle checker background */}
       <div
         className="absolute inset-0 opacity-[0.03]"
@@ -249,5 +249,4 @@ export const PosterPreviewStage: React.FC<PosterPreviewStageProps> = ({
     </div>
   );
 };
-
 

@@ -7,6 +7,12 @@ import {
 
 import { parsePageRanges } from '../pdfToolsConfig';
 
+const DOCUMENT_PREVIEW_TOOLS = new Set([
+  'pdf-split', 'pdf-protect', 'pdf-unlock', 'pdf-remove-metadata',
+  'pdf-flatten', 'pdf-flatten-forms', 'pdf-flatten-entire', 'pdf-ocr',
+  'pdf-to-image', 'pdf-to-word', 'pdf-extract-text',
+]);
+
 export interface PdfFileInfo {
   file: File;
   pageCount: number;
@@ -83,7 +89,7 @@ export const LivePdfPreview: React.FC<LivePdfPreviewProps> = ({
       } else {
         if (start === prev) str += `${start}, `;
         else str += `${start}-${prev}, `;
-        start = arr[0];
+        start = arr[i];
         prev = arr[i];
       }
     }
@@ -94,7 +100,7 @@ export const LivePdfPreview: React.FC<LivePdfPreviewProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="pdf-live-preview space-y-4">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block truncate">
           Real-Time Visual Preview
@@ -103,6 +109,15 @@ export const LivePdfPreview: React.FC<LivePdfPreviewProps> = ({
           Live Preview
         </span>
       </div>
+
+      {DOCUMENT_PREVIEW_TOOLS.has(activeTool) && (
+        <div className="pdf-live-preview__document" aria-label="First page document preview">
+          <div className="pdf-live-preview__paper">
+            {firstPageThumbnail ? <img src={firstPageThumbnail} alt="First PDF page" /> : <div className="pdf-live-preview__loading">Rendering first page…</div>}
+          </div>
+          <span>Page 1 of {singleFile.pageCount}</span>
+        </div>
+      )}
 
       {/* STAMP PRESET PREVIEW */}
       {activeTool === 'pdf-stamps' && (
@@ -416,4 +431,3 @@ export const LivePdfPreview: React.FC<LivePdfPreviewProps> = ({
     </div>
   );
 };
-

@@ -274,7 +274,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
   return (
     <div className={`tool-layout converter-tool-layout ${items.length > 0 || processing || hasRun ? 'has-active-session' : 'is-empty-session'}`}>
       <ToolHeader
-        title="File Converter"
+        title="Convert Files"
         description="Convert files privately in your browser with zero server uploads."
         icon={RefreshCw}
         fileName={items.length === 1 ? items[0].file.name : items.length > 1 ? `${items.length} files in queue` : undefined}
@@ -285,7 +285,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
           activeId="universal-converter"
           options={[
             { id: 'universal-converter', label: 'Convert' },
-            { id: 'metadata-editor', label: 'Metadata' },
+            { id: 'metadata-editor', label: 'Details' },
           ]}
           onSelect={onSelectTool}
         /> : undefined}
@@ -521,6 +521,13 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                 </div>
               )}
 
+              {targetFormat === 'pdf' && distinctExtensions.some(extension => ['pptx', 'xlsx', 'html'].includes(extension)) && (
+                <p className="rounded-xl border border-white/10 p-4 text-xs text-zinc-300">
+                  {distinctExtensions.includes('pptx') && 'PPTX exports slide text into readable pages; artwork, charts, and original slide layouts are not reproduced. '}
+                  {distinctExtensions.includes('xlsx') && 'XLSX exports cell values as paginated tables; charts and workbook styling are not reproduced. '}
+                  {distinctExtensions.includes('html') && 'HTML exports its source text, including tags.'}
+                </p>
+              )}
               {distinctExtensions.length === 1 && distinctExtensions[0] === 'docx' && targetFormat === 'pdf' && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 text-[11px] leading-relaxed text-amber-100">
                   <strong className="block text-xs text-amber-50">Private browser conversion</strong>

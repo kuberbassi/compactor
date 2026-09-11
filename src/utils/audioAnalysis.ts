@@ -1,5 +1,5 @@
 /**
- * 100% Client-Side Studio-Grade Audio Key & BPM Analysis Engine
+ * Client-side audio key and BPM analysis.
  *
  * BPM: Powered by `web-audio-beat-detector` (spectral tempo-gram peak clustering)
  * KEY: Multi-Band HPCP (Harmonic Pitch Class Profile) with:
@@ -147,10 +147,10 @@ async function resampleTo44100MonoBuffer(buffer: AudioBuffer): Promise<AudioBuff
 }
 
 /**
- * Studio-Grade HPCP Key Detection with Multi-Band Peak Picking,
+ * HPCP key detection with multi-band peak picking,
  * Bass Chromagram Tonic Discrimination, and Ensemble Correlation.
  */
-function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mode: 'Major' | 'Minor'; confidence: number } {
+export function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mode: 'Major' | 'Minor'; confidence: number } {
   const pcm = audioBuffer.getChannelData(0);
   const sampleRate = 44100;
   const totalSamples = pcm.length;
@@ -269,34 +269,19 @@ function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mo
     let majScore = krumMaj * 0.35 + tempMaj * 0.35 + shaathMaj * 0.30 + bassTonicWeight;
     let minScore = krumMin * 0.35 + tempMin * 0.35 + shaathMin * 0.30 + bassTonicWeight;
 
-    // Minor tonic third preference: if index 3 (minor 3rd) in rotated bass or chroma is present
-    if (rotatedChroma[3] > 0.4 && rotatedBass[0] > 0.4) {
-      minScore += 0.05;
-    }
+    // The third is the clearest local distinction between parallel major/minor.
+    // Keep this evidence symmetric so the detector cannot be biased toward minor.
+    majScore += Math.max(-0.12, Math.min(0.12, (rotatedChroma[4] - rotatedChroma[3]) * 0.12));
+    minScore += Math.max(-0.12, Math.min(0.12, (rotatedChroma[3] - rotatedChroma[4]) * 0.12));
 
     majorScores[root] = majScore;
     minorScores[root] = minScore;
   }
 
-  // Disambiguate Relative Major vs Minor Pairs (e.g. Bb Major vs G Minor, Eb Major vs C Minor)
-  for (let root = 0; root < 12; root++) {
-    const relativeMinorRoot = (root + 9) % 12;
-    const majScore = majorScores[root];
-    const minScore = minorScores[relativeMinorRoot];
-
-    // If relative minor and major scores are close (within 0.08 of each other)
-    if (Math.abs(majScore - minScore) < 0.08) {
-      // Check bass root: if bass chromagram at relative minor root is stronger than at relative major root
-      if (bassChroma[relativeMinorRoot] >= bassChroma[root] * 0.95) {
-        minorScores[relativeMinorRoot] += 0.08; // Give decisive boost to relative minor
-      } else {
-        majorScores[root] += 0.05;
-      }
-    }
-  }
-
   // Find overall highest scoring key across all 24 candidates
+  const allScores: number[] = [];
   for (let root = 0; root < 12; root++) {
+    allScores.push(majorScores[root], minorScores[root]);
     if (majorScores[root] > bestScore) {
       bestScore = majorScores[root];
       bestKeyIndex = root;
@@ -310,7 +295,9 @@ function detectKeyFrom44kBuffer(audioBuffer: AudioBuffer): { keyName: string; mo
   }
 
   const keyName = bestMode === 'Major' ? MAJOR_KEY_NAMES[bestKeyIndex] : MINOR_KEY_NAMES[bestKeyIndex];
-  const confidence = Math.min(99, Math.max(82, Math.round(60 + bestScore * 40)));
+  const rankedScores = allScores.sort((a, b) => b - a);
+  const margin = Math.max(0, rankedScores[0] - (rankedScores[1] ?? rankedScores[0]));
+  const confidence = Math.round(Math.max(1, Math.min(99, margin / 0.22 * 100)));
 
   return { keyName, mode: bestMode, confidence };
 }
@@ -330,19 +317,17 @@ export async function analyzeAudioBPMAndKey(file: File): Promise<AudioAnalysisRe
     // 1. High-accuracy BPM detection using web-audio-beat-detector
     let detectedBPM = 120;
     try {
-      const bpmResult = await analyzeBeat(mono44kBuffer);
+      // Ask the detector for the slower musical pulse directly. Post-hoc range
+      // folding caused common half/double-time mistakes such as 78 → 156 BPM.
+      const bpmResult = await analyzeBeat(mono44kBuffer, { minTempo: 60, maxTempo: 120 });
       if (bpmResult && bpmResult > 0) {
-        let bpm = Math.round(bpmResult);
-        // Normalize tempo to standard 75-175 BPM DJ range
-        if (bpm < 75) bpm *= 2;
-        if (bpm > 175) bpm = Math.round(bpm / 2);
-        detectedBPM = bpm;
+        detectedBPM = Math.round(bpmResult);
       }
     } catch (errBeat) {
       console.warn('Beat detector notice:', errBeat);
     }
 
-    // 2. Studio-Grade Multi-Band HPCP Key Detection
+    // 2. Multi-band HPCP key detection
     const keyInfo = detectKeyFrom44kBuffer(mono44kBuffer);
     const camelot = CAMELOT_MAP[keyInfo.keyName] || '8B';
 

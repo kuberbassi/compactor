@@ -1,5 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { isCanvasBlank } from './canvasBlankCheck';
 
 // Bundle worker locally via Vite asset import to ensure zero network/CORS blocks
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -11,7 +12,9 @@ export const renderPdfThumbnails = async (
   file: File,
   maxPages: number = 100,
   scale: number = 1.5,
-  onProgress?: (renderedCount: number, total: number) => void
+  onProgress?: (renderedCount: number, total: number) => void,
+  onThumbnail?: (pageIndex: number, thumbnailUrl: string) => void,
+  onBlankPageAssessment?: (pageIndex: number, isBlank: boolean | null) => void
 ): Promise<string[]> => {
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -46,17 +49,32 @@ export const renderPdfThumbnails = async (
           const renderTask = page.render(renderContext);
           await renderTask.promise;
 
+          if (onBlankPageAssessment) {
+            try {
+              const textContent = await page.getTextContent();
+              const hasText = textContent.items.some(item => 'str' in item && item.str.trim().length > 0);
+              onBlankPageAssessment(i - 1, !hasText && isCanvasBlank(canvas));
+            } catch {
+              onBlankPageAssessment(i - 1, null);
+            }
+          }
+
           thumbnails.push(canvas.toDataURL('image/jpeg', 0.92));
         } else {
           thumbnails.push('');
+          onBlankPageAssessment?.(i - 1, null);
         }
       } catch (pageErr) {
         console.warn(`Failed rendering high-res page ${i}:`, pageErr);
         thumbnails.push('');
+        onBlankPageAssessment?.(i - 1, null);
       }
 
       if (onProgress) {
         onProgress(i, numPages);
+      }
+      if (onThumbnail) {
+        onThumbnail(i - 1, thumbnails[i - 1]);
       }
     }
 
