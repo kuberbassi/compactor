@@ -39,6 +39,8 @@ describe('PdfTools workflow', () => {
   it('normalizes Error and non-Error failures', () => {
     expect(errorMessage(new Error('broken'))).toBe('broken');
     expect(errorMessage('plain failure')).toBe('plain failure');
+    expect(errorMessage(new Error(''), 'Try the password again.')).toBe('Try the password again.');
+    expect(errorMessage(undefined, 'Try the password again.')).toBe('Try the password again.');
   });
 
   it('runs and finalizes the shared single-result lifecycle on success and failure', async () => {

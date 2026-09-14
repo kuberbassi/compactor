@@ -508,11 +508,13 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     initialProgress,
     status,
     failurePrefix,
+    failureFallback,
     task,
   }: {
     initialProgress: number;
     status: string;
     failurePrefix: string;
+    failureFallback?: string;
     task: () => Promise<PdfResultTask>;
   }) => {
     setProcessing(true);
@@ -528,7 +530,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       onUploadSuccess();
     } catch (error: unknown) {
       console.error(error);
-      setErrorMessage(`${failurePrefix}: ${normalizePdfError(error)}`);
+      setErrorMessage(`${failurePrefix}: ${normalizePdfError(error, failureFallback)}`);
     } finally {
       setProgress(100);
       setProcessing(false);
@@ -874,7 +876,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       setErrorMessage('This PDF is already unlocked.');
       return;
     }
-    await runResultTask({ initialProgress: 45, status: 'Decrypting PDF stream & removing password...', failurePrefix: 'Unlock PDF failed', task: async () => ({
+    await runResultTask({ initialProgress: 45, status: 'Decrypting PDF stream & removing password...', failurePrefix: 'Unlock PDF failed', failureFallback: 'Please verify the current password.', task: async () => ({
       blob: await unlockPdfWithPassword(singleFile.file, securityPassword), name: `${singleFile.file.name.replace('.pdf', '')}_unlocked.pdf`,
     }) });
   };
