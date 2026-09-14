@@ -71,7 +71,7 @@ import { MergePanel } from './components/MergePanel';
 import { ImagesToPdfPanel } from './components/ImagesToPdfPanel';
 import { PdfCompressPanel } from './components/PdfCompressPanel';
 import { PdfResultViews } from './components/PdfResultViews';
-import { revokeDepartedObjectUrls } from '../../utils/nativeCompressor';
+import { createObjectUrlOwner } from '../../utils/objectUrl';
 
 export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(toolId || 'pdf-organize');
@@ -84,8 +84,10 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [resultName, setResultName] = useState('');
   const [resultSize, setResultSize] = useState<number>(0);
   const [compressionResults, setCompressionResultsState] = useState<CompressionResult[]>([]);
-  const resultUrlRef = useRef<string | null>(null);
-  const compressionResultsRef = useRef<CompressionResult[]>([]);
+  const resultUrlOwnerRef = useRef(createObjectUrlOwner<string | null>(null, url => url ? [url] : []));
+  const compressionResultsOwnerRef = useRef(createObjectUrlOwner<CompressionResult[]>([], results =>
+    results.flatMap(result => result.url ? [result.url] : [])
+  ));
   const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
     loadSetting('compactor_pdf_compression_preset', 'balanced')
   );
@@ -200,31 +202,25 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   }, [peekPageIndex]);
 
   const replaceResultUrl = (next: string | null) => {
-    const previous = resultUrlRef.current;
-    if (previous && previous !== next) URL.revokeObjectURL(previous);
-    resultUrlRef.current = next;
+    resultUrlOwnerRef.current.replace(next);
     setResultUrlState(next);
   };
 
   const replaceCompressionResults = (
     nextOrUpdater: CompressionResult[] | ((previous: CompressionResult[]) => CompressionResult[]),
   ) => {
-    const previous = compressionResultsRef.current;
+    const previous = compressionResultsOwnerRef.current.current();
     const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(previous) : nextOrUpdater;
-    revokeDepartedObjectUrls(
-      previous.flatMap(result => result.url ? [result.url] : []),
-      next.flatMap(result => result.url ? [result.url] : []),
-    );
-    compressionResultsRef.current = next;
+    compressionResultsOwnerRef.current.replace(next);
     setCompressionResultsState(next);
   };
 
   useEffect(() => {
+    const resultUrlOwner = resultUrlOwnerRef.current;
+    const compressionResultsOwner = compressionResultsOwnerRef.current;
     return () => {
-      if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current);
-      compressionResultsRef.current.forEach(result => {
-        if (result.url) URL.revokeObjectURL(result.url);
-      });
+      resultUrlOwner.cleanup();
+      compressionResultsOwner.cleanup();
     };
   }, []);
 

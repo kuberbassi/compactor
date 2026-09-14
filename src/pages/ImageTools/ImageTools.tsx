@@ -23,7 +23,7 @@ import {
 import { renderClassicHalftone } from '../../utils/posterEngine';
 import { ImageSidebarControls } from './components/ImageSidebarControls';
 import { ImageBatchResults } from './components/ImageBatchResults';
-import { revokeDepartedObjectUrls } from '../../utils/nativeCompressor';
+import { createObjectUrlOwner } from '../../utils/objectUrl';
 import { IMAGE_TABS as TABS } from './imageToolsConfig';
 import type { FileSettings, ImageTabId as TabId } from './imageToolsConfig';
 import { moveQueueItem, remapActiveQueueIndex } from './imagePdfQueue';
@@ -168,7 +168,9 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [results, setResultsState] = useState<ImageProcessResult[]>([]);
-  const resultsRef = useRef<ImageProcessResult[]>([]);
+  const resultsOwnerRef = useRef(createObjectUrlOwner<ImageProcessResult[]>([], currentResults =>
+    currentResults.map(result => result.url)
+  ));
   const [failedFileIndexes, setFailedFileIndexes] = useState<number[]>([]);
   const [imageZoom, setImageZoom] = useState(80);
   const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(null);
@@ -268,21 +270,16 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const replaceResults = (
     nextOrUpdater: ImageProcessResult[] | ((previous: ImageProcessResult[]) => ImageProcessResult[]),
   ) => {
-    const previous = resultsRef.current;
+    const previous = resultsOwnerRef.current.current();
     const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(previous) : nextOrUpdater;
-    revokeDepartedObjectUrls(
-      previous.map(result => result.url),
-      next.map(result => result.url),
-    );
-    resultsRef.current = next;
+    resultsOwnerRef.current.replace(next);
     setResultsState(next);
   };
 
   useEffect(() => {
+    const resultsOwner = resultsOwnerRef.current;
     return () => {
-      resultsRef.current.forEach(r => {
-        if (r.url) URL.revokeObjectURL(r.url);
-      });
+      resultsOwner.cleanup();
     };
   }, []);
 

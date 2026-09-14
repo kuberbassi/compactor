@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CompressionResult } from '../pages/PdfTools/pdfToolsConfig';
 import type { ImageProcessResult } from '../utils/image';
-import { compressVideoNative, revokeDepartedObjectUrls } from '../utils/nativeCompressor';
+import { compressVideoNative } from '../utils/nativeCompressor';
+import { createObjectUrlOwner } from '../utils/objectUrl';
 
 const pdfResult = (url?: string): CompressionResult => ({
   sourceName: 'source.pdf',
@@ -32,16 +33,16 @@ describe('object URL ownership', () => {
     const failed = pdfResult();
     const retried = pdfResult('blob:retried-pdf');
 
-    revokeDepartedObjectUrls(
-      [retained, failed].flatMap(result => result.url ? [result.url] : []),
-      [retained, retried].flatMap(result => result.url ? [result.url] : []),
+    const owner = createObjectUrlOwner(
+      [] as CompressionResult[],
+      results => results.flatMap(result => result.url ? [result.url] : []),
     );
+    owner.replace([retained, failed]);
+    owner.replace([retained, retried]);
     expect(revoke).not.toHaveBeenCalled();
+    expect(owner.current()).toEqual([retained, retried]);
 
-    revokeDepartedObjectUrls(
-      [retained, retried].flatMap(result => result.url ? [result.url] : []),
-      [],
-    );
+    owner.cleanup();
     expect(revoke.mock.calls).toEqual([
       ['blob:retained-pdf'],
       ['blob:retried-pdf'],
@@ -53,10 +54,12 @@ describe('object URL ownership', () => {
     const retained = imageResult('blob:retained-image');
     const retried = imageResult('blob:retried-image');
 
-    revokeDepartedObjectUrls([retained.url], [retained.url, retried.url]);
+    const owner = createObjectUrlOwner([] as ImageProcessResult[], results => results.map(result => result.url));
+    owner.replace([retained]);
+    owner.replace([retained, retried]);
     expect(revoke).not.toHaveBeenCalled();
 
-    revokeDepartedObjectUrls([retained.url, retried.url], [retried.url]);
+    owner.replace([retried]);
     expect(revoke).toHaveBeenCalledOnce();
     expect(revoke).toHaveBeenCalledWith('blob:retained-image');
   });

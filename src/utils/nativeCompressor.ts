@@ -1,12 +1,5 @@
 import type { TrimSegment } from '../components/Common/TrimTimeline';
 
-export const revokeDepartedObjectUrls = (previous: string[], next: string[]) => {
-  const retainedUrls = new Set(next);
-  previous.forEach(url => {
-    if (!retainedUrls.has(url)) URL.revokeObjectURL(url);
-  });
-};
-
 export interface NativeCompressOptions {
   bitrateKbps: number; // e.g. 3000 for 3 Mbps
   scale?: string; // e.g. '1280:720', '854:480', '640:360' or 'no-scale'
