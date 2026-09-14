@@ -1,5 +1,12 @@
 import type { TrimSegment } from '../components/Common/TrimTimeline';
 
+export const revokeDepartedObjectUrls = (previous: string[], next: string[]) => {
+  const retainedUrls = new Set(next);
+  previous.forEach(url => {
+    if (!retainedUrls.has(url)) URL.revokeObjectURL(url);
+  });
+};
+
 export interface NativeCompressOptions {
   bitrateKbps: number; // e.g. 3000 for 3 Mbps
   scale?: string; // e.g. '1280:720', '854:480', '640:360' or 'no-scale'
@@ -81,9 +88,16 @@ export const compressVideoNative = async (
     tempVideo.preload = 'metadata';
     tempVideo.src = fileUrl;
     tempVideo.onloadedmetadata = () => {
+      tempVideo.onloadedmetadata = null;
+      tempVideo.onerror = null;
       resolve(tempVideo.duration);
     };
     tempVideo.onerror = () => {
+      tempVideo.onloadedmetadata = null;
+      tempVideo.onerror = null;
+      tempVideo.removeAttribute('src');
+      tempVideo.load();
+      URL.revokeObjectURL(fileUrl);
       reject(new Error("Unable to read video metadata. File may be unsupported or corrupted."));
     };
   });
@@ -368,4 +382,3 @@ export const compressVideoNative = async (
     };
   });
 };
-

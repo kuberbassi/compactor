@@ -71,6 +71,7 @@ import { MergePanel } from './components/MergePanel';
 import { ImagesToPdfPanel } from './components/ImagesToPdfPanel';
 import { PdfCompressPanel } from './components/PdfCompressPanel';
 import { PdfResultViews } from './components/PdfResultViews';
+import { revokeDepartedObjectUrls } from '../../utils/nativeCompressor';
 
 export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(toolId || 'pdf-organize');
@@ -79,10 +80,12 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
-  const [resultUrl, setResultUrl] = useState<string | null>(null);
+  const [resultUrl, setResultUrlState] = useState<string | null>(null);
   const [resultName, setResultName] = useState('');
   const [resultSize, setResultSize] = useState<number>(0);
-  const [compressionResults, setCompressionResults] = useState<CompressionResult[]>([]);
+  const [compressionResults, setCompressionResultsState] = useState<CompressionResult[]>([]);
+  const resultUrlRef = useRef<string | null>(null);
+  const compressionResultsRef = useRef<CompressionResult[]>([]);
   const [compressionPreset, setCompressionPreset] = useState<CompressionPreset>(() =>
     loadSetting('compactor_pdf_compression_preset', 'balanced')
   );
@@ -196,21 +199,37 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     };
   }, [peekPageIndex]);
 
+  const replaceResultUrl = (next: string | null) => {
+    const previous = resultUrlRef.current;
+    if (previous && previous !== next) URL.revokeObjectURL(previous);
+    resultUrlRef.current = next;
+    setResultUrlState(next);
+  };
+
+  const replaceCompressionResults = (
+    nextOrUpdater: CompressionResult[] | ((previous: CompressionResult[]) => CompressionResult[]),
+  ) => {
+    const previous = compressionResultsRef.current;
+    const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(previous) : nextOrUpdater;
+    revokeDepartedObjectUrls(
+      previous.flatMap(result => result.url ? [result.url] : []),
+      next.flatMap(result => result.url ? [result.url] : []),
+    );
+    compressionResultsRef.current = next;
+    setCompressionResultsState(next);
+  };
+
   useEffect(() => {
     return () => {
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
-      compressionResults.forEach(result => {
+      if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current);
+      compressionResultsRef.current.forEach(result => {
         if (result.url) URL.revokeObjectURL(result.url);
       });
     };
-  }, [resultUrl, compressionResults]);
+  }, []);
 
   const reset = () => {
-    if (resultUrl) URL.revokeObjectURL(resultUrl);
-    compressionResults.forEach(result => {
-      if (result.url) URL.revokeObjectURL(result.url);
-    });
-    setResultUrl(null);
+    replaceResultUrl(null);
     setResultName('');
     setResultSize(0);
     setExtractedImages([]);
@@ -230,7 +249,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     setSecurityPassword('');
     setProgress(0);
     setProcessing(false);
-    setCompressionResults([]);
+    replaceCompressionResults([]);
     setOrganizerAddPageNumbers(false);
     setOrganizerCropEnabled(false);
     setImageRotations([]);
@@ -508,7 +527,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       }
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_organized.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -528,7 +547,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await mergePdfs(files);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName('merged_document.pdf');
       onUploadSuccess();
     } catch (e: any) {
@@ -552,7 +571,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await extractPdfPages(singleFile.file, indices);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_extracted.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -564,10 +583,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const runCompress = async () => {
     if (multipleFiles.length === 0) return;
-    compressionResults.forEach(result => {
-      if (result.url) URL.revokeObjectURL(result.url);
-    });
-    setCompressionResults([]);
+    replaceCompressionResults([]);
     setProcessing(true);
 
     const results: CompressionResult[] = [];
@@ -599,7 +615,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         });
       }
     }
-    setCompressionResults(results);
+    replaceCompressionResults(results);
     setProgress(100);
     setProcessing(false);
     const successfulCount = results.filter(result => result.url).length;
@@ -626,11 +642,11 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
         url: URL.createObjectURL(blob),
         error: undefined,
       };
-      setCompressionResults(prev => prev.map((item, index) => index === resultIndex ? replacement : item));
+      replaceCompressionResults(prev => prev.map((item, index) => index === resultIndex ? replacement : item));
       setProgress(100);
       onUploadSuccess();
     } catch (error) {
-      setCompressionResults(prev => prev.map((item, index) => index === resultIndex ? {
+      replaceCompressionResults(prev => prev.map((item, index) => index === resultIndex ? {
         ...item,
         error: error instanceof Error ? error.message : 'Unable to optimize this PDF',
       } : item));
@@ -654,7 +670,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       });
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName('images_compiled.pdf');
       onUploadSuccess();
     } catch (e: any) {
@@ -677,7 +693,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       });
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_stamped.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -696,7 +712,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await flattenPdfForm(singleFile.file);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace(/\.pdf$/i, '')}_forms_flattened.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -715,7 +731,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await flattenPdfCompletely(singleFile.file, flattenQuality);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace(/\.pdf$/i, '')}_fully_flattened.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -737,7 +753,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       });
       setProgress(95);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace(/\.pdf$/i, '')}_searchable_ocr.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -767,9 +783,8 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
     try {
       const blob = await removePdfMetadata(singleFile.file);
       setProgress(90);
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace(/\.pdf$/i, '')}_cleaned.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -792,7 +807,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       });
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_redacted.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -841,7 +856,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       });
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_watermarked.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -860,7 +875,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await addPageNumbersToPdf(singleFile.file, pageNumberPosition);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_numbered.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -879,7 +894,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await cropPdfMargins(singleFile.file, cropMarginsPct);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_cropped.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -904,7 +919,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       );
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_signed.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -923,7 +938,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await protectPdfWithPassword(singleFile.file, securityPassword);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_protected.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -946,7 +961,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       const blob = await unlockPdfWithPassword(singleFile.file, securityPassword);
       setProgress(90);
       setResultSize(blob.size);
-      setResultUrl(URL.createObjectURL(blob));
+      replaceResultUrl(URL.createObjectURL(blob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_unlocked.pdf`);
       onUploadSuccess();
     } catch (e: any) {
@@ -970,7 +985,7 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       setProgress(90);
       const mdBlob = new Blob([mdText], { type: 'text/markdown;charset=utf-8' });
       setResultSize(mdBlob.size);
-      setResultUrl(URL.createObjectURL(mdBlob));
+      replaceResultUrl(URL.createObjectURL(mdBlob));
       setResultName(`${singleFile.file.name.replace('.pdf', '')}_extracted.md`);
       onUploadSuccess();
     } catch (e: any) {
@@ -1025,15 +1040,11 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   const selectWorkflowTool = (tool: string) => {
     setErrorMessage(null);
     setPeekPageIndex(null);
-    if (resultUrl) URL.revokeObjectURL(resultUrl);
-    compressionResults.forEach(result => {
-      if (result.url) URL.revokeObjectURL(result.url);
-    });
-    setResultUrl(null);
+    replaceResultUrl(null);
     setResultName('');
     setResultSize(0);
     setExtractedImages([]);
-    setCompressionResults([]);
+    replaceCompressionResults([]);
 
     if ((tool === 'pdf-merge' || tool === 'pdf-compress') && singleFile) {
       setMultipleFiles(previous => previous.some(item => item.file === singleFile.file)

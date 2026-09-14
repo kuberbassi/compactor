@@ -23,6 +23,7 @@ import {
 import { renderClassicHalftone } from '../../utils/posterEngine';
 import { ImageSidebarControls } from './components/ImageSidebarControls';
 import { ImageBatchResults } from './components/ImageBatchResults';
+import { revokeDepartedObjectUrls } from '../../utils/nativeCompressor';
 import { IMAGE_TABS as TABS } from './imageToolsConfig';
 import type { FileSettings, ImageTabId as TabId } from './imageToolsConfig';
 import { moveQueueItem, remapActiveQueueIndex } from './imagePdfQueue';
@@ -166,7 +167,8 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const [processing, setProcessing] = useState(false);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<ImageProcessResult[]>([]);
+  const [results, setResultsState] = useState<ImageProcessResult[]>([]);
+  const resultsRef = useRef<ImageProcessResult[]>([]);
   const [failedFileIndexes, setFailedFileIndexes] = useState<number[]>([]);
   const [imageZoom, setImageZoom] = useState(80);
   const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(null);
@@ -263,13 +265,26 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
     };
   }, []);
 
+  const replaceResults = (
+    nextOrUpdater: ImageProcessResult[] | ((previous: ImageProcessResult[]) => ImageProcessResult[]),
+  ) => {
+    const previous = resultsRef.current;
+    const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(previous) : nextOrUpdater;
+    revokeDepartedObjectUrls(
+      previous.map(result => result.url),
+      next.map(result => result.url),
+    );
+    resultsRef.current = next;
+    setResultsState(next);
+  };
+
   useEffect(() => {
     return () => {
-      results.forEach(r => {
+      resultsRef.current.forEach(r => {
         if (r.url) URL.revokeObjectURL(r.url);
       });
     };
-  }, [results]);
+  }, []);
 
   const [imageRect, setImageRect] = useState<{ width: number; height: number; left: number; top: number } | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -555,7 +570,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   };
 
   const handleFilesSelected = async (selectedFiles: File[]) => {
-    setResults([]);
+    replaceResults([]);
     const uniqueFiles = appendUniqueFiles(files, selectedFiles).slice(files.length);
     if (uniqueFiles.length === 0) return;
     const newUrls = uniqueFiles.map(f => URL.createObjectURL(f));
@@ -608,7 +623,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const clearQueue = () => {
     previewUrls.forEach(u => URL.revokeObjectURL(u));
     setPreviewUrls([]);
-    setFiles([]); setFileSettingsList([]); setActiveIndex(null); setResults([]);
+    setFiles([]); setFileSettingsList([]); setActiveIndex(null); replaceResults([]);
     setFailedFileIndexes([]); setSameForAll(true);
     setCompressionPreset('balanced'); setRemoveMetadata(true); setActiveTab('compress');
     setCompressMethod('auto'); setTargetSize('30'); setTargetUnit('KB');
@@ -623,7 +638,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
     if (files.length === 0) return;
     const indexes = retryIndexes ?? files.map((_, index) => index);
     setProcessing(true);
-    if (!retryIndexes) setResults([]);
+    if (!retryIndexes) replaceResults([]);
    
     cancellationRef.current = false;
     const processedResults: ImageProcessResult[] = [];
@@ -674,7 +689,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
       }
     }
     
-    setResults(prev => retryIndexes ? [...prev, ...processedResults] : processedResults);
+    replaceResults(prev => retryIndexes ? [...prev, ...processedResults] : processedResults);
     setFailedFileIndexes(failedIndexes);
     setProcessing(false);
   };
@@ -682,7 +697,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const startBatchWatermark = async () => {
     if (files.length === 0) return;
     setProcessing(true);
-    setResults([]);
+    replaceResults([]);
    
     cancellationRef.current = false;
     const processedResults: ImageProcessResult[] = [];
@@ -713,7 +728,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
       }
     }
 
-    setResults(processedResults);
+    replaceResults(processedResults);
     setFailedFileIndexes(failedIndexes);
     setProcessing(false);
   };
@@ -721,7 +736,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const startBatchImageToPdf = async () => {
     if (files.length === 0) return;
     setProcessing(true);
-    setResults([]);
+    replaceResults([]);
    
     cancellationRef.current = false;
     const { imagesToPdf } = await import('../../utils/pdf');
@@ -737,7 +752,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
       });
       if (cancellationRef.current) return;
       const url = URL.createObjectURL(blob);
-      setResults([{
+      replaceResults([{
         blob,
         url,
         name: files.length === 1 ? `${files[0].name.replace(/\.[^.]+$/, '')}.pdf` : 'images.pdf',
@@ -760,7 +775,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
   const startBatchScanEnhance = async () => {
     if (files.length === 0) return;
     setProcessing(true);
-    setResults([]);
+    replaceResults([]);
    
     cancellationRef.current = false;
     const processedResults: ImageProcessResult[] = [];
@@ -790,7 +805,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
       }
     }
 
-    setResults(processedResults);
+    replaceResults(processedResults);
     setFailedFileIndexes(failedIndexes);
     setProcessing(false);
   };
