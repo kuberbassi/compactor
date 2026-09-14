@@ -72,6 +72,8 @@ import { ImagesToPdfPanel } from './components/ImagesToPdfPanel';
 import { PdfCompressPanel } from './components/PdfCompressPanel';
 import { PdfResultViews } from './components/PdfResultViews';
 import { createObjectUrlOwner } from '../../utils/objectUrl';
+import { errorMessage as normalizePdfError } from './pdfResultTask';
+import type { PdfResultTask } from './pdfResultTask';
 
 export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSuccess }) => {
   const [activeTool, setActiveTool] = useState<string>(toolId || 'pdf-organize');
@@ -502,6 +504,37 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
   };
 
   // --- RUN ACTIONS ---
+  const runResultTask = async ({
+    initialProgress,
+    status,
+    failurePrefix,
+    task,
+  }: {
+    initialProgress: number;
+    status: string;
+    failurePrefix: string;
+    task: () => Promise<PdfResultTask>;
+  }) => {
+    setProcessing(true);
+    setProgress(initialProgress);
+    setErrorMessage(null);
+    setStatusText(status);
+    try {
+      const result = await task();
+      setProgress(90);
+      setResultSize(result.blob.size);
+      replaceResultUrl(URL.createObjectURL(result.blob));
+      setResultName(result.name);
+      onUploadSuccess();
+    } catch (error: unknown) {
+      console.error(error);
+      setErrorMessage(`${failurePrefix}: ${normalizePdfError(error)}`);
+    } finally {
+      setProgress(100);
+      setProcessing(false);
+    }
+  };
+
   const runOrganize = async () => {
     if (!singleFile || pagesList.length === 0) return;
     setProcessing(true); setProgress(30);
@@ -535,46 +568,21 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const runMerge = async () => {
     if (multipleFiles.length < 2) return;
-    setProcessing(true); setProgress(30);
-    setErrorMessage(null);
-    setStatusText('Merging PDF files into single document stream...');
-    try {
-      const files = multipleFiles.map(info => info.file);
-      const blob = await mergePdfs(files);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName('merged_document.pdf');
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Merge failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 30, status: 'Merging PDF files into single document stream...', failurePrefix: 'Merge failed', task: async () => ({
+      blob: await mergePdfs(multipleFiles.map(info => info.file)), name: 'merged_document.pdf',
+    }) });
   };
 
   const runSplit = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(40);
-    setErrorMessage(null);
-    setStatusText('Extracting selected page range...');
-    try {
-      const indices = parsePageRanges(pageRangeText, singleFile.pageCount).map(p => p - 1);
-      if (indices.length === 0) {
-        setErrorMessage('Invalid page selection: please specify valid page numbers or ranges (e.g. 1-3, 5).');
-        setProcessing(false); return;
-      }
-      const blob = await extractPdfPages(singleFile.file, indices);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_extracted.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Extraction failed: ${e?.message || e}`);
+    const indices = parsePageRanges(pageRangeText, singleFile.pageCount).map(p => p - 1);
+    if (indices.length === 0) {
+      setErrorMessage('Invalid page selection: please specify valid page numbers or ranges (e.g. 1-3, 5).');
+      return;
     }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 40, status: 'Extracting selected page range...', failurePrefix: 'Extraction failed', task: async () => ({
+      blob: await extractPdfPages(singleFile.file, indices), name: `${singleFile.file.name.replace('.pdf', '')}_extracted.pdf`,
+    }) });
   };
 
   const runCompress = async () => {
@@ -678,25 +686,13 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const runStamps = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText(`Stamping ${stampPreset} preset badge onto pages...`);
-    try {
-      const blob = await addVectorStampToPdf(singleFile.file, {
+    await runResultTask({ initialProgress: 45, status: `Stamping ${stampPreset} preset badge onto pages...`, failurePrefix: 'Stamping document failed', task: async () => ({
+      blob: await addVectorStampToPdf(singleFile.file, {
         preset: stampPreset,
         targetPages: stampTargetPages,
         position: stampPosition
-      });
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_stamped.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Stamping document failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+      }), name: `${singleFile.file.name.replace('.pdf', '')}_stamped.pdf`,
+    }) });
   };
 
   const runFlattenForms = async () => {
@@ -773,21 +769,9 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const runRemoveMetadata = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(30);
-    setErrorMessage(null);
-    setStatusText('Stripping identifying PDF metadata...');
-    try {
-      const blob = await removePdfMetadata(singleFile.file);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace(/\.pdf$/i, '')}_cleaned.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Metadata removal failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 30, status: 'Stripping identifying PDF metadata...', failurePrefix: 'Metadata removal failed', task: async () => ({
+      blob: await removePdfMetadata(singleFile.file), name: `${singleFile.file.name.replace(/\.pdf$/i, '')}_cleaned.pdf`,
+    }) });
   };
 
   const runRedact = async () => {
@@ -840,108 +824,48 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
 
   const runWatermark = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText('Applying watermark overlay onto document pages...');
-    try {
-      const blob = await watermarkPdfAdvanced(singleFile.file, {
+    await runResultTask({ initialProgress: 45, status: 'Applying watermark overlay onto document pages...', failurePrefix: 'Watermark addition failed', task: async () => ({
+      blob: await watermarkPdfAdvanced(singleFile.file, {
         text: watermarkText,
         color: watermarkColor,
         position: watermarkPos,
         opacity: watermarkOpacity
-      });
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_watermarked.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Watermark addition failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+      }), name: `${singleFile.file.name.replace('.pdf', '')}_watermarked.pdf`,
+    }) });
   };
 
   const runPageNumbers = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText('Injecting page numbers into document footer/header...');
-    try {
-      const blob = await addPageNumbersToPdf(singleFile.file, pageNumberPosition);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_numbered.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Page numbering failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 45, status: 'Injecting page numbers into document footer/header...', failurePrefix: 'Page numbering failed', task: async () => ({
+      blob: await addPageNumbersToPdf(singleFile.file, pageNumberPosition), name: `${singleFile.file.name.replace('.pdf', '')}_numbered.pdf`,
+    }) });
   };
 
   const runCrop = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText('Cropping page margins...');
-    try {
-      const blob = await cropPdfMargins(singleFile.file, cropMarginsPct);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_cropped.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Cropping margins failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 45, status: 'Cropping page margins...', failurePrefix: 'Cropping margins failed', task: async () => ({
+      blob: await cropPdfMargins(singleFile.file, cropMarginsPct), name: `${singleFile.file.name.replace('.pdf', '')}_cropped.pdf`,
+    }) });
   };
 
   const runSign = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText('Applying digital signature stamp...');
-    try {
-      const blob = await signPdfDocumentAdvanced(
+    await runResultTask({ initialProgress: 45, status: 'Applying digital signature stamp...', failurePrefix: 'Sign document failed', task: async () => ({
+      blob: await signPdfDocumentAdvanced(
         singleFile.file,
         signatureText,
         signaturePos,
         signatureColor,
         signatureTargetPages
-      );
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_signed.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Sign document failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+      ), name: `${singleFile.file.name.replace('.pdf', '')}_signed.pdf`,
+    }) });
   };
 
   const runProtect = async () => {
     if (!singleFile) return;
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText('Encrypting PDF stream dictionary...');
-    try {
-      const blob = await protectPdfWithPassword(singleFile.file, securityPassword);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_protected.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Protection failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 45, status: 'Encrypting PDF stream dictionary...', failurePrefix: 'Protection failed', task: async () => ({
+      blob: await protectPdfWithPassword(singleFile.file, securityPassword), name: `${singleFile.file.name.replace('.pdf', '')}_protected.pdf`,
+    }) });
   };
 
   const runUnlock = async () => {
@@ -950,21 +874,9 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       setErrorMessage('This PDF is already unlocked.');
       return;
     }
-    setProcessing(true); setProgress(45);
-    setErrorMessage(null);
-    setStatusText('Decrypting PDF stream & removing password...');
-    try {
-      const blob = await unlockPdfWithPassword(singleFile.file, securityPassword);
-      setProgress(90);
-      setResultSize(blob.size);
-      replaceResultUrl(URL.createObjectURL(blob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_unlocked.pdf`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`Unlock PDF failed: ${e?.message || 'Please verify the current password.'}`);
-    }
-    setProgress(100); setProcessing(false);
+    await runResultTask({ initialProgress: 45, status: 'Decrypting PDF stream & removing password...', failurePrefix: 'Unlock PDF failed', task: async () => ({
+      blob: await unlockPdfWithPassword(singleFile.file, securityPassword), name: `${singleFile.file.name.replace('.pdf', '')}_unlocked.pdf`,
+    }) });
   };
 
   const runPdfToMd = async () => {
@@ -973,22 +885,11 @@ export const PdfTools: React.FC<PdfToolsProps> = ({ toolId, onGoHome, onUploadSu
       setErrorMessage('Markdown export is available only when this PDF has selectable text. Use OCR first for scanned documents.');
       return;
     }
-    setProcessing(true); setProgress(40);
-    setErrorMessage(null);
-    setStatusText('Extracting PDF text layer & formatting Markdown structure...');
-    try {
+    await runResultTask({ initialProgress: 40, status: 'Extracting PDF text layer & formatting Markdown structure...', failurePrefix: 'PDF to Markdown conversion failed', task: async () => {
       const mdText = await extractPdfMarkdown(singleFile.file);
-      setProgress(90);
       const mdBlob = new Blob([mdText], { type: 'text/markdown;charset=utf-8' });
-      setResultSize(mdBlob.size);
-      replaceResultUrl(URL.createObjectURL(mdBlob));
-      setResultName(`${singleFile.file.name.replace('.pdf', '')}_extracted.md`);
-      onUploadSuccess();
-    } catch (e: any) {
-      console.error(e);
-      setErrorMessage(`PDF to Markdown conversion failed: ${e?.message || e}`);
-    }
-    setProgress(100); setProcessing(false);
+      return { blob: mdBlob, name: `${singleFile.file.name.replace('.pdf', '')}_extracted.md` };
+    } });
   };
 
 

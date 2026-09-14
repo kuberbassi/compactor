@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PdfTools } from '../pages/PdfTools/PdfTools';
-import { compressPdf, getPdfPageCount } from '../utils/pdf';
+import { compressPdf, getPdfPageCount, mergePdfs } from '../utils/pdf';
+import { errorMessage } from '../pages/PdfTools/pdfResultTask';
 
 vi.mock('../utils/pdf', () => ({
   mergePdfs: vi.fn(), extractPdfPages: vi.fn(), imagesToPdf: vi.fn(),
@@ -23,6 +24,8 @@ vi.mock('../utils/pdfOcr', () => ({ createSearchableOcrPdf: vi.fn() }));
 
 describe('PdfTools workflow', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
     vi.mocked(getPdfPageCount).mockResolvedValue(1);
     vi.mocked(compressPdf)
       .mockResolvedValueOnce(new Blob(['small'], { type: 'application/pdf' }))
@@ -31,6 +34,40 @@ describe('PdfTools workflow', () => {
     let resultIndex = 0;
     vi.spyOn(URL, 'createObjectURL').mockImplementation(() => `blob:pdf-${++resultIndex}`);
     vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+  });
+
+  it('normalizes Error and non-Error failures', () => {
+    expect(errorMessage(new Error('broken'))).toBe('broken');
+    expect(errorMessage('plain failure')).toBe('plain failure');
+  });
+
+  it('runs and finalizes the shared single-result lifecycle on success and failure', async () => {
+    vi.mocked(mergePdfs)
+      .mockResolvedValueOnce(new Blob(['merged'], { type: 'application/pdf' }))
+      .mockRejectedValueOnce('plain failure');
+    const onUploadSuccess = vi.fn();
+    const { container } = render(
+      <PdfTools toolId="pdf-merge" onGoHome={vi.fn()} onUploadSuccess={onUploadSuccess} />,
+    );
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const files = [
+      new File(['a'], 'a.pdf', { type: 'application/pdf' }),
+      new File(['b'], 'b.pdf', { type: 'application/pdf' }),
+    ];
+    fireEvent.change(input, { target: { files } });
+    expect((await screen.findAllByText('a.pdf')).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: 'Merge PDF' }));
+    expect(await screen.findByText('merged_document.pdf')).toBeVisible();
+    expect(onUploadSuccess).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole('button', { name: /start again/i }));
+    const resetInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(resetInput, { target: { files } });
+    expect((await screen.findAllByText('a.pdf')).length).toBeGreaterThan(0);
+    const mergeButton = screen.getByRole('button', { name: 'Merge PDF' });
+    fireEvent.click(mergeButton);
+    expect(await screen.findByText(/Merge failed: plain failure/i)).toBeVisible();
+    await waitFor(() => expect(mergeButton).toBeEnabled());
   });
 
   it('keeps successful batch output through a partial failure, retries, and cleans reset results', async () => {
