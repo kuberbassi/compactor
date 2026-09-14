@@ -2,14 +2,17 @@
  * Honest processed-file metrics.
  *
  * Production uses the persistent /api/processed-count endpoint. Development and
- * unavailable-backend states use a clearly labelled, device-local count. There
- * is deliberately no synthetic baseline, timer, or estimated global activity.
+ * unavailable-backend states use a clearly labelled, device-local count. The
+ * remote number is an anonymous, best-effort activity estimate: a server cannot
+ * prove that a completion event corresponds to browser-side processing.
  */
 
 const LOCAL_COUNT_KEY = 'compactor_processed_on_device_v1';
 const PENDING_EVENTS_KEY = 'compactor_pending_metric_events_v1';
 const CONFIGURED_API_URL = (import.meta.env.VITE_PROCESSED_COUNT_API_URL || '').trim();
 const API_PATH = CONFIGURED_API_URL || '/api/processed-count';
+const MAX_EVENTS_PER_REQUEST = 25;
+const MAX_PENDING_EVENTS = 100;
 
 export type CounterScope = 'global' | 'device';
 
@@ -50,7 +53,7 @@ const readPendingEvents = (): string[] => {
   try {
     const parsed = JSON.parse(localStorage.getItem(PENDING_EVENTS_KEY) || '[]');
     return Array.isArray(parsed)
-      ? parsed.filter((value): value is string => typeof value === 'string').slice(-100)
+      ? parsed.filter((value): value is string => typeof value === 'string').slice(-MAX_PENDING_EVENTS)
       : [];
   } catch {
     return [];
@@ -59,7 +62,7 @@ const readPendingEvents = (): string[] => {
 
 const writePendingEvents = (events: string[]): void => {
   try {
-    localStorage.setItem(PENDING_EVENTS_KEY, JSON.stringify(events.slice(-100)));
+    localStorage.setItem(PENDING_EVENTS_KEY, JSON.stringify(events.slice(-MAX_PENDING_EVENTS)));
   } catch {
     // Ignore storage quota/private mode failures.
   }
@@ -95,10 +98,11 @@ export async function getProcessedCount(): Promise<ProcessedCountSnapshot> {
 
   try {
     const pending = readPendingEvents();
+    const batch = pending.slice(0, MAX_EVENTS_PER_REQUEST);
     const count = pending.length > 0
-      ? await requestCount('POST', pending)
+      ? await requestCount('POST', batch)
       : await requestCount('GET');
-    if (pending.length > 0) writePendingEvents([]);
+    if (pending.length > 0) writePendingEvents(pending.slice(batch.length));
     return { count, scope: 'global' };
   } catch {
     return { count: readLocalCount(), scope: 'device' };
@@ -118,12 +122,13 @@ export async function recordProcessedFiles(amount: number = 1): Promise<Processe
 
   const pending = readPendingEvents();
   const newEvents = Array.from({ length: safeAmount }, createEventId);
-  const queued = [...pending, ...newEvents].slice(-100);
+  const queued = [...pending, ...newEvents].slice(-MAX_PENDING_EVENTS);
   writePendingEvents(queued);
 
   try {
-    const count = await requestCount('POST', queued);
-    writePendingEvents([]);
+    const batch = queued.slice(0, MAX_EVENTS_PER_REQUEST);
+    const count = await requestCount('POST', batch);
+    writePendingEvents(queued.slice(batch.length));
     const snapshot = { count, scope: 'global' } as const;
     window.dispatchEvent(new CustomEvent('compactor:count-updated', { detail: snapshot }));
     return snapshot;

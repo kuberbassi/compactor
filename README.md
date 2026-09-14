@@ -27,6 +27,8 @@
 
 **Compactor** is built on a privacy-first, zero-server-upload architecture. Every video compression, PDF edit, audio transcode, image optimization, and format conversion happens **directly inside your browser** using client-side WebAssembly and HTML5 processing engines.
 
+The public processed-file number is an anonymous, best-effort activity estimate. It counts privacy-preserving completion events, not verified users or conversions; the server cannot prove that browser-side work completed. Your device-local count remains available when the optional counter service is offline. No file names, sizes, contents, hashes, or other file-derived details are sent for this metric.
+
 - **Zero Server Uploads** — Files, videos, and documents never leave your local device.
 - **Offline & Sandbox Ready** — Executes locally inside browser sandboxes without reliance on backend APIs.
 - **High-Performance Multithreading** — Utilises WebAssembly `SharedArrayBuffer` with COOP/COEP headers for hardware-accelerated parallel encoding.

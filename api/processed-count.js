@@ -100,12 +100,16 @@ export default async function handler(request, response) {
       }
     }
 
-    const eventIds = Array.isArray(body?.eventIds)
-      ? [...new Set(body.eventIds)]
-          .filter(id => typeof id === 'string' && /^[a-zA-Z0-9-]{16,80}$/.test(id))
-          .slice(0, MAX_EVENTS_PER_REQUEST)
-      : [];
-    if (eventIds.length === 0) return response.status(400).json({ error: 'No valid completion events' });
+    if (!Array.isArray(body?.eventIds) || body.eventIds.length === 0) {
+      return response.status(400).json({ error: 'Completion events must be a non-empty array' });
+    }
+    if (body.eventIds.length > MAX_EVENTS_PER_REQUEST) {
+      return response.status(400).json({ error: 'Completion event batch exceeds maximum' });
+    }
+    if (body.eventIds.some(id => typeof id !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(id))) {
+      return response.status(400).json({ error: 'Invalid completion event' });
+    }
+    const eventIds = [...new Set(body.eventIds)];
 
     const hourBucket = Math.floor(Date.now() / 3_600_000);
     const rateKey = `${RATE_PREFIX}${getClientIp(request)}:${hourBucket}`;
@@ -125,8 +129,8 @@ export default async function handler(request, response) {
       ? await redis(['INCRBY', COUNT_KEY, accepted.toString()])
       : await redis(['GET', COUNT_KEY]);
     return response.status(200).json({ count: Number.parseInt(rawCount || '0', 10), accepted });
-  } catch (error) {
-    console.error('Processed count error:', error);
+  } catch {
+    console.error('Processed count unavailable');
     return response.status(503).json({ error: 'Persistent counter unavailable' });
   }
 }
