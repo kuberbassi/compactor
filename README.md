@@ -14,10 +14,10 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-19-61dafb?style=flat-square&logo=react" alt="React 19" />
-  <img src="https://img.shields.io/badge/TypeScript-5-3178c6?style=flat-square&logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/TypeScript-6-3178c6?style=flat-square&logo=typescript" alt="TypeScript 6" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-62%20passing-22c55e?style=flat-square&logo=vitest" alt="Tests" />
+  <img src="https://img.shields.io/badge/Tests-Vitest-22c55e?style=flat-square&logo=vitest" alt="Vitest" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
@@ -73,11 +73,11 @@
 
 | Layer | Technology |
 |---|---|
-| **Core** | React 19, TypeScript 5, Vite 8 |
+| **Core** | React 19, TypeScript 6, Vite 8 |
 | **Styling & UI** | TailwindCSS v4, Base UI, Custom Glassmorphism Design Tokens |
 | **Icons** | Lucide React |
 | **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, Tesseract.js OCR, ImageTracerJS, HTML5 Canvas 2D |
-| **Testing** | Vitest + Testing Library + JSDOM (62 tests, 16 test files) |
+| **Testing** | Vitest + Testing Library + JSDOM |
 | **Deployment** | Vercel with COOP/COEP security headers & immutable asset caching |
 
 ### Module Architecture
@@ -122,13 +122,13 @@ npm install
 # 3. Start development server
 npm run dev
 
-# 4. Run Vitest test suite
-npm run test
+# 4. Run the complete strict quality gate
+npm run quality
 
 # 5. Verify FFmpeg compressors & diagnostics
 npm run check:compressors
 
-# 6. Build for production
+# 6. Build for production (already included in the quality gate)
 npm run build
 ```
 

@@ -4,9 +4,7 @@ Short summary.
 
 ## Checks
 
-- [ ] `npm run lint`
-- [ ] `npm test`
-- [ ] `npm run build`
+- [ ] `npm run quality`
 - [ ] Checked on mobile
 - [ ] Files still stay local in the browser
 

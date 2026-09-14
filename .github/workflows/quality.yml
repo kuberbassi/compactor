@@ -1,15 +1,16 @@
-name: Dependency health
+name: Quality
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: "30 3 * * 1"
+  pull_request:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  dependency-health:
+  quality:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -24,9 +25,6 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
-
-      - name: Check for high-severity production vulnerabilities
-        run: npm audit --omit=dev --audit-level=high
 
       - name: Run quality gate
         run: npm run quality

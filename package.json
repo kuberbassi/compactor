@@ -10,6 +10,8 @@
     "test:watch": "vitest",
     "check:compressors": "node scripts/check-compressors.cjs",
     "lint": "oxlint",
+    "typecheck": "tsc -b",
+    "quality": "npm run lint && npm run test && npm run build",
     "preview": "vite preview"
   },
   "dependencies": {

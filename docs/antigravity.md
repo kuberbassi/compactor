@@ -112,17 +112,14 @@ Always run commands via `npm.cmd` on Windows.
 
 ### Routine Verification
 ```powershell
-npm.cmd test          # Vitest suite (117 unit tests)
-npx.cmd oxlint        # Oxlint static analysis
-npm.cmd run build     # TypeScript compilation (tsc -b) & Vite production build
+npm.cmd run quality   # Lint, full Vitest suite, strict TypeScript, and production build
 ```
 
 ### Dependency Updates
 ```powershell
 npm.cmd outdated
 npm.cmd update
-npm.cmd test
-npm.cmd run build
+npm.cmd run quality
 ```
 
 ### Processed-Files Counter Setup
