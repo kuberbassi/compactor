@@ -16,6 +16,8 @@ import {
   PanelLeft,
   Plus,
   X,
+  Download,
+  FileCheck2,
 } from 'lucide-react';
 
 import { renderClassicHalftone } from '../../utils/posterEngine';
@@ -23,6 +25,7 @@ import { ImageSidebarControls } from './components/ImageSidebarControls';
 import { ImageBatchResults } from './components/ImageBatchResults';
 import { IMAGE_TABS as TABS } from './imageToolsConfig';
 import type { FileSettings, ImageTabId as TabId } from './imageToolsConfig';
+import { moveQueueItem, remapActiveQueueIndex } from './imagePdfQueue';
 
 const HalftoneImagePreview: React.FC<{
   src: string;
@@ -93,13 +96,57 @@ const HalftoneImagePreview: React.FC<{
   );
 };
 
+type PdfImageFilter = 'original' | 'smart-scan' | 'whiteboard' | 'bw' | 'vibrant';
+
+const DocumentFilterPreview: React.FC<{
+  src: string;
+  filter: PdfImageFilter;
+  transform?: string;
+}> = ({ src, filter, transform }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const image = new Image();
+    image.onload = async () => {
+      if (cancelled || !canvasRef.current) return;
+      const scale = Math.min(1, 1600 / Math.max(image.naturalWidth, image.naturalHeight));
+      const width = Math.max(1, Math.round(image.naturalWidth * scale));
+      const height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const canvas = canvasRef.current;
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) return;
+      context.drawImage(image, 0, 0, width, height);
+      const { applyDocumentScanFilter } = await import('../../utils/pdf');
+      if (cancelled) return;
+      applyDocumentScanFilter(context, width, height, filter);
+    };
+    image.src = src;
+    return () => {
+      cancelled = true;
+    };
+  }, [src, filter]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="max-w-full max-h-[calc(100vh-14rem)] object-contain rounded-lg shadow-2xl select-none transition-transform duration-300"
+      style={{ transform: transform || undefined }}
+      aria-label={`${filter} document filter preview`}
+    />
+  );
+};
+
 interface ImageToolsProps {
+  initialTab?: TabId;
   onGoHome: () => void;
   onSelectTool: (toolId: string) => void;
   onUploadSuccess: () => void;
 }
 
-export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, onUploadSuccess }) => {
+export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress', onGoHome, onSelectTool, onUploadSuccess }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [fileSettingsList, setFileSettingsList] = useState<FileSettings[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -111,15 +158,24 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
   const [removeMetadata, setRemoveMetadata] = useState(() =>
     loadSetting('compactor_image_remove_metadata', true)
   );
-  const [activeTab, setActiveTab] = useState<TabId>('compress');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const [pdfFilter, setPdfFilter] = useState<PdfImageFilter>('smart-scan');
+  const [pdfOrientation, setPdfOrientation] = useState<'auto' | 'portrait' | 'landscape'>('auto');
+  const [pdfPageSize, setPdfPageSize] = useState<'fit' | 'a4' | 'letter'>('fit');
+  const [pdfMargin, setPdfMargin] = useState<'none' | 'small' | 'big'>('none');
   const [processing, setProcessing] = useState(false);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<ImageProcessResult[]>([]);
   const [failedFileIndexes, setFailedFileIndexes] = useState<number[]>([]);
   const [imageZoom, setImageZoom] = useState(80);
+  const [draggedQueueIndex, setDraggedQueueIndex] = useState<number | null>(null);
   const previewViewportRef = useRef<HTMLDivElement>(null);
   const cancellationRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   // Canvas encoding does not expose granular progress for one image. Keep the
   // user-facing percentage tied to completed work so both processing surfaces
@@ -171,6 +227,9 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
   const [origWidth, setOrigWidth] = useState<number>(0);
   const [origHeight, setOrigHeight] = useState<number>(0);
   const [rotation, setRotation] = useState<number>(0);
+  // Keep an unbounded display angle so quarter-turn animations always travel
+  // in the direction the user clicked (for example, 0 -> -90 instead of 270).
+  const [previewRotation, setPreviewRotation] = useState<number>(0);
   const [flipH, setFlipH] = useState<boolean>(false);
   const [flipV, setFlipV] = useState<boolean>(false);
   const [cropAspect, setCropAspect] = useState<string>('none');
@@ -414,7 +473,17 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
     else if (key === 'targetSize') setTargetSize(value as string);
     else if (key === 'targetUnit') setTargetUnit(value as 'KB' | 'MB');
     else if (key === 'aspectRatioLocked') setAspectRatioLocked(value as boolean);
-    else if (key === 'rotation') setRotation(value as number);
+    else if (key === 'rotation') {
+      const nextRotation = value as number;
+      setRotation(nextRotation);
+      setPreviewRotation((current) => {
+        const normalizedCurrent = ((current % 360) + 360) % 360;
+        let delta = nextRotation - normalizedCurrent;
+        if (delta > 180) delta -= 360;
+        if (delta < -180) delta += 360;
+        return current + delta;
+      });
+    }
     else if (key === 'flipH') setFlipH(value as boolean);
     else if (key === 'flipV') setFlipV(value as boolean);
     else if (key === 'cropAspect') setCropAspect(value as string);
@@ -456,7 +525,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
     setQuality(s.quality); setFormat(s.format); setMaxWidth(s.maxWidth); setMaxHeight(s.maxHeight);
     setCompressMethod(s.compressMethod); setTargetSize(s.targetSize); setTargetUnit(s.targetUnit);
     setAspectRatioLocked(s.aspectRatioLocked); setOrigWidth(s.origWidth); setOrigHeight(s.origHeight);
-    setRotation(s.rotation); setFlipH(s.flipH); setFlipV(s.flipV); setCropAspect(s.cropAspect);
+    setRotation(s.rotation); setPreviewRotation(s.rotation); setFlipH(s.flipH); setFlipV(s.flipV); setCropAspect(s.cropAspect);
     setGrayscale(s.grayscale);
     setCropLeftPct(s.cropLeftPct ?? 0); setCropTopPct(s.cropTopPct ?? 0);
     setCropWidthPct(s.cropWidthPct ?? 100); setCropHeightPct(s.cropHeightPct ?? 100);
@@ -528,6 +597,14 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
     else if (activeIndex !== null && activeIndex > index) setActiveIndex(activeIndex - 1);
   };
 
+  const reorderQueue = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= files.length || to >= files.length) return;
+    setFiles(items => moveQueueItem(items, from, to));
+    setPreviewUrls(items => moveQueueItem(items, from, to));
+    setFileSettingsList(items => moveQueueItem(items, from, to));
+    setActiveIndex(current => remapActiveQueueIndex(current, from, to));
+  };
+
   const clearQueue = () => {
     previewUrls.forEach(u => URL.revokeObjectURL(u));
     setPreviewUrls([]);
@@ -536,7 +613,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
     setCompressionPreset('balanced'); setRemoveMetadata(true); setActiveTab('compress');
     setCompressMethod('auto'); setTargetSize('30'); setTargetUnit('KB');
     setQuality(80); setFormat('preserve'); setMaxWidth(''); setMaxHeight('');
-    setAspectRatioLocked(true); setOrigWidth(0); setOrigHeight(0); setRotation(0);
+    setAspectRatioLocked(true); setOrigWidth(0); setOrigHeight(0); setRotation(0); setPreviewRotation(0);
     setFlipH(false); setFlipV(false); setCropAspect('none'); setGrayscale(false);
     setCropLeftPct(0); setCropTopPct(0); setCropWidthPct(100); setCropHeightPct(100);
     setCropApplied(false); setImageZoom(80);
@@ -647,41 +724,37 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
     setResults([]);
    
     cancellationRef.current = false;
-    const processedResults: ImageProcessResult[] = [];
-    const failedIndexes: number[] = [];
-
     const { imagesToPdf } = await import('../../utils/pdf');
-
-    for (let i = 0; i < files.length; i++) {
-      if (cancellationRef.current) break;
-      setCurrentFileIndex(i);
-      setProgress(0);
-      const file = files[i];
-      try {
-        await new Promise(resolve => setTimeout(resolve, 40));
-        const blob = await imagesToPdf([file], { pageSize: 'a4', orientation: 'auto', margin: 'small' });
-        const baseName = file.name.substring(0, file.name.lastIndexOf('.'));
-        const url = URL.createObjectURL(blob);
-        processedResults.push({
-          blob,
-          url,
-          name: `${baseName}.pdf`,
-          originalSize: file.size,
-          newSize: blob.size,
-          width: 0,
-          height: 0,
-        });
-        onUploadSuccess();
-        setProgress(((i + 1) / files.length) * 100);
-      } catch (err) {
-        failedIndexes.push(i);
-        console.error(`PDF conversion failed: ${file.name}`, err);
-      }
+    try {
+      setCurrentFileIndex(0);
+      setProgress(20);
+      const blob = await imagesToPdf(files, {
+        pageSize: pdfPageSize,
+        orientation: pdfOrientation,
+        margin: pdfMargin,
+        filter: pdfFilter,
+        rotations: fileSettingsList.map(settings => settings.rotation),
+      });
+      if (cancellationRef.current) return;
+      const url = URL.createObjectURL(blob);
+      setResults([{
+        blob,
+        url,
+        name: files.length === 1 ? `${files[0].name.replace(/\.[^.]+$/, '')}.pdf` : 'images.pdf',
+        originalSize: files.reduce((total, file) => total + file.size, 0),
+        newSize: blob.size,
+        width: 0,
+        height: 0,
+      }]);
+      setFailedFileIndexes([]);
+      setProgress(100);
+      onUploadSuccess();
+    } catch (err) {
+      console.error('PDF conversion failed', err);
+      setFailedFileIndexes(files.map((_, index) => index));
+    } finally {
+      setProcessing(false);
     }
-
-    setResults(processedResults);
-    setFailedFileIndexes(failedIndexes);
-    setProcessing(false);
   };
 
   const startBatchScanEnhance = async () => {
@@ -746,7 +819,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
       if (isEditableShortcutTarget(event.target)) return;
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && files.length > 0 && !processing) {
         event.preventDefault();
-        startBatchCompression();
+        handlePrimaryAction();
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's' && results.length > 0) {
         event.preventDefault();
         downloadAll(results);
@@ -761,7 +834,6 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
   const activeSettings = activeIndex !== null ? fileSettingsList[activeIndex] : null;
 
   // Preview CSS filter (live preview for filters and enhance tabs)
-  const activeRotation = activeSettings?.rotation ?? rotation;
   const activeFlipH = activeSettings?.flipH ?? flipH;
   const activeFlipV = activeSettings?.flipV ?? flipV;
   const activeGrayscale = activeSettings?.grayscale ?? grayscale;
@@ -777,9 +849,9 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
   ].filter(Boolean).join(' ');
 
   const previewTransform = [
-    activeRotation !== 0 ? `rotate(${activeRotation}deg)` : '',
-    activeFlipH ? 'scaleX(-1)' : '',
-    activeFlipV ? 'scaleY(-1)' : '',
+    previewRotation !== 0 ? `rotate(${previewRotation}deg)` : '',
+    activeTab !== 'image-to-pdf' && activeFlipH ? 'scaleX(-1)' : '',
+    activeTab !== 'image-to-pdf' && activeFlipV ? 'scaleY(-1)' : '',
   ].filter(Boolean).join(' ');
 
 
@@ -800,7 +872,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
         }} 
         actions={!processing && results.length === 0 ? <ToolModeSwitcher
           label="Image tools"
-          activeId="image-optimizer"
+          activeId={activeTab === 'image-to-pdf' ? '' : 'image-optimizer'}
           options={[
             { id: 'image-optimizer', label: 'Edit' },
             { id: 'rasterbator', label: 'Poster' },
@@ -960,12 +1032,20 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                       setDisplayGrid={setDisplayGrid}
                       applyImmediateCrop={applyImmediateCrop}
                       revertImmediateCrop={revertImmediateCrop}
+                      pdfFilter={pdfFilter}
+                      setPdfFilter={setPdfFilter}
+                      pdfOrientation={pdfOrientation}
+                      setPdfOrientation={setPdfOrientation}
+                      pdfPageSize={pdfPageSize}
+                      setPdfPageSize={setPdfPageSize}
+                      pdfMargin={pdfMargin}
+                      setPdfMargin={setPdfMargin}
                     />
                   </div>
 
                   {/* Sidebar Footer with primary action */}
                   <div className="p-3.5 border-t border-white/10 bg-zinc-900/50 backdrop-blur-sm shrink-0 space-y-2.5">
-                    {files.length > 1 && (
+                    {files.length > 1 && activeTab !== 'image-to-pdf' && (
                       <label className="flex items-center justify-between text-xs text-zinc-400 px-1 cursor-pointer select-none">
                         <span>Apply to all ({files.length})</span>
                         <input
@@ -979,7 +1059,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                     <button
                       type="button"
                       onClick={handlePrimaryAction}
-                      className="w-full h-10 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+                      className="workspace-primary-action w-full h-10 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
                     >
                       <span>{getActionLabel()}</span>
                       <span className="font-black text-sm">→</span>
@@ -997,7 +1077,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Status</span>
                     <h3 className="text-sm font-bold text-white flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                      Optimizing Files...
+                      {activeTab === 'image-to-pdf' ? 'Creating PDF…' : 'Optimizing Files…'}
                     </h3>
                     <p className="text-xs text-zinc-400">
                       File {currentFileIndex + 1} of {files.length}
@@ -1056,12 +1136,18 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
                     <CheckCircle className="w-5 h-5 shrink-0" />
                     <div>
-                      <p className="text-xs font-bold text-white">Batch Complete</p>
-                      <p className="text-[11px] text-emerald-400/90">{results.length} {results.length === 1 ? 'image' : 'images'} processed</p>
+                      <p className="text-xs font-bold text-white">{activeTab === 'image-to-pdf' ? 'PDF Ready' : 'Batch Complete'}</p>
+                      <p className="text-[11px] text-emerald-400/90">{activeTab === 'image-to-pdf' ? `${files.length} ${files.length === 1 ? 'page' : 'pages'} assembled` : `${results.length} ${results.length === 1 ? 'image' : 'images'} processed`}</p>
                     </div>
                   </div>
 
-                  <div className="p-3.5 rounded-xl border border-white/10 bg-zinc-900/60 space-y-2.5">
+                  {activeTab === 'image-to-pdf' ? (
+                    <div className="p-3.5 rounded-xl border border-white/10 bg-zinc-900/60 space-y-2.5">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Document</span>
+                      <div className="flex justify-between text-xs text-zinc-400"><span>Pages</span><span className="font-mono text-zinc-200">{files.length}</span></div>
+                      <div className="flex justify-between text-xs text-zinc-400"><span>PDF size</span><span className="font-mono text-zinc-200">{formatBytes(results[0]?.newSize ?? 0)}</span></div>
+                    </div>
+                  ) : <div className="p-3.5 rounded-xl border border-white/10 bg-zinc-900/60 space-y-2.5">
                     <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Summary Stats</span>
                     <div className="space-y-1.5 text-xs">
                       <div className="flex justify-between text-zinc-400">
@@ -1089,7 +1175,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                         </span>
                       </div>
                     </div>
-                  </div>
+                  </div>}
                 </div>
 
                 <button
@@ -1097,7 +1183,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                   onClick={clearQueue}
                   className="w-full bg-white hover:bg-zinc-200 text-zinc-950 font-bold py-2.5 rounded-xl text-xs transition-all shadow-md cursor-pointer"
                 >
-                  Process More Images
+                  {activeTab === 'image-to-pdf' ? 'Create Another PDF' : 'Process More Images'}
                 </button>
               </div>
             )}
@@ -1130,17 +1216,21 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
             {/* Image preview and asset queue */}
             <div className="image-editor-stage">
             <div ref={previewViewportRef} className="image-preview-viewport workbench-scroll-region flex-1 bg-[var(--bg-color)] relative">
-              {/* Subtle checker background */}
-              <div className="absolute inset-0 opacity-[0.03]"
-                style={{ backgroundImage: 'repeating-conic-gradient(#fff 0% 25%, transparent 0% 50%)', backgroundSize: '20px 20px' }} />
-              
                {activeIndex !== null && previewUrls[activeIndex] ? (
                 <div
                   className="image-preview-stage relative min-w-full min-h-full p-6 flex items-center justify-center"
                 >
-                  <div className="image-preview-zoom-layer" style={{ zoom: `${imageZoom}%` }}>
+                  <div className="image-preview-pan-space">
+                    <div className="image-preview-zoom-layer" style={{ zoom: `${imageZoom}%` }}>
                     <div className="image-preview-image-frame relative inline-flex">
-                    {activeEnhanceMode === 'halftone' ? (
+                    {activeTab === 'image-to-pdf' ? (
+                      <DocumentFilterPreview
+                        key={activeIndex}
+                        src={previewUrls[activeIndex]}
+                        filter={pdfFilter}
+                        transform={previewTransform}
+                      />
+                    ) : activeEnhanceMode === 'halftone' ? (
                       <HalftoneImagePreview
                         key={activeIndex}
                         src={previewUrls[activeIndex]}
@@ -1273,6 +1363,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
                     )}
                     </div>
                   </div>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center space-y-3 text-zinc-700">
@@ -1294,7 +1385,30 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
               </button>
               <div className="image-queue-strip" role="list">
                 {files.map((queuedFile, idx) => (
-                  <div key={`${queuedFile.name}-${idx}`} className="image-queue-strip__item" role="listitem">
+                  <div
+                    key={`${queuedFile.name}-${idx}`}
+                    className={`image-queue-strip__item ${draggedQueueIndex === idx ? 'is-dragging' : ''}`}
+                    role="listitem"
+                    draggable={activeTab === 'image-to-pdf'}
+                    onDragStart={(event) => {
+                      if (activeTab !== 'image-to-pdf') return;
+                      setDraggedQueueIndex(idx);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', String(idx));
+                    }}
+                    onDragOver={(event) => {
+                      if (activeTab === 'image-to-pdf') event.preventDefault();
+                    }}
+                    onDrop={(event) => {
+                      if (activeTab !== 'image-to-pdf') return;
+                      event.preventDefault();
+                      const from = draggedQueueIndex ?? Number(event.dataTransfer.getData('text/plain'));
+                      reorderQueue(from, idx);
+                      setDraggedQueueIndex(null);
+                    }}
+                    onDragEnd={() => setDraggedQueueIndex(null)}
+                    title={activeTab === 'image-to-pdf' ? 'Drag to change PDF page order' : undefined}
+                  >
                     <button
                       type="button"
                       onClick={() => selectActiveFile(idx)}
@@ -1329,8 +1443,8 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
             <div className="max-w-md w-full flex flex-col items-center gap-6">
               <ProgressBar
                 progress={batchProgress}
-                statusText={`Processing ${currentFileIndex + 1} of ${files.length}…`}
-                subText={`Optimizing ${files[currentFileIndex]?.name || 'image'} · ${Math.round(batchProgress)}% of batch complete`}
+                statusText={activeTab === 'image-to-pdf' ? 'Creating PDF…' : `Processing ${currentFileIndex + 1} of ${files.length}…`}
+                subText={activeTab === 'image-to-pdf' ? `Assembling ${files.length} ordered ${files.length === 1 ? 'page' : 'pages'} · ${Math.round(batchProgress)}% complete` : `Optimizing ${files[currentFileIndex]?.name || 'image'} · ${Math.round(batchProgress)}% of batch complete`}
               />
               <button
                 type="button"
@@ -1345,7 +1459,18 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ onGoHome, onSelectTool, 
 
         {/* ── Results state ── */}
         {results.length > 0 && !processing && (
-          <ImageBatchResults
+          activeTab === 'image-to-pdf' ? (
+            <div className="pdf-export-result-wrap">
+              <section className="pdf-export-result w-full max-w-xl p-8 text-center space-y-5">
+                <span className="pdf-export-result__success-icon"><FileCheck2 aria-hidden="true" /></span>
+                <div><h2 className="text-xl font-bold text-white">PDF created</h2><p className="mt-1 text-sm text-zinc-400">{files.length} {files.length === 1 ? 'image' : 'images'} exported as ordered PDF pages.</p></div>
+                <div className="pdf-export-result__file flex items-center justify-between gap-4 p-4 text-left">
+                  <div className="min-w-0"><strong className="block truncate text-sm text-white">{results[0].name}</strong><span className="text-xs text-zinc-400">{formatBytes(results[0].newSize)} · {files.length} {files.length === 1 ? 'page' : 'pages'}</span></div>
+                  <a className="pdf-export-result__primary inline-flex items-center gap-2 px-4 text-xs font-bold" href={results[0].url} download={results[0].name}><Download className="w-4 h-4" aria-hidden="true" />Download PDF</a>
+                </div>
+              </section>
+            </div>
+          ) : <ImageBatchResults
             results={results}
             files={files}
             previewUrls={previewUrls}

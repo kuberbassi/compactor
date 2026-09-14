@@ -1,155 +1,258 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  List as ListIcon,
-  Trash2 as TrashIcon
+  ArrowDown,
+  ArrowUp,
+  Download,
+  FileText,
+  Layers,
+  PanelLeft,
+  PanelLeftClose,
+  Plus,
+  Trash2,
 } from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
+import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../../components/Workspace/EditorChrome';
 import { FileUploader } from '../../../components/Common/FileUploader';
 import { formatBytes } from '../../../utils/image';
 import type { PdfFileInfo } from './LivePdfPreview';
 
 export interface MergePanelProps {
   multipleFiles: PdfFileInfo[];
-  draggedQueueIndex: number | null;
+  draggedQueueIndex?: number | null;
   onMoveQueueItem: (from: number, to: number) => void;
   onRemoveQueueItem: (index: number) => void;
-  onSetDraggedQueueIndex: (index: number | null) => void;
+  onSetDraggedQueueIndex?: (index: number | null) => void;
   onAddFiles: (files: File[]) => void;
   onClearQueue: () => void;
   onRunMerge: () => void;
+  toolSelector?: React.ReactNode;
 }
 
 export const MergePanel: React.FC<MergePanelProps> = ({
   multipleFiles,
-  draggedQueueIndex,
   onMoveQueueItem,
   onRemoveQueueItem,
-  onSetDraggedQueueIndex,
   onAddFiles,
   onClearQueue,
   onRunMerge,
+  toolSelector,
 }) => {
-  const totalPages = multipleFiles.reduce((sum, item) => sum + (item.pageCount || 1), 0);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
   const totalBytes = multipleFiles.reduce((sum, item) => sum + item.file.size, 0);
-  const canMerge = multipleFiles.length > 1;
+  const totalPages = multipleFiles.reduce((sum, item) => sum + (item.pageCount || 1), 0);
+  const firstFile = multipleFiles[0]?.file;
+
+  const sequenceTitle = multipleFiles.length === 0
+    ? 'Select documents to start a sequence'
+    : multipleFiles.length === 1
+      ? 'Add one more document'
+      : `${multipleFiles.length} documents ready to merge`;
 
   return (
-    <div className="pdf-merge-workspace pdf-mobile-stack grid grid-cols-1 md:grid-cols-3 gap-4">
-      <Card className="md:col-span-2 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
-        <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
+    <section
+      className={`pdf-organizer ${isSidebarCollapsed ? 'is-page-panel-collapsed' : ''}`}
+      aria-label="Merge PDF documents"
+    >
+      {/* ── TOP COMMAND BAR (HEADER STRIP) ── */}
+      <EditorCommandBar className="pdf-organizer__commandbar">
+        <div className="pdf-organizer__file">
+          <FileText aria-hidden="true" />
           <div>
-            <span className="text-xs font-bold text-[var(--text-primary)] block">Files Queue ({multipleFiles.length} files)</span>
-            <span className="text-[10px] text-zinc-500 font-medium">Drag rows or use ↑ ↓ buttons to reorder merge priority</span>
+            <strong title={firstFile ? firstFile.name : 'Merge PDF'}>
+              {firstFile ? firstFile.name : 'Merge PDF'}
+            </strong>
+            <span>
+              {multipleFiles.length} {multipleFiles.length === 1 ? 'file' : 'files'} · {totalPages} {totalPages === 1 ? 'page' : 'pages'} · {formatBytes(totalBytes)}
+            </span>
           </div>
-          <Button variant="ghost" onClick={onClearQueue} className="text-rose-500 hover:text-rose-600 text-xs h-7 px-2 cursor-pointer">
-            Clear Queue
-          </Button>
         </div>
 
-        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-          {multipleFiles.map((info, idx) => (
-            <div 
-              key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${idx}`}
-              draggable={true}
-              onDragStart={(e) => {
-                onSetDraggedQueueIndex(idx);
-                e.dataTransfer.setData('text/plain', String(idx));
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const fromIdx = parseInt(e.dataTransfer.getData('text/plain'), 10);
-                if (!isNaN(fromIdx)) {
-                  onMoveQueueItem(fromIdx, idx);
-                }
-                onSetDraggedQueueIndex(null);
-              }}
-              onDragEnd={() => onSetDraggedQueueIndex(null)}
-              className={`flex items-center justify-between p-3 rounded-xl bg-zinc-950/60 border border-[var(--border-color)] text-xs group hover:border-zinc-500 transition-all ${
-                draggedQueueIndex === idx ? 'opacity-40 border-dashed border-white bg-zinc-900 scale-[0.99]' : ''
-              }`}
+        <div className="pdf-organizer__header-actions">
+          {toolSelector}
+          <div className="pdf-organizer__commands" aria-label="Merge commands">
+            <span className="pdf-organizer__separator" />
+            <button
+              type="button"
+              className="pdf-organizer__change"
+              onClick={onClearQueue}
             >
-              <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-                <div className="cursor-grab active:cursor-grabbing p-1 text-zinc-500 hover:text-white transition-colors shrink-0" title="Drag to reorder merge priority">
-                  <ListIcon className="w-4 h-4" />
-                </div>
+              Change file
+            </button>
+            <button
+              type="button"
+              disabled={multipleFiles.length < 2}
+              className="pdf-organizer__export"
+              onClick={onRunMerge}
+            >
+              <Download aria-hidden="true" />
+              <span>Merge PDF</span>
+            </button>
+          </div>
+        </div>
+      </EditorCommandBar>
 
-                <span className="w-6 h-6 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono font-bold text-zinc-300 flex items-center justify-center shrink-0">
-                  #{idx + 1}
-                </span>
+      {/* ── WORKSPACE (SIDEBAR + MAIN STAGE) ── */}
+      <div className="pdf-organizer__workspace">
+        {/* ── LEFT SIDEBAR (DOCUMENTS) ── */}
+        <EditorSidebar className="pdf-organizer__pages" aria-label="Document queue">
+          <EditorSidebarHeader className="pdf-organizer__pages-heading">
+            <div>
+              <strong>Merge order</strong>
+              <small>{multipleFiles.length} ready</small>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed(prev => !prev)}
+              title={isSidebarCollapsed ? 'Expand document panel' : 'Collapse document panel'}
+            >
+              {isSidebarCollapsed ? <PanelLeft aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+            </button>
+          </EditorSidebarHeader>
 
-                <div className="truncate min-w-0">
-                  <span className="block font-bold text-[var(--text-primary)] truncate text-xs">{info.file.name}</span>
-                  <span className="text-[10px] text-[var(--text-secondary)] font-medium">
-                    Pages: {info.pageCount || 1} &bull; Size: {formatBytes(info.file.size)}
-                  </span>
-                </div>
+          {!isSidebarCollapsed ? (
+            <div className="pdf-join-controls flex-1 overflow-y-auto min-h-0">
+              <div className="pdf-join-controls__list">
+                {multipleFiles.map((item, index) => (
+                  <article
+                    key={`${item.file.name}:${item.file.size}:${index}`}
+                  >
+                    <span className="pdf-queue-index">
+                      {index + 1}
+                    </span>
+                    <div>
+                      <strong title={item.file.name}>
+                        {item.file.name}
+                      </strong>
+                      <small className="truncate whitespace-nowrap">
+                        {item.pageCount ? `${item.pageCount} ${item.pageCount === 1 ? 'page' : 'pages'} · ` : ''}
+                        {formatBytes(item.file.size)}
+                      </small>
+                    </div>
+                    <nav aria-label={`Reorder ${item.file.name}`}>
+                      <button
+                        type="button"
+                        disabled={index === 0}
+                        onClick={() => onMoveQueueItem(index, index - 1)}
+                        title="Move up"
+                      >
+                        <ArrowUp aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={index === multipleFiles.length - 1}
+                        onClick={() => onMoveQueueItem(index, index + 1)}
+                        title="Move down"
+                      >
+                        <ArrowDown aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveQueueItem(index)}
+                        title="Remove document"
+                      >
+                        <Trash2 aria-hidden="true" />
+                      </button>
+                    </nav>
+                  </article>
+                ))}
               </div>
 
-              <div className="flex items-center gap-1 shrink-0">
-                <button 
-                  onClick={() => onMoveQueueItem(idx, idx - 1)}
-                  disabled={idx === 0}
-                  title="Move File Up"
-                  className="w-7 h-7 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-300 rounded border border-zinc-800 flex items-center justify-center text-xs transition-colors cursor-pointer"
-                >
-                  ↑
-                </button>
-                <button 
-                  onClick={() => onMoveQueueItem(idx, idx + 1)}
-                  disabled={idx === multipleFiles.length - 1}
-                  title="Move File Down"
-                  className="w-7 h-7 bg-zinc-900 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-300 rounded border border-zinc-800 flex items-center justify-center text-xs transition-colors cursor-pointer"
-                >
-                  ↓
-                </button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => onRemoveQueueItem(idx)} 
-                  className="text-rose-400 hover:text-rose-300 hover:bg-rose-950/20 w-7 h-7 rounded-lg ml-1 cursor-pointer"
-                  title="Remove File from Queue"
-                >
-                  <TrashIcon className="w-3.5 h-3.5" />
-                </Button>
+              <div>
+                <label className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-zinc-800 hover:border-zinc-700 bg-zinc-950/40 hover:bg-zinc-900/40 text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer select-none">
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    className="sr-only"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        onAddFiles(Array.from(e.target.files));
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add more PDFs</span>
+                </label>
               </div>
             </div>
-          ))}
-        </div>
+          ) : (
+            <div className="pdf-sidebar-rail">
+              <div className="flex flex-col items-center gap-1.5 w-full">
+                {multipleFiles.map((item, index) => (
+                  <button
+                    key={`${item.file.name}:${item.file.size}:${index}`}
+                    type="button"
+                    onClick={() => setIsSidebarCollapsed(false)}
+                    title={`${index + 1}. ${item.file.name} (${item.pageCount ? `${item.pageCount} ${item.pageCount === 1 ? 'page' : 'pages'} · ` : ''}${formatBytes(item.file.size)})`}
+                    className="w-8 h-8 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-[11px] font-bold text-zinc-300 hover:text-white hover:border-zinc-600 hover:bg-zinc-800 transition-all cursor-pointer"
+                  >
+                    {index + 1}
+                  </button>
+                ))}
+                <div className="w-6 h-px bg-white/10 my-1" />
+                <label
+                  className="w-8 h-8 rounded-lg border border-dashed border-zinc-800 hover:border-zinc-600 hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer"
+                  title="Add more PDFs"
+                >
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    className="sr-only"
+                    onChange={(e) => {
+                      if (e.target.files?.length) {
+                        onAddFiles(Array.from(e.target.files));
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+                  <Plus className="w-4 h-4" />
+                </label>
+              </div>
+            </div>
+          )}
+        </EditorSidebar>
 
-        <FileUploader 
-          accept=".pdf"
-          multiple={true}
-          label="Append more files to queue"
-          onFilesSelected={onAddFiles}
-          compact
-        />
-      </Card>
+        {/* ── MAIN STAGE ── */}
+        <main className="pdf-organizer__stage pdf-organizer__stage--clean">
+          <section className="pdf-join-preview">
+            {/* Header */}
+            <div className="audio-preview-heading pdf-preview-heading">
+              <div>
+                <span>Merge sequence</span>
+                <h2>{sequenceTitle}</h2>
+              </div>
+              <Layers aria-hidden="true" />
+            </div>
 
-      <Card className="border-[var(--border-color)] bg-[var(--surface-color)] p-6 flex flex-col justify-between space-y-4">
-        <div className="space-y-2">
-          <h3 className="font-bold text-xs text-[var(--text-primary)] uppercase tracking-wider">Compilation Target</h3>
-          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            Combines all queued file pages sequentially in the exact order listed (#1 &rarr; #{multipleFiles.length}) into a single unified PDF document.
-          </p>
-          <div className="grid grid-cols-2 gap-2 pt-3">
-            <div className="pdf-workflow-stat"><strong>{multipleFiles.length}</strong><span>PDFs</span></div>
-            <div className="pdf-workflow-stat"><strong>{totalPages}</strong><span>Pages</span></div>
-          </div>
-          <p className="text-[10px] text-zinc-500">Combined input: {formatBytes(totalBytes)}</p>
-          {!canMerge && <p className="text-xs text-amber-300">Add one more PDF to enable merging.</p>}
-        </div>
-        <Button 
-          onClick={onRunMerge} 
-          disabled={!canMerge}
-          className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs cursor-pointer shadow-sm"
-        >
-          {canMerge ? 'Compile PDF Document' : 'Waiting for 2 PDFs'}
-        </Button>
-      </Card>
-    </div>
+            {/* Stats cards */}
+            <div className="audio-join-summary pdf-join-summary">
+              <article>
+                <span>Documents</span>
+                <strong>{multipleFiles.length}</strong>
+                <small>In compile order</small>
+              </article>
+              <article>
+                <span>Source size</span>
+                <strong>{formatBytes(totalBytes)}</strong>
+                <small>Before merging</small>
+              </article>
+            </div>
+
+            {/* Compact Dropzone */}
+            <FileUploader
+              accept=".pdf"
+              multiple
+              compact
+              label={multipleFiles.length ? 'Add another document' : 'Select PDF documents'}
+              subLabel="Choose files or drop them here"
+              onFilesSelected={onAddFiles}
+              maxSizeMB={150}
+            />
+          </section>
+        </main>
+      </div>
+    </section>
   );
 };

@@ -8,18 +8,62 @@ import {
   Trash2, RotateCw, Eye, EyeOff, ArrowUp, ArrowDown,
   ShieldAlert, RefreshCw, Layers, Pipette,
   Shield, AlignLeft, AlignCenter, AlignRight, Bold, Italic, AlertTriangle, FileText,
-  PanelLeftClose, PanelLeft,
+  PanelLeftClose, PanelLeft, MonitorUp,
   Stamp, Signature, Highlighter, CheckCircle
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
 import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../components/Workspace/EditorChrome';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
+import { ExportNotice } from '../../components/Common/ExportNotice';
 import { getAutoSignatureFontSize, getAutoStampFontSize, getClosestPageIndex, getTargetPageIndexes, getWatermarkPatternPositions, togglePageEffect } from '../../utils/pdfEditor';
 import type { TextContent } from 'pdfjs-dist/types/src/display/api';
 import type { PageViewport } from 'pdfjs-dist/types/src/display/page_viewport';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+
+const PDF_EDITOR_COLORS = ['#ffffff', '#111827', '#ef4444', '#facc15', '#22c55e', '#3b82f6'];
+const PDF_EDITOR_PREFERENCES_KEY = 'compactor.pdf-editor.preferences.v1';
+
+type PdfEditorPreferences = {
+  zoom: number;
+  elementScope: 'current' | 'all';
+  strokeColor: string;
+  fillColor: string;
+  strokeWidth: number;
+  opacity: number;
+  rotation: number;
+  fontSize: number;
+  textColor: string;
+  fontFamily: string;
+  textAlign: 'left' | 'center' | 'right';
+  isBold: boolean;
+  isItalic: boolean;
+  redactText: string;
+  redactStyle: 'blackout' | 'whiteout' | 'custom-text';
+  watermarkText: string;
+  watermarkOpacity: number;
+  watermarkRotation: number;
+  watermarkDensity: number;
+  watermarkFontSize: number;
+  watermarkColor: string;
+  patternWatermarkText: string;
+  patternWatermarkOpacity: number;
+  patternWatermarkRotation: number;
+  patternWatermarkFontSize: number;
+  patternWatermarkColor: string;
+};
+
+const readPdfEditorPreferences = (): Partial<PdfEditorPreferences> => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = window.localStorage.getItem(PDF_EDITOR_PREFERENCES_KEY);
+    const parsed = stored ? JSON.parse(stored) : null;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
 
 function SelectablePdfTextLayer({ textContent, viewport }: { textContent: TextContent; viewport: PageViewport }) {
   const layerRef = React.useRef<HTMLDivElement>(null);
@@ -50,6 +94,7 @@ export interface AnnotationItem {
   lastStrokeColor?: string;
   lastFillColor?: string;
   strokeWidth: number; // px
+  borderRadius?: number; // px
   opacity: number; // 0.0 to 1.0
   rotation: number; // 0 to 360 deg
   text?: string;
@@ -75,7 +120,8 @@ interface PdfEditorProps {
   onSelectTool?: (toolId: string) => void;
 }
 
-export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSaveSuccess, onSelectTool }) => {
+export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoHome, onSaveSuccess, onSelectTool }) => {
+  const savedPreferences = React.useMemo(readPdfEditorPreferences, []);
   const [numPages, setNumPages] = useState<number>(1);
   const [currentPage, setCurrentPage] = useState<number>(0); // 0-indexed
   const [pageImages, setPageImages] = useState<string[]>([]);
@@ -85,25 +131,26 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [exportedFileName, setExportedFileName] = useState<string | null>(null);
   
   // Default PDF zoom set to 75% for optimal page fitting & accuracy
-  const [zoom, setZoom] = useState<number>(85);
+  const [zoom, setZoom] = useState<number>(savedPreferences.zoom ?? 85);
   const [showToolDrawer, setShowToolDrawer] = useState(true);
-  const [elementScope, setElementScope] = useState<'current' | 'all'>('current');
+  const [elementScope, setElementScope] = useState<'current' | 'all'>(savedPreferences.elementScope ?? 'current');
   const [watermarkPages, setWatermarkPages] = useState<number[]>([]);
   const [patternWatermarkPages, setPatternWatermarkPages] = useState<number[]>([]);
   const [activeDocumentEffect, setActiveDocumentEffect] = useState<'watermark' | 'pattern' | null>(null);
-  const [watermarkText, setWatermarkText] = useState('CONFIDENTIAL');
-  const [watermarkOpacity, setWatermarkOpacity] = useState(18);
-  const [watermarkRotation, setWatermarkRotation] = useState(-30);
-  const [watermarkDensity, setWatermarkDensity] = useState(3);
-  const [watermarkFontSize, setWatermarkFontSize] = useState(48);
-  const [patternWatermarkFontSize, setPatternWatermarkFontSize] = useState(11);
-  const [watermarkColor, setWatermarkColor] = useState('#dc2626');
-  const [patternWatermarkText, setPatternWatermarkText] = useState('CONFIDENTIAL');
-  const [patternWatermarkOpacity, setPatternWatermarkOpacity] = useState(18);
-  const [patternWatermarkRotation, setPatternWatermarkRotation] = useState(-30);
-  const [patternWatermarkColor, setPatternWatermarkColor] = useState('#dc2626');
+  const [watermarkText, setWatermarkText] = useState(savedPreferences.watermarkText ?? 'CONFIDENTIAL');
+  const [watermarkOpacity, setWatermarkOpacity] = useState(savedPreferences.watermarkOpacity ?? 18);
+  const [watermarkRotation, setWatermarkRotation] = useState(savedPreferences.watermarkRotation ?? -30);
+  const [watermarkDensity, setWatermarkDensity] = useState(savedPreferences.watermarkDensity ?? 3);
+  const [watermarkFontSize, setWatermarkFontSize] = useState(savedPreferences.watermarkFontSize ?? 48);
+  const [patternWatermarkFontSize, setPatternWatermarkFontSize] = useState(savedPreferences.patternWatermarkFontSize ?? 11);
+  const [watermarkColor, setWatermarkColor] = useState(savedPreferences.watermarkColor ?? '#dc2626');
+  const [patternWatermarkText, setPatternWatermarkText] = useState(savedPreferences.patternWatermarkText ?? 'CONFIDENTIAL');
+  const [patternWatermarkOpacity, setPatternWatermarkOpacity] = useState(savedPreferences.patternWatermarkOpacity ?? 18);
+  const [patternWatermarkRotation, setPatternWatermarkRotation] = useState(savedPreferences.patternWatermarkRotation ?? -30);
+  const [patternWatermarkColor, setPatternWatermarkColor] = useState(savedPreferences.patternWatermarkColor ?? '#dc2626');
   const [activeTool, setActiveTool] = useState<
     'select' | 'text' | 'rectangle' | 'circle' | 'line' | 'arrow' | 'redact' | 'highlight'
   >(mode === 'redact' ? 'redact' : 'select');
@@ -242,25 +289,40 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   const [draftBox, setDraftBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
 
   // Styling defaults for new items
-  const [strokeColor, setStrokeColor] = useState<string>(mode === 'redact' ? '#000000' : '#ffffff');
-  const [fillColor, setFillColor] = useState<string>(mode === 'redact' ? '#000000' : 'transparent');
-  const [strokeWidth, setStrokeWidth] = useState<number>(mode === 'redact' ? 0 : 2);
-  const [opacity, setOpacity] = useState<number>(1);
-  const [rotation, setRotation] = useState<number>(0);
-  const [fontSize, setFontSize] = useState<number>(18);
-  const [textColor, setTextColor] = useState<string>('#000000');
-  const [fontFamily, setFontFamily] = useState<string>('sans-serif');
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('left');
-  const [isBold, setIsBold] = useState<boolean>(false);
-  const [isItalic, setIsItalic] = useState<boolean>(false);
-  const [redactText, setRedactText] = useState<string>('[REDACTED]');
-  const [redactStyle, setRedactStyle] = useState<'blackout' | 'whiteout' | 'custom-text'>('blackout');
+  const [strokeColor, setStrokeColor] = useState<string>(savedPreferences.strokeColor ?? (mode === 'redact' ? '#000000' : '#ffffff'));
+  const [fillColor, setFillColor] = useState<string>(savedPreferences.fillColor ?? (mode === 'redact' ? '#000000' : 'transparent'));
+  const [strokeWidth, setStrokeWidth] = useState<number>(savedPreferences.strokeWidth ?? (mode === 'redact' ? 0 : 2));
+  const [opacity, setOpacity] = useState<number>(savedPreferences.opacity ?? 1);
+  const [rotation, setRotation] = useState<number>(savedPreferences.rotation ?? 0);
+  const [fontSize, setFontSize] = useState<number>(savedPreferences.fontSize ?? 18);
+  const [textColor, setTextColor] = useState<string>(savedPreferences.textColor ?? '#000000');
+  const [fontFamily, setFontFamily] = useState<string>(savedPreferences.fontFamily ?? 'sans-serif');
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(savedPreferences.textAlign ?? 'left');
+  const [isBold, setIsBold] = useState<boolean>(savedPreferences.isBold ?? false);
+  const [isItalic, setIsItalic] = useState<boolean>(savedPreferences.isItalic ?? false);
+  const [redactText, setRedactText] = useState<string>(savedPreferences.redactText ?? '[REDACTED]');
+  const [redactStyle, setRedactStyle] = useState<'blackout' | 'whiteout' | 'custom-text'>(savedPreferences.redactStyle ?? 'blackout');
+
+  useEffect(() => {
+    const preferences: PdfEditorPreferences = {
+      zoom, elementScope, strokeColor, fillColor, strokeWidth, opacity, rotation,
+      fontSize, textColor, fontFamily, textAlign, isBold, isItalic, redactText, redactStyle,
+      watermarkText, watermarkOpacity, watermarkRotation, watermarkDensity, watermarkFontSize, watermarkColor,
+      patternWatermarkText, patternWatermarkOpacity, patternWatermarkRotation, patternWatermarkFontSize, patternWatermarkColor,
+    };
+    try {
+      window.localStorage.setItem(PDF_EDITOR_PREFERENCES_KEY, JSON.stringify(preferences));
+    } catch {
+      // The editor remains fully usable when private browsing blocks storage.
+    }
+  }, [elementScope, fillColor, fontFamily, fontSize, isBold, isItalic, opacity, patternWatermarkColor, patternWatermarkFontSize, patternWatermarkOpacity, patternWatermarkRotation, patternWatermarkText, redactStyle, redactText, rotation, strokeColor, strokeWidth, textAlign, textColor, watermarkColor, watermarkDensity, watermarkFontSize, watermarkOpacity, watermarkRotation, watermarkText, zoom]);
 
   // Eyedropper API check
   const hasEyeDropper = typeof window !== 'undefined' && 'EyeDropper' in window;
 
   // Ref for canvas viewport container
   const viewportRef = React.useRef<HTMLDivElement>(null);
+  const sourcePdfBytesRef = React.useRef<ArrayBuffer | null>(null);
 
   // Keep the active page aligned with the page nearest the viewport center.
   // This updates the page counter and placement target without requiring a click.
@@ -349,6 +411,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
   useEffect(() => {
     let isMounted = true;
     let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
+    sourcePdfBytesRef.current = null;
     const loadPdf = async () => {
       setLoading(true);
       setPageImages([]);
@@ -357,7 +420,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       setPageViewports([]);
       try {
         const buffer = await file.arrayBuffer();
-        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer), verbosity: 0 });
+        sourcePdfBytesRef.current = buffer.slice(0);
+        loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer.slice(0)), verbosity: 0 });
         const pdf = await loadingTask.promise;
         const total = pdf.numPages;
         setNumPages(total);
@@ -419,7 +483,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         if (result.sRGBHex) {
           if (target === 'stroke') {
             setStrokeColor(result.sRGBHex);
-            if (selectedId) updateSelectedItem({ strokeColor: result.sRGBHex });
+            if (selectedId) updateSelectedItem({ strokeColor: result.sRGBHex, ...(selectedItem && selectedItem.strokeWidth <= 0 ? { strokeWidth: 2 } : {}) });
           } else if (target === 'fill') {
             setFillColor(result.sRGBHex);
             if (selectedId) updateSelectedItem({ fillColor: result.sRGBHex });
@@ -452,6 +516,25 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
     if (!targetId) return;
     setAnnotations(prev => prev.map(item => item.id === targetId ? { ...item, ...updates } : item));
+  };
+
+  const growTextAnnotationToContent = (textarea: HTMLTextAreaElement, item: AnnotationItem) => {
+    const pageHeight = pageDimensions[item.pageIndex]?.height;
+    if (!pageHeight) return;
+
+    const previousInlineHeight = textarea.style.height;
+    textarea.style.height = 'auto';
+    const requiredHeight = Math.max((item.fontSize || 16) * 1.35, textarea.scrollHeight) + 12;
+    textarea.style.height = previousInlineHeight;
+    textarea.scrollTop = 0;
+    textarea.scrollLeft = 0;
+
+    const currentHeight = pageHeight * item.height / 100;
+    if (requiredHeight <= currentHeight + 1) return;
+
+    const availableHeight = Math.max(0, 100 - item.y);
+    const nextHeight = Math.min(availableHeight, requiredHeight / pageHeight * 100);
+    updateSelectedItem({ height: Math.max(item.height, nextHeight) });
   };
 
   // Sync toolbar controls with active element values when selection/editing changes
@@ -600,8 +683,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         strokeWidth,
         opacity: 1,
         rotation: 0,
-        text: redactStyle === 'custom-text' ? redactText : (redactStyle === 'whiteout' ? '' : '[REDACTED]'),
-        fontSize: 14,
+        text: redactStyle === 'custom-text' ? redactText : '',
+        fontSize,
         redactStyle,
         isVisible: true,
       };
@@ -833,7 +916,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
     setSaving(true);
     try {
       await document.fonts?.ready;
-      const origBuffer = await file.arrayBuffer();
+      const origBuffer = sourcePdfBytesRef.current?.slice(0) ?? await file.arrayBuffer();
+      if (!sourcePdfBytesRef.current) sourcePdfBytesRef.current = origBuffer.slice(0);
       const pdfDoc = await PDFDocument.load(origBuffer);
       const pages = pdfDoc.getPages();
       const secureRedaction = mode === 'redact';
@@ -929,6 +1013,13 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
           const rw = (item.width / 100) * pWidth;
           const rh = (item.height / 100) * pHeight;
           const scaledStrokeWidth = Math.max(1, item.strokeWidth * scaleFactor);
+          const defaultBorderRadius = item.type === 'stamp' ? 8 : item.type === 'signature' ? 12 : 0;
+          const scaledBorderRadius = Math.min(rw / 2, rh / 2, Math.max(0, item.borderRadius ?? defaultBorderRadius) * scaleFactor);
+          const traceItemBox = (inset = 0) => {
+            const insetRadius = Math.max(0, scaledBorderRadius - inset);
+            ctx.beginPath();
+            ctx.roundRect(rx + inset, ry + inset, Math.max(0, rw - inset * 2), Math.max(0, rh - inset * 2), insetRadius);
+          };
 
           const hasStroke = Boolean(
             item.strokeColor &&
@@ -954,20 +1045,21 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
             if (item.text && item.redactStyle !== 'whiteout') {
               ctx.fillStyle = '#ffffff';
-              ctx.font = `bold ${Math.max(10, Math.min(20, Math.floor(rh * 0.5)))}px monospace`;
+              ctx.font = `bold ${Math.max(6, (item.fontSize || 14) * scaleFactor)}px monospace`;
               ctx.textAlign = 'center';
               ctx.textBaseline = 'middle';
               ctx.fillText(item.text, rx + rw / 2, ry + rh / 2);
             }
           } else if (item.type === 'rectangle') {
+            traceItemBox();
             if (hasFill) {
               ctx.fillStyle = item.fillColor;
-              ctx.fillRect(rx, ry, rw, rh);
+              ctx.fill();
             }
             if (hasStroke) {
               ctx.lineWidth = scaledStrokeWidth;
               ctx.strokeStyle = item.strokeColor;
-              ctx.strokeRect(rx, ry, rw, rh);
+              ctx.stroke();
             }
           } else if (item.type === 'circle') {
             ctx.beginPath();
@@ -1007,14 +1099,15 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               ctx.fill();
             }
           } else if (item.type === 'text') {
+            traceItemBox();
             if (hasFill) {
               ctx.fillStyle = item.fillColor;
-              ctx.fillRect(rx, ry, rw, rh);
+              ctx.fill();
             }
             if (hasStroke) {
               ctx.strokeStyle = item.strokeColor;
               ctx.lineWidth = scaledStrokeWidth;
-              ctx.strokeRect(rx, ry, rw, rh);
+              ctx.stroke();
             }
             ctx.fillStyle = item.textColor || '#000000';
             const fontFam = item.fontFamily === 'serif' ? 'Georgia, serif' : (item.fontFamily === 'monospace' ? 'Courier New, monospace' : 'Inter, sans-serif');
@@ -1027,22 +1120,34 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             ctx.textBaseline = 'top';
 
             const align = item.textAlign || 'left';
+            ctx.textAlign = align;
             drawWrappedText(ctx, item.text || '', rx + pad, ry + pad, maxW, fSize * 1.25, align);
           } else if (item.type === 'highlight') {
+            traceItemBox();
             ctx.fillStyle = item.fillColor || '#facc15';
-            ctx.fillRect(rx, ry, rw, rh);
+            ctx.fill();
+            if (hasStroke) {
+              ctx.strokeStyle = item.strokeColor;
+              ctx.lineWidth = scaledStrokeWidth;
+              ctx.stroke();
+            }
           } else if (item.type === 'stamp') {
             // Background fill
+            traceItemBox();
             ctx.fillStyle = item.fillColor || 'rgba(22, 163, 74, 0.1)';
-            ctx.fillRect(rx, ry, rw, rh);
+            ctx.fill();
 
             // Double border stamp frame
-            ctx.strokeStyle = item.strokeColor || '#16a34a';
-            ctx.lineWidth = Math.max(2, 3 * scaleFactor);
-            ctx.strokeRect(rx, ry, rw, rh);
+            if (hasStroke) {
+              ctx.strokeStyle = item.strokeColor;
+              ctx.lineWidth = scaledStrokeWidth;
+              ctx.stroke();
 
-            ctx.lineWidth = Math.max(1, 1 * scaleFactor);
-            ctx.strokeRect(rx + 3 * scaleFactor, ry + 3 * scaleFactor, rw - 6 * scaleFactor, rh - 6 * scaleFactor);
+              const inset = Math.max(2, scaledStrokeWidth + scaleFactor);
+              ctx.lineWidth = Math.max(1, scaledStrokeWidth / 3);
+              traceItemBox(inset);
+              ctx.stroke();
+            }
 
             // Stamp text
             ctx.fillStyle = item.strokeColor || '#16a34a';
@@ -1055,14 +1160,15 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             ctx.fillText(item.text || item.stampType || 'APPROVED', rx + rw / 2, ry + rh / 2);
           } else if (item.type === 'signature') {
             // Signature background card
+            traceItemBox();
             if (hasFill) {
               ctx.fillStyle = item.fillColor;
-              ctx.fillRect(rx, ry, rw, rh);
+              ctx.fill();
             }
             if (hasStroke) {
               ctx.strokeStyle = item.strokeColor;
               ctx.lineWidth = scaledStrokeWidth;
-              ctx.strokeRect(rx, ry, rw, rh);
+              ctx.stroke();
             }
 
             // Cursive / Calligraphic Signer Name
@@ -1104,8 +1210,11 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       const a = document.createElement('a');
       a.href = url;
       a.download = mode === 'redact' ? `redacted_${file.name}` : `edited_${file.name}`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExportedFileName(a.download);
 
       if (onSaveSuccess) onSaveSuccess();
     } catch (err: any) {
@@ -1118,6 +1227,14 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
   return (
     <div className="pdf-editor flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]">
+      <section className="pdf-editor__mobile-handoff" aria-labelledby="pdf-desktop-title">
+        <div className="pdf-editor__mobile-handoff-icon"><MonitorUp aria-hidden="true" /></div>
+        <span>PDF workspace</span>
+        <h2 id="pdf-desktop-title">Continue on a desktop</h2>
+        <p>This editor needs a larger canvas for precise text, shapes, layers, and redaction. Your file has not been uploaded.</p>
+        {onGoHome && <button type="button" onClick={onGoHome}>Browse other tools <ArrowRight aria-hidden="true" /></button>}
+      </section>
+      {exportedFileName && <ExportNotice fileName={exportedFileName} onDismiss={() => setExportedFileName(null)} />}
       {errorMessage && (
         <div className="pdf-editor__error p-3 bg-zinc-950/80 border-b border-zinc-800">
           <ErrorBanner 
@@ -1129,7 +1246,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
       )}
 
       {/* Top Main Toolbar */}
-      <EditorCommandBar className="pdf-editor__toolbar px-4 py-2.5 justify-between gap-3 sticky top-0 z-30 overflow-x-auto flex-nowrap scrollbar-thin">
+      <EditorCommandBar className={`pdf-editor__toolbar ${!selectedItem && !activeDocumentEffect && !(mode === 'redact' && activeTool === 'redact') ? 'pdf-editor__toolbar--idle' : ''} px-4 py-2.5 justify-between gap-3 sticky top-0 z-30 overflow-x-auto flex-nowrap scrollbar-thin`}>
         <div className="pdf-editor__document shrink-0" title={file.name}>
           <FileText aria-hidden="true" />
           <span>
@@ -1271,7 +1388,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
         {/* Selected Element Controls */}
         {mode === 'redact' && activeTool === 'redact' && !selectedItem && (
           <div className="pdf-editor__top-redaction pdf-editor__properties" aria-label="New redaction settings">
-            <span className="pdf-editor__property-label" title="Redaction style"><Shield aria-hidden="true" /><span className="sr-only">Redaction style</span></span>
+            <div className="pdf-editor__redaction-style-buttons">
             <button
               onClick={() => setRedactStyle('blackout')}
               aria-pressed={redactStyle === 'blackout'}
@@ -1293,23 +1410,31 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             >
               Label
             </button>
-            {redactStyle === 'custom-text' && (
-              <input
-                type="text"
-                value={redactText}
-                placeholder="Label text..."
-                onChange={e => setRedactText(e.target.value)}
-                className="bg-transparent border border-[var(--border-color)] px-2 py-0.5 rounded text-xs text-[var(--text-primary)] w-28 font-mono"
-              />
-            )}
-            <div className="pdf-editor__redaction-border" title="Border for new redactions">
-              <Square aria-hidden="true" />
-              <span className="sr-only">Border</span>
-              <input type="color" value={strokeColor === 'transparent' ? '#000000' : strokeColor} onChange={event => setStrokeColor(event.target.value)} aria-label="Redaction border color" />
-              <button type="button" aria-pressed={strokeWidth > 0} onClick={() => setStrokeWidth(previous => previous > 0 ? 0 : 1)}>{strokeWidth > 0 ? 'Solid' : 'None'}</button>
-              {strokeWidth > 0 && <input className="pdf-editor__property-number" type="number" min="1" max="12" value={strokeWidth} onChange={event => setStrokeWidth(Math.min(12, Math.max(1, Number(event.target.value) || 1)))} aria-label="Redaction border thickness" />}
             </div>
-            <span className="pdf-editor__redaction-security"><ShieldAlert className="w-3.5 h-3.5" />Permanent on export</span>
+            {redactStyle === 'custom-text' && (
+              <>
+                <input
+                  type="text"
+                  value={redactText}
+                  placeholder="Label text..."
+                  onChange={e => setRedactText(e.target.value)}
+                  className="bg-transparent border border-[var(--border-color)] px-2 py-0.5 rounded text-xs text-[var(--text-primary)] w-28 font-mono"
+                />
+                <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+                  <summary aria-label={`Label font size ${fontSize} pixels`} title="Label font size"><Type className="pdf-editor__property-icon" aria-hidden="true" /><b>{fontSize}</b></summary>
+                  <div className="pdf-editor__property-popover"><strong>Label text</strong><label><span>Font size <output>{fontSize} px</output></span><input type="range" min="8" max="48" value={fontSize} onChange={event => setFontSize(Number(event.target.value))} /></label></div>
+                </details>
+              </>
+            )}
+            <details className="pdf-editor__property-menu pdf-editor__property-menu--edge" name="pdf-editor-properties">
+              <summary aria-label="New redaction border settings" title="Border settings"><Square className="pdf-editor__property-icon" aria-hidden="true" /><i className={strokeWidth <= 0 ? 'is-transparent' : ''} style={strokeWidth > 0 ? { backgroundColor: strokeColor } : undefined} /></summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Redaction border</strong>
+                <div className="pdf-editor__popover-segments"><button type="button" aria-pressed={strokeWidth <= 0} onClick={() => setStrokeWidth(0)}>None</button><button type="button" aria-pressed={strokeWidth > 0} onClick={() => setStrokeWidth(previous => previous > 0 ? previous : 1)}>Solid</button></div>
+                <label><span>Color</span><input type="color" value={strokeColor === 'transparent' ? '#000000' : strokeColor} onChange={event => { setStrokeColor(event.target.value); setStrokeWidth(previous => previous > 0 ? previous : 1); }} /></label>
+                <label><span>Thickness <output>{Math.max(1, strokeWidth)} px</output></span><input type="range" min="1" max="12" value={Math.max(1, strokeWidth)} disabled={strokeWidth <= 0} onChange={event => setStrokeWidth(Number(event.target.value))} /></label>
+              </div>
+            </details>
           </div>
         )}
 
@@ -1320,7 +1445,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             <div className="flex items-center gap-1 bg-[var(--surface-hover)] p-0.5 rounded-lg border border-[var(--border-color)]">
               <button
                 type="button"
-                onClick={() => updateSelectedItem({ redactStyle: 'blackout', fillColor: '#000000', text: '[REDACTED]' })}
+                onClick={() => updateSelectedItem({ redactStyle: 'blackout', fillColor: '#000000', text: '' })}
                 aria-pressed={selectedItem.redactStyle !== 'whiteout' && selectedItem.redactStyle !== 'custom-text'}
                 className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
                   selectedItem.redactStyle !== 'whiteout' && selectedItem.redactStyle !== 'custom-text'
@@ -1357,74 +1482,51 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             </div>
 
             {selectedItem.redactStyle === 'custom-text' && (
-              <input
-                type="text"
-                value={selectedItem.text || ''}
-                placeholder="Label text..."
-                onChange={e => updateSelectedItem({ text: e.target.value })}
-                className="bg-[var(--surface-hover)] border border-[var(--border-color)] px-2 py-1 rounded-lg text-xs text-[var(--text-primary)] w-32 font-mono font-bold"
-              />
+              <>
+                <input
+                  type="text"
+                  value={selectedItem.text || ''}
+                  placeholder="Label text..."
+                  onChange={e => updateSelectedItem({ text: e.target.value })}
+                  className="bg-[var(--surface-hover)] border border-[var(--border-color)] px-2 py-1 rounded-lg text-xs text-[var(--text-primary)] w-32 font-mono font-bold"
+                />
+                <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+                  <summary aria-label={`Label font size ${selectedItem.fontSize || 14} pixels`} title="Label font size"><Type className="pdf-editor__property-icon" aria-hidden="true" /><b>{selectedItem.fontSize || 14}</b></summary>
+                  <div className="pdf-editor__property-popover"><strong>Label text</strong><label><span>Font size <output>{selectedItem.fontSize || 14} px</output></span><input type="range" min="8" max="48" value={selectedItem.fontSize || 14} onChange={event => updateSelectedItem({ fontSize: Number(event.target.value) })} /></label></div>
+                </details>
+              </>
             )}
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
-            {/* Redaction Fill Color */}
-            <div className="flex items-center gap-1.5" title="Redaction Fill Color">
-              <Highlighter aria-hidden="true" />
-              <span className="sr-only">Redaction color</span>
-              <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
-                <input
-                  type="color"
-                  value={selectedItem.fillColor || (selectedItem.redactStyle === 'whiteout' ? '#ffffff' : '#000000')}
-                  onChange={e => updateSelectedItem({ fillColor: e.target.value })}
-                  className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
-                />
-                <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] uppercase">
-                  {selectedItem.fillColor || (selectedItem.redactStyle === 'whiteout' ? '#FFFFFF' : '#000000')}
-                </span>
+            <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+              <summary aria-label="Redaction fill color" title="Fill color"><Highlighter className="pdf-editor__property-icon" aria-hidden="true" /><i style={{ backgroundColor: selectedItem.fillColor || '#000000' }} /></summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Redaction fill</strong>
+                <label><span>Custom color</span><input type="color" value={selectedItem.fillColor || '#000000'} onChange={e => updateSelectedItem({ fillColor: e.target.value })} /></label>
+                <div className="pdf-editor__color-swatches">{PDF_EDITOR_COLORS.map(color => <button key={color} type="button" aria-label={`Set fill color ${color}`} aria-pressed={selectedItem.fillColor === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => updateSelectedItem({ fillColor: color })} />)}</div>
+                {hasEyeDropper && <button type="button" className="pdf-editor__popover-eyedropper" onClick={() => pickColorFromPage('fill')}><Pipette /> Pick from page</button>}
               </div>
-              {hasEyeDropper && (
-                <button
-                  onClick={() => pickColorFromPage('fill')}
-                  className="p-1 rounded hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-white transition cursor-pointer"
-                  title="Pick Fill Color from Page"
-                >
-                  <Pipette className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
+            </details>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
-            <div className="pdf-editor__redaction-border" title="Redaction border">
-              <Square aria-hidden="true" />
-              <span className="sr-only">Border</span>
-              <input
-                type="color"
-                value={selectedItem.strokeColor === 'transparent' ? '#000000' : selectedItem.strokeColor}
-                onChange={event => updateSelectedItem({ strokeColor: event.target.value })}
-                aria-label="Redaction border color"
-              />
-              <button type="button" aria-pressed={selectedItem.strokeWidth > 0} onClick={() => updateSelectedItem({ strokeWidth: selectedItem.strokeWidth > 0 ? 0 : 1 })}>
-                {selectedItem.strokeWidth > 0 ? 'Solid' : 'None'}
-              </button>
-              {selectedItem.strokeWidth > 0 && (
-                <>
-                  <input className="pdf-editor__property-number" type="number" min="1" max="12" value={selectedItem.strokeWidth} onChange={event => updateSelectedItem({ strokeWidth: Math.min(12, Math.max(1, Number(event.target.value) || 1)) })} aria-label="Redaction border thickness" />
-                  <span className="pdf-editor__property-unit">px</span>
-                </>
-              )}
-            </div>
+            <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+              <summary aria-label="Redaction border settings" title="Border settings"><Square className="pdf-editor__property-icon" aria-hidden="true" /><i className={selectedItem.strokeWidth <= 0 ? 'is-transparent' : ''} style={selectedItem.strokeWidth > 0 ? { backgroundColor: selectedItem.strokeColor } : undefined} /></summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Redaction border</strong>
+                <div className="pdf-editor__popover-segments"><button type="button" aria-pressed={selectedItem.strokeWidth <= 0} onClick={() => updateSelectedItem({ strokeWidth: 0 })}>None</button><button type="button" aria-pressed={selectedItem.strokeWidth > 0} onClick={() => updateSelectedItem({ strokeWidth: selectedItem.strokeWidth > 0 ? selectedItem.strokeWidth : 1 })}>Solid</button></div>
+                <label><span>Color</span><input type="color" value={selectedItem.strokeColor === 'transparent' ? '#000000' : selectedItem.strokeColor} onChange={event => updateSelectedItem({ strokeColor: event.target.value, strokeWidth: selectedItem.strokeWidth > 0 ? selectedItem.strokeWidth : 1 })} /></label>
+                <label><span>Thickness <output>{Math.max(1, selectedItem.strokeWidth)} px</output></span><input type="range" min="1" max="12" value={Math.max(1, selectedItem.strokeWidth)} disabled={selectedItem.strokeWidth <= 0} onChange={event => updateSelectedItem({ strokeWidth: Number(event.target.value) })} /></label>
+              </div>
+            </details>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
-            {/* Opacity */}
-            <div className="flex items-center gap-1.5" title="Opacity">
-              <Eye aria-hidden="true" />
-              <span className="sr-only">Opacity</span>
-              <input className="pdf-editor__property-number" type="number" min="10" max="100" step="5" value={Math.round(selectedItem.opacity * 100)} onChange={e => updateSelectedItem({ opacity: Math.min(100, Math.max(10, Number(e.target.value) || 10)) / 100 })} />
-              <span className="pdf-editor__property-unit">%</span>
-            </div>
+            <details className="pdf-editor__property-menu pdf-editor__property-menu--opacity" name="pdf-editor-properties">
+              <summary aria-label={`Opacity ${Math.round(selectedItem.opacity * 100)} percent`} title="Opacity"><Eye className="pdf-editor__property-icon" aria-hidden="true" /><b>{Math.round(selectedItem.opacity * 100)}%</b></summary>
+              <div className="pdf-editor__property-popover"><strong>Opacity</strong><label><span>Transparency <output>{Math.round(selectedItem.opacity * 100)}%</output></span><input type="range" min="10" max="100" step="5" value={Math.round(selectedItem.opacity * 100)} onChange={e => updateSelectedItem({ opacity: Number(e.target.value) / 100 })} /></label></div>
+            </details>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
@@ -1477,8 +1579,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             {selectedItem.type === 'text' && (
               <>
                 <div className="flex items-center gap-1" title="Font Family">
-                  <Type aria-hidden="true" />
-                  <span className="sr-only">Font family</span>
+                  <span className="pdf-editor__group-label">Font</span>
                   <Select
                     value={selectedItem.fontFamily || 'sans-serif'}
                     onValueChange={val => val && updateSelectedItem({ fontFamily: val })}
@@ -1495,8 +1596,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                 </div>
 
                 <div className="flex items-center gap-1" title="Font Size">
-                  <Type aria-hidden="true" />
-                  <span className="sr-only">Font size</span>
+                  <span className="pdf-editor__group-label">Size</span>
                   <Select
                     value={String(selectedItem.fontSize || 16)}
                     onValueChange={val => val && updateSelectedItem({ fontSize: Number(val) })}
@@ -1512,33 +1612,21 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                   </Select>
                 </div>
 
-                {/* Font Color */}
-                <div className="flex items-center gap-1.5" title="Font Color">
-                  <Pipette aria-hidden="true" />
-                  <span className="sr-only">Text color</span>
-                  <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
-                    <input
-                      type="color"
-                      value={selectedItem.textColor || '#000000'}
-                      onChange={e => updateSelectedItem({ textColor: e.target.value })}
-                      className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
-                    />
-                    <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] uppercase">
-                      {selectedItem.textColor || '#000000'}
-                    </span>
+                <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+                  <summary title="Text color" aria-label="Text color settings">
+                    <i style={{ backgroundColor: selectedItem.textColor || '#000000' }} />
+                  </summary>
+                  <div className="pdf-editor__property-popover">
+                    <strong>Text color</strong>
+                    <label><span>Custom color</span><input type="color" value={selectedItem.textColor || '#000000'} onChange={e => updateSelectedItem({ textColor: e.target.value })} /></label>
+                    <div className="pdf-editor__color-swatches" aria-label="Text color presets">
+                      {PDF_EDITOR_COLORS.map(color => <button key={color} type="button" aria-label={`Set text color ${color}`} aria-pressed={(selectedItem.textColor || '#000000') === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => updateSelectedItem({ textColor: color })} />)}
+                    </div>
+                    {hasEyeDropper && <button type="button" className="pdf-editor__popover-eyedropper" onClick={() => pickColorFromPage('text')}><Pipette /> Pick from page</button>}
                   </div>
-                  {hasEyeDropper && (
-                    <button
-                      onClick={() => pickColorFromPage('text')}
-                      className="p-1 rounded hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-white transition cursor-pointer"
-                      title="Pick Font Color from Page (Eyedropper)"
-                    >
-                      <Pipette className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
+                </details>
 
-                <div className="flex items-center gap-0.5 bg-[var(--surface-hover)] p-0.5 rounded border border-[var(--border-color)]">
+                <div className="pdf-editor__format-buttons flex items-center gap-0.5 bg-[var(--surface-hover)] p-0.5 rounded border border-[var(--border-color)]">
                   <button
                     onClick={() => updateSelectedItem({ isBold: !selectedItem.isBold })}
                     aria-pressed={Boolean(selectedItem.isBold)}
@@ -1557,7 +1645,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                   </button>
                 </div>
 
-                <div className="flex items-center gap-0.5 bg-[var(--surface-hover)] p-0.5 rounded border border-[var(--border-color)]">
+                <div className="pdf-editor__alignment-buttons flex items-center gap-0.5 bg-[var(--surface-hover)] p-0.5 rounded border border-[var(--border-color)]" aria-label="Text alignment">
                   <button
                     onClick={() => updateSelectedItem({ textAlign: 'left' })}
                     aria-pressed={selectedItem.textAlign === 'left' || !selectedItem.textAlign}
@@ -1588,118 +1676,64 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
               </>
             )}
 
-            {/* Stroke / Border Color with quick Solid / None toggle & Eyedropper */}
-            <div className="flex items-center gap-1.5" title="Border Color">
-              <Square aria-hidden="true" />
-              <span className="sr-only">Border</span>
-              <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
-                <input
-                  type="color"
-                  value={selectedItem.strokeColor === 'transparent' ? '#ffffff' : selectedItem.strokeColor}
-                  onChange={e => updateSelectedItem({ strokeColor: e.target.value })}
-                  className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
-                />
-                <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] uppercase">
-                  {selectedItem.strokeColor === 'transparent' ? 'None' : selectedItem.strokeColor}
-                </span>
-              </div>
-              {hasEyeDropper && (
-                <button
-                  onClick={() => pickColorFromPage('stroke')}
-                  className="p-1 rounded hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-white transition cursor-pointer"
-                  title="Pick Border Color from Page (Eyedropper)"
-                >
-                  <Pipette className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <button
-                onClick={() => updateSelectedItem(selectedItem.strokeColor === 'transparent'
-                  ? { strokeColor: selectedItem.lastStrokeColor || '#ffffff' }
-                  : { lastStrokeColor: selectedItem.strokeColor, strokeColor: 'transparent' })}
-                aria-pressed={selectedItem.strokeColor !== 'transparent'}
-                className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase transition cursor-pointer ${
-                  selectedItem.strokeColor === 'transparent'
-                    ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-                    : 'bg-white text-zinc-950 border border-white'
-                }`}
-              >
-                {selectedItem.strokeColor === 'transparent' ? 'None' : 'Solid'}
-              </button>
-            </div>
-
-            <div className="w-px h-4 bg-[var(--border-color)]" />
-
-            {/* Fill / Background Color with quick Solid / Transp. toggle & Eyedropper */}
-            {selectedItem.type !== 'line' && selectedItem.type !== 'arrow' && (
-              <div className="flex items-center gap-1.5" title="Background Fill">
-                <Highlighter aria-hidden="true" />
-                <span className="sr-only">Fill</span>
-                <div className="flex items-center gap-1 bg-[var(--surface-hover)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
-                  <input
-                    type="color"
-                    value={selectedItem.fillColor === 'transparent' ? '#ffffff' : selectedItem.fillColor}
-                    onChange={e => updateSelectedItem({ fillColor: e.target.value })}
-                    className="w-4 h-4 rounded cursor-pointer bg-transparent border-0 p-0"
-                  />
-                  <span className="font-mono text-[10px] font-bold text-[var(--text-primary)] uppercase">
-                    {selectedItem.fillColor === 'transparent' ? 'Transp.' : selectedItem.fillColor}
-                  </span>
+            <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+              <summary title="Border settings" aria-label="Border settings">
+                <Square className="pdf-editor__property-icon" aria-hidden="true" />
+                <i className={selectedItem.strokeColor === 'transparent' ? 'is-transparent' : ''} style={selectedItem.strokeColor === 'transparent' ? undefined : { backgroundColor: selectedItem.strokeColor }} />
+              </summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Border</strong>
+                <div className="pdf-editor__popover-segments">
+                  <button type="button" aria-pressed={selectedItem.strokeColor === 'transparent'} onClick={() => updateSelectedItem(selectedItem.strokeColor === 'transparent' ? {} : { lastStrokeColor: selectedItem.strokeColor, strokeColor: 'transparent' })}>None</button>
+                  <button type="button" aria-pressed={selectedItem.strokeColor !== 'transparent'} onClick={() => updateSelectedItem({ strokeColor: selectedItem.lastStrokeColor || '#ffffff', strokeWidth: selectedItem.strokeWidth > 0 ? selectedItem.strokeWidth : 2 })}>Solid</button>
                 </div>
-                {hasEyeDropper && (
-                  <button
-                    onClick={() => pickColorFromPage('fill')}
-                    className="p-1 rounded hover:bg-[var(--surface-hover)] text-[var(--text-secondary)] hover:text-white transition cursor-pointer"
-                    title="Pick Fill Color from Page (Eyedropper)"
-                  >
-                    <Pipette className="w-3.5 h-3.5" />
-                  </button>
+                <label><span>Color</span><input type="color" value={selectedItem.strokeColor === 'transparent' ? '#ffffff' : selectedItem.strokeColor} onChange={e => updateSelectedItem({ strokeColor: e.target.value, strokeWidth: selectedItem.strokeWidth > 0 ? selectedItem.strokeWidth : 2 })} /></label>
+                <div className="pdf-editor__color-swatches" aria-label="Border color presets">
+                  {PDF_EDITOR_COLORS.map(color => <button key={color} type="button" aria-label={`Set border color ${color}`} aria-pressed={selectedItem.strokeColor === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => updateSelectedItem({ strokeColor: color, strokeWidth: selectedItem.strokeWidth > 0 ? selectedItem.strokeWidth : 2 })} />)}
+                </div>
+                {hasEyeDropper && <button type="button" className="pdf-editor__popover-eyedropper" onClick={() => pickColorFromPage('stroke')}><Pipette /> Pick from page</button>}
+                <label><span>Thickness <output>{Math.max(1, selectedItem.strokeWidth)} px</output></span><input type="range" min="1" max="20" value={Math.max(1, selectedItem.strokeWidth)} disabled={selectedItem.strokeColor === 'transparent'} onChange={e => updateSelectedItem({ strokeWidth: Number(e.target.value) })} /></label>
+                {selectedItem.type !== 'line' && selectedItem.type !== 'arrow' && selectedItem.type !== 'circle' && (
+                  <label><span>Corner radius <output>{selectedItem.borderRadius || 0} px</output></span><input type="range" min="0" max="32" value={selectedItem.borderRadius || 0} onChange={e => updateSelectedItem({ borderRadius: Number(e.target.value) })} /></label>
                 )}
-                <button
-                  onClick={() => updateSelectedItem(selectedItem.fillColor === 'transparent'
-                    ? { fillColor: selectedItem.lastFillColor || '#ffffff' }
-                    : { lastFillColor: selectedItem.fillColor, fillColor: 'transparent' })}
-                  aria-pressed={selectedItem.fillColor !== 'transparent'}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase transition cursor-pointer ${
-                    selectedItem.fillColor === 'transparent'
-                      ? 'bg-zinc-800 text-zinc-300 border border-zinc-700'
-                      : 'bg-white text-zinc-950 border border-white'
-                  }`}
-                >
-                  {selectedItem.fillColor === 'transparent' ? 'Transp.' : 'Solid'}
-                </button>
               </div>
-            )}
+            </details>
 
-            {selectedItem.type !== 'text' && (
-              <>
-                <div className="w-px h-4 bg-[var(--border-color)]" />
-                <div className="flex items-center gap-1.5" title="Thickness">
-                  <Minus aria-hidden="true" />
-                  <span className="sr-only">Thickness</span>
-                  <input className="pdf-editor__property-number" type="number" min="1" max="20" value={selectedItem.strokeWidth} onChange={e => updateSelectedItem({ strokeWidth: Math.min(20, Math.max(1, Number(e.target.value) || 1)) })} />
-                  <span className="pdf-editor__property-unit">px</span>
+            {selectedItem.type !== 'line' && selectedItem.type !== 'arrow' && (
+              <details className="pdf-editor__property-menu pdf-editor__property-menu--edge" name="pdf-editor-properties">
+                <summary title="Fill settings" aria-label="Fill settings">
+                  <Highlighter className="pdf-editor__property-icon" aria-hidden="true" />
+                  <i className={selectedItem.fillColor === 'transparent' ? 'is-transparent' : ''} style={selectedItem.fillColor === 'transparent' ? undefined : { backgroundColor: selectedItem.fillColor }} />
+                </summary>
+                <div className="pdf-editor__property-popover">
+                  <strong>Fill</strong>
+                  <div className="pdf-editor__popover-segments">
+                    <button type="button" aria-pressed={selectedItem.fillColor === 'transparent'} onClick={() => updateSelectedItem(selectedItem.fillColor === 'transparent' ? {} : { lastFillColor: selectedItem.fillColor, fillColor: 'transparent' })}>Transparent</button>
+                    <button type="button" aria-pressed={selectedItem.fillColor !== 'transparent'} onClick={() => updateSelectedItem({ fillColor: selectedItem.lastFillColor || '#ffffff' })}>Solid</button>
+                  </div>
+                  <label><span>Color</span><input type="color" value={selectedItem.fillColor === 'transparent' ? '#ffffff' : selectedItem.fillColor} onChange={e => updateSelectedItem({ fillColor: e.target.value })} /></label>
+                  <div className="pdf-editor__color-swatches" aria-label="Fill color presets">
+                    {PDF_EDITOR_COLORS.map(color => <button key={color} type="button" aria-label={`Set fill color ${color}`} aria-pressed={selectedItem.fillColor === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => updateSelectedItem({ fillColor: color })} />)}
+                  </div>
+                  {hasEyeDropper && <button type="button" className="pdf-editor__popover-eyedropper" onClick={() => pickColorFromPage('fill')}><Pipette /> Pick from page</button>}
                 </div>
-              </>
+              </details>
             )}
 
-            <div className="w-px h-4 bg-[var(--border-color)]" />
-
-            {/* Opacity */}
-            <div className="flex items-center gap-1.5" title="Opacity">
-              <Eye aria-hidden="true" />
-              <span className="sr-only">Opacity</span>
-              <input className="pdf-editor__property-number" type="number" min="10" max="100" step="5" value={Math.round(selectedItem.opacity * 100)} onChange={e => updateSelectedItem({ opacity: Math.min(100, Math.max(10, Number(e.target.value) || 10)) / 100 })} />
-              <span className="pdf-editor__property-unit">%</span>
-            </div>
+            <details className="pdf-editor__property-menu pdf-editor__property-menu--opacity" name="pdf-editor-properties">
+              <summary title="Opacity settings" aria-label={`Opacity ${Math.round(selectedItem.opacity * 100)} percent`}><Eye className="pdf-editor__property-icon" aria-hidden="true" /><b>{Math.round(selectedItem.opacity * 100)}%</b></summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Opacity</strong>
+                <label><span>Transparency <output>{Math.round(selectedItem.opacity * 100)}%</output></span><input type="range" min="10" max="100" step="5" value={Math.round(selectedItem.opacity * 100)} onChange={e => updateSelectedItem({ opacity: Number(e.target.value) / 100 })} /></label>
+              </div>
+            </details>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
-            {/* Rotation */}
-            <div className="flex items-center gap-1.5" title="Rotation Angle">
-              <RotateCw className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-              <input className="pdf-editor__property-number" type="number" min="0" max="359" value={selectedItem.rotation} onChange={e => updateSelectedItem({ rotation: Math.min(359, Math.max(0, Number(e.target.value) || 0)) })} />
-              <span className="pdf-editor__property-unit">°</span>
-            </div>
+            <details className="pdf-editor__property-menu pdf-editor__property-menu--edge" name="pdf-editor-properties">
+              <summary title="Rotation" aria-label={`Rotation ${selectedItem.rotation} degrees`}><RotateCw className="pdf-editor__property-icon" aria-hidden="true" /><b>{selectedItem.rotation}°</b></summary>
+              <div className="pdf-editor__property-popover"><strong>Rotation</strong><label><span>Angle <output>{selectedItem.rotation}°</output></span><input type="range" min="0" max="359" value={selectedItem.rotation} onChange={e => updateSelectedItem({ rotation: Number(e.target.value) })} /></label></div>
+            </details>
 
             <div className="w-px h-4 bg-[var(--border-color)]" />
 
@@ -1716,107 +1750,33 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
         {activeDocumentEffect && !selectedItem && (
           <div className="pdf-editor__watermark-toolbar" aria-label="Watermark properties">
-            <div className="pdf-editor__ribbon-group pdf-editor__ribbon-group--content">
-              <div className="pdf-editor__ribbon-row">
-                <label className="pdf-editor__watermark-text" title="Watermark text">
-                  <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                  <span className="sr-only">Text</span>
-                  <input
-                    type="text"
-                    value={activeDocumentEffect === 'pattern' ? patternWatermarkText : watermarkText}
-                    maxLength={48}
-                    aria-label="Watermark text"
-                    onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkText(event.target.value) : setWatermarkText(event.target.value)}
-                  />
-                </label>
-              </div>
-              <div className="pdf-editor__ribbon-row">
-                <label className="pdf-editor__ribbon-color" title="Watermark color">
-                  <Pipette className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                  <span className="sr-only">Color</span>
-                  <input
-                    className="pdf-editor__watermark-color"
-                    type="color"
-                    value={activeDocumentEffect === 'pattern' ? patternWatermarkColor : watermarkColor}
-                    aria-label="Watermark color"
-                    onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkColor(event.target.value) : setWatermarkColor(event.target.value)}
-                  />
-                </label>
-                {activeDocumentEffect === 'watermark' && (
-                  <label title="Watermark font size">
-                    <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                    <span className="sr-only">Font size</span>
-                    <input
-                      className="pdf-editor__watermark-number"
-                      type="number"
-                      min="12"
-                      max="144"
-                      step="1"
-                      value={watermarkFontSize}
-                      aria-label="Watermark font size"
-                      onChange={event => setWatermarkFontSize(Math.min(144, Math.max(12, Number(event.target.value) || 12)))}
-                    />
-                    <output>pt</output>
-                  </label>
-                )}
-              </div>
-              <small>{activeDocumentEffect === 'pattern' ? 'Pattern text' : 'Watermark text'}</small>
-            </div>
+            <label className="pdf-editor__watermark-text" title="Watermark text">
+              <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
+              <input type="text" value={activeDocumentEffect === 'pattern' ? patternWatermarkText : watermarkText} maxLength={48} aria-label="Watermark text" onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkText(event.target.value) : setWatermarkText(event.target.value)} />
+            </label>
 
-            <div className="pdf-editor__ribbon-group">
-              <div className="pdf-editor__ribbon-row">
-                <label title="Watermark opacity">
-                  <Eye className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                  <span className="sr-only">Opacity</span>
-                  <input className="pdf-editor__watermark-number" type="number" min="5" max="60" value={activeDocumentEffect === 'pattern' ? patternWatermarkOpacity : watermarkOpacity} aria-label="Watermark opacity percentage" onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkOpacity(Math.min(60, Math.max(5, Number(event.target.value) || 5))) : setWatermarkOpacity(Math.min(60, Math.max(5, Number(event.target.value) || 5)))} />
-                  <output>%</output>
-                </label>
-              </div>
-              <div className="pdf-editor__ribbon-row">
-                <label title="Watermark rotation">
-                  <RotateCw className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                  <span className="sr-only">Angle</span>
-                  <input className="pdf-editor__watermark-number" type="number" min="-180" max="180" step="5" value={activeDocumentEffect === 'pattern' ? patternWatermarkRotation : watermarkRotation} aria-label="Watermark rotation angle" onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkRotation(Math.min(180, Math.max(-180, Number(event.target.value) || 0))) : setWatermarkRotation(Math.min(180, Math.max(-180, Number(event.target.value) || 0)))} />
-                  <output>°</output>
-                </label>
-              </div>
-              <small>Appearance</small>
-            </div>
-
-            {activeDocumentEffect === 'pattern' && (
-              <div className="pdf-editor__ribbon-group">
-                <div className="pdf-editor__ribbon-row">
-                  <label title="Pattern watermark font size">
-                    <Type className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                    <span className="sr-only">Tile size</span>
-                    <input
-                      className="pdf-editor__watermark-number"
-                      type="number"
-                      min="6"
-                      max="48"
-                      step="1"
-                      value={patternWatermarkFontSize}
-                      aria-label="Pattern watermark font size"
-                      onChange={event => setPatternWatermarkFontSize(Math.min(48, Math.max(6, Number(event.target.value) || 6)))}
-                    />
-                    <output>pt</output>
-                  </label>
+            <details className="pdf-editor__property-menu" name="pdf-editor-properties">
+              <summary aria-label="Watermark color" title="Watermark color"><i style={{ backgroundColor: activeDocumentEffect === 'pattern' ? patternWatermarkColor : watermarkColor }} /></summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Watermark color</strong>
+                <label><span>Custom color</span><input type="color" value={activeDocumentEffect === 'pattern' ? patternWatermarkColor : watermarkColor} onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkColor(event.target.value) : setWatermarkColor(event.target.value)} /></label>
+                <div className="pdf-editor__color-swatches" aria-label="Watermark color presets">
+                  {PDF_EDITOR_COLORS.map(color => <button key={color} type="button" aria-label={`Set watermark color ${color}`} aria-pressed={(activeDocumentEffect === 'pattern' ? patternWatermarkColor : watermarkColor) === color} style={{ '--swatch-color': color } as React.CSSProperties} onClick={() => activeDocumentEffect === 'pattern' ? setPatternWatermarkColor(color) : setWatermarkColor(color)} />)}
                 </div>
-                <div className="pdf-editor__ribbon-row">
-                  <label title="Pattern spacing">
-                    <Layers className="pdf-editor__ribbon-icon" aria-hidden="true" />
-                    <span className="sr-only">Pattern spacing</span>
-                    <input className="pdf-editor__watermark-number" type="number" min="2" max="6" value={watermarkDensity} aria-label="Pattern spacing" onChange={event => setWatermarkDensity(Math.min(6, Math.max(2, Number(event.target.value) || 2)))} />
-                  </label>
-                </div>
-                <small>Pattern</small>
               </div>
-            )}
+            </details>
 
-            <button type="button" className="pdf-editor__watermark-done" onClick={() => setActiveDocumentEffect(null)} title="Finish watermark editing">
-              <CheckCircle aria-hidden="true" />
-              <span className="sr-only">Done</span>
-            </button>
+            <details className="pdf-editor__property-menu pdf-editor__property-menu--edge" name="pdf-editor-properties">
+              <summary aria-label="Watermark appearance" title="Watermark appearance"><Eye className="pdf-editor__property-icon" aria-hidden="true" /><b>{activeDocumentEffect === 'pattern' ? patternWatermarkOpacity : watermarkOpacity}%</b></summary>
+              <div className="pdf-editor__property-popover">
+                <strong>Appearance</strong>
+                <label><span>Opacity <output>{activeDocumentEffect === 'pattern' ? patternWatermarkOpacity : watermarkOpacity}%</output></span><input type="range" min="5" max="60" value={activeDocumentEffect === 'pattern' ? patternWatermarkOpacity : watermarkOpacity} onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkOpacity(Number(event.target.value)) : setWatermarkOpacity(Number(event.target.value))} /></label>
+                <label><span>Rotation <output>{activeDocumentEffect === 'pattern' ? patternWatermarkRotation : watermarkRotation}°</output></span><input type="range" min="-180" max="180" step="5" value={activeDocumentEffect === 'pattern' ? patternWatermarkRotation : watermarkRotation} onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkRotation(Number(event.target.value)) : setWatermarkRotation(Number(event.target.value))} /></label>
+                <label><span>Text size <output>{activeDocumentEffect === 'pattern' ? patternWatermarkFontSize : watermarkFontSize} pt</output></span><input type="range" min={activeDocumentEffect === 'pattern' ? 6 : 12} max={activeDocumentEffect === 'pattern' ? 48 : 144} value={activeDocumentEffect === 'pattern' ? patternWatermarkFontSize : watermarkFontSize} onChange={event => activeDocumentEffect === 'pattern' ? setPatternWatermarkFontSize(Number(event.target.value)) : setWatermarkFontSize(Number(event.target.value))} /></label>
+                {activeDocumentEffect === 'pattern' && <label><span>Pattern density <output>{watermarkDensity}</output></span><input type="range" min="2" max="6" value={watermarkDensity} onChange={event => setWatermarkDensity(Number(event.target.value))} /></label>}
+              </div>
+            </details>
+
           </div>
         )}
 
@@ -1998,18 +1958,19 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
             /* Expanded Compact Sidebar */
             <div className="h-full flex flex-col min-h-0 bg-[#18191e]">
               {/* Compact Header with Collapse button */}
-              <EditorSidebarHeader className="h-10 px-3.5 shrink-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Tools</span>
-                  <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-semibold text-zinc-400" aria-live="polite">
+              <EditorSidebarHeader className="pdf-editor__sidebar-header shrink-0">
+                <div className="pdf-editor__sidebar-heading">
+                  <span className="pdf-editor__sidebar-title">Tools</span>
+                  <span className="pdf-editor__sidebar-page" aria-live="polite">
                     Page {currentPage + 1} of {numPages || 1}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowToolDrawer(false)}
-                  className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                  className="pdf-editor__sidebar-collapse"
                   title="Collapse to icon rail"
+                  aria-label="Collapse tools sidebar"
                 >
                   <PanelLeftClose className="w-3.5 h-3.5" />
                 </button>
@@ -2243,11 +2204,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                       {/* Draft Box preview during click-drag creation */}
                       {isCurrent && isDrawing && draftBox && (
                         <div
-                          className={`absolute border-2 border-dashed pointer-events-none ${
-                            activeTool === 'redact'
-                              ? 'bg-black border-red-500'
-                              : 'border-white bg-white/10'
-                          }`}
+                          className={`pdf-editor__drawing-preview absolute pointer-events-none is-${activeTool}`}
                           style={{
                             left: `${draftBox.x}%`,
                             top: `${draftBox.y}%`,
@@ -2256,9 +2213,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                           }}
                         >
                           {activeTool === 'redact' && (
-                            <div className="w-full h-full flex items-center justify-center text-white font-mono text-xs font-bold bg-black">
-                              {redactStyle === 'custom-text' ? redactText : (redactStyle === 'whiteout' ? '' : '[REDACTED]')}
-                            </div>
+                            redactStyle === 'custom-text' && <span>{redactText}</span>
                           )}
                         </div>
                       )}
@@ -2291,7 +2246,6 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                 width: `${item.width}%`,
                                 height: `${item.height}%`,
                                 transform: `rotate(${item.rotation}deg)`,
-                                opacity: item.opacity,
                                 zIndex: isSelected ? 50 : annotations.indexOf(item) + 1,
                               }}
                             >
@@ -2305,6 +2259,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                     borderStyle: item.strokeWidth > 0 ? 'solid' : 'none',
                                     borderColor: item.strokeColor === 'transparent' ? 'transparent' : item.strokeColor,
                                     borderWidth: item.strokeWidth > 0 ? `${item.strokeWidth}px` : 0,
+                                    opacity: item.opacity,
+                                    fontSize: `${item.fontSize || 14}px`,
                                     boxSizing: 'border-box',
                                   }}
                                 >
@@ -2320,6 +2276,8 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                     borderStyle: item.strokeColor === 'transparent' ? 'none' : 'solid',
                                     borderColor: item.strokeColor,
                                     backgroundColor: item.fillColor,
+                                    borderRadius: `${item.borderRadius || 0}px`,
+                                    opacity: item.opacity,
                                   }}
                                 />
                               )}
@@ -2332,12 +2290,13 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                     borderStyle: item.strokeColor === 'transparent' ? 'none' : 'solid',
                                     borderColor: item.strokeColor,
                                     backgroundColor: item.fillColor,
+                                    opacity: item.opacity,
                                   }}
                                 />
                               )}
 
                               {item.type === 'line' && (
-                                <svg className="w-full h-full overflow-visible">
+                                <svg className="w-full h-full overflow-visible" style={{ opacity: item.opacity }}>
                                   <line
                                     x1="0%"
                                     y1="0%"
@@ -2351,7 +2310,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
                               {/* Real SVG Arrowhead rendering */}
                               {item.type === 'arrow' && (
-                                <svg className="w-full h-full overflow-visible">
+                                <svg className="w-full h-full overflow-visible" style={{ opacity: item.opacity }}>
                                   <defs>
                                     <marker
                                       id={`arrowhead_${item.id}`}
@@ -2389,16 +2348,26 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                   className="pdf-editor__text-box w-full h-full overflow-hidden flex items-start cursor-text"
                                   style={{
                                     backgroundColor: item.fillColor && item.fillColor !== 'transparent' ? item.fillColor : 'transparent',
+                                    borderStyle: item.strokeColor === 'transparent' || item.strokeWidth <= 0 ? 'none' : 'solid',
+                                    borderColor: item.strokeColor,
+                                    borderWidth: item.strokeWidth > 0 ? `${item.strokeWidth}px` : 0,
+                                    borderRadius: `${item.borderRadius || 0}px`,
+                                    opacity: item.opacity,
+                                    boxSizing: 'border-box',
                                   }}
                                 >
                                   {isEditing ? (
                                     <textarea
                                       value={item.text || ''}
+                                      rows={1}
+                                      wrap="soft"
                                       onMouseDown={e => e.stopPropagation()}
                                       onClick={e => e.stopPropagation()}
                                       onChange={e => {
                                         e.stopPropagation();
                                         updateSelectedItem({ text: e.target.value });
+                                        const textarea = e.currentTarget;
+                                        requestAnimationFrame(() => growTextAnnotationToContent(textarea, item));
                                       }}
                                       onKeyDown={e => {
                                         e.stopPropagation();
@@ -2441,6 +2410,12 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                   className="w-full h-full rounded-sm pointer-events-none"
                                   style={{
                                     backgroundColor: item.fillColor || '#facc15',
+                                    borderStyle: item.strokeColor === 'transparent' || item.strokeWidth <= 0 ? 'none' : 'solid',
+                                    borderColor: item.strokeColor,
+                                    borderWidth: item.strokeWidth > 0 ? `${item.strokeWidth}px` : 0,
+                                    borderRadius: `${item.borderRadius || 0}px`,
+                                    opacity: item.opacity,
+                                    boxSizing: 'border-box',
                                     mixBlendMode: 'multiply',
                                   }}
                                 />
@@ -2451,11 +2426,15 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                 <div
                                   className="w-full h-full rounded-lg flex items-center justify-center p-2 font-black uppercase tracking-wider text-center select-none shadow-sm"
                                   style={{
-                                    border: `3px solid ${item.strokeColor || '#16a34a'}`,
-                                    outline: `1px solid ${item.strokeColor || '#16a34a'}`,
+                                    borderStyle: item.strokeColor === 'transparent' || item.strokeWidth <= 0 ? 'none' : 'solid',
+                                    borderColor: item.strokeColor || '#16a34a',
+                                    borderWidth: item.strokeWidth > 0 ? `${item.strokeWidth}px` : 0,
+                                    outline: item.strokeColor === 'transparent' || item.strokeWidth <= 0 ? 'none' : `1px solid ${item.strokeColor || '#16a34a'}`,
                                     outlineOffset: '-5px',
                                     color: item.strokeColor || '#16a34a',
                                     backgroundColor: item.fillColor || 'rgba(22, 163, 74, 0.1)',
+                                    borderRadius: `${item.borderRadius ?? 8}px`,
+                                    opacity: item.opacity,
                                     fontSize: `${item.fontSize ?? getAutoStampFontSize(item.text || item.stampType || 'APPROVED', pageDimensions[pageIdx].width * item.width / 100, pageDimensions[pageIdx].height * item.height / 100)}px`,
                                   }}
                                 >
@@ -2469,8 +2448,12 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                   className="w-full h-full rounded-xl flex flex-col justify-center px-3.5 py-2 border shadow-md select-none backdrop-blur-xs"
                                   style={{
                                     borderColor: item.strokeColor || '#3b82f6',
+                                    borderStyle: item.strokeColor === 'transparent' || item.strokeWidth <= 0 ? 'none' : 'solid',
+                                    borderWidth: item.strokeWidth > 0 ? `${item.strokeWidth}px` : 0,
                                     backgroundColor: item.fillColor || 'rgba(59, 130, 246, 0.05)',
                                     color: item.strokeColor || '#3b82f6',
+                                    borderRadius: `${item.borderRadius ?? 12}px`,
+                                    opacity: item.opacity,
                                   }}
                                 >
                                   <div
@@ -2496,19 +2479,19 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
 
                               {/* Interactive Selection Bounding Box with 8 Resize Handles & Rotation Stem */}
                               {isSelected && activeTool === 'select' && (
-                                <div className="absolute -inset-1 border-2 border-white pointer-events-none">
+                                <div className="pdf-editor__selection-frame absolute -inset-1 pointer-events-none">
                                   {/* Top Rotation Stem */}
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startRotateDrag(e, item, rect);
                                     }}
-                                    className="absolute -top-7 left-1/2 -translate-x-1/2 w-5 h-5 bg-white rounded-full flex items-center justify-center text-zinc-950 pointer-events-auto cursor-grab hover:scale-110 transition-transform shadow-md border border-zinc-400"
+                                    className="pdf-editor__rotation-handle absolute -top-7 left-1/2 -translate-x-1/2 pointer-events-auto cursor-grab hover:scale-110 transition-transform"
                                     title="Drag to Rotate Shape"
                                   >
-                                    <RotateCw className="w-3 h-3 text-zinc-950" />
+                                    <RotateCw aria-hidden="true" />
                                   </div>
-                                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-0.5 h-3 bg-white pointer-events-none" />
+                                  <div className="pdf-editor__rotation-stem absolute -top-3 left-1/2 -translate-x-1/2 pointer-events-none" />
 
                                   {/* 8-Point Corner & Edge Resize Handles */}
                                   <div
@@ -2516,28 +2499,28 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'tl', rect);
                                     }}
-                                    className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-nwse-resize hover:scale-125 transition-transform"
+                                    className="absolute -top-1.5 -left-1.5 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-nwse-resize hover:scale-125 transition-transform"
                                   />
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'tr', rect);
                                     }}
-                                    className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-nesw-resize hover:scale-125 transition-transform"
+                                    className="absolute -top-1.5 -right-1.5 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-nesw-resize hover:scale-125 transition-transform"
                                   />
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'bl', rect);
                                     }}
-                                    className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-nesw-resize hover:scale-125 transition-transform"
+                                    className="absolute -bottom-1.5 -left-1.5 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-nesw-resize hover:scale-125 transition-transform"
                                   />
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'br', rect);
                                     }}
-                                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-nwse-resize hover:scale-125 transition-transform"
+                                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-nwse-resize hover:scale-125 transition-transform"
                                   />
 
                                   {/* Edge Middle Handles */}
@@ -2546,28 +2529,28 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onSav
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'tm', rect);
                                     }}
-                                    className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-ns-resize hover:scale-125 transition-transform"
+                                    className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-ns-resize hover:scale-125 transition-transform"
                                   />
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'bm', rect);
                                     }}
-                                    className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-ns-resize hover:scale-125 transition-transform"
+                                    className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-ns-resize hover:scale-125 transition-transform"
                                   />
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'ml', rect);
                                     }}
-                                    className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-ew-resize hover:scale-125 transition-transform"
+                                    className="absolute top-1/2 -translate-y-1/2 -left-1.5 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-ew-resize hover:scale-125 transition-transform"
                                   />
                                   <div
                                     onMouseDown={e => {
                                       const rect = e.currentTarget.closest('.relative')?.getBoundingClientRect();
                                       if (rect) startResizeDrag(e, item, 'mr', rect);
                                     }}
-                                    className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 bg-white border-2 border-zinc-900 rounded-full pointer-events-auto cursor-ew-resize hover:scale-125 transition-transform"
+                                    className="absolute top-1/2 -translate-y-1/2 -right-1.5 w-3 h-3 pdf-editor__resize-handle rounded-full pointer-events-auto cursor-ew-resize hover:scale-125 transition-transform"
                                   />
                                 </div>
                               )}

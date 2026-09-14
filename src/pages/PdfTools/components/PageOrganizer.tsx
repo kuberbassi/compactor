@@ -5,13 +5,18 @@ import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../../c
 import { WorkspaceZoomControls } from '../../../components/Workspace/WorkspaceControls';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
 import type { PdfFileInfo } from './LivePdfPreview';
+import { getDefaultPageZoom, getPageAspectRatio } from '../pdfPageDisplay';
 
 export interface PageItem {
   id: string;
   originalIndex: number;
   rotation: number;
   thumbnailUrl?: string;
+  width?: number;
+  height?: number;
 }
+
+const isPageQuarterTurn = (page: PageItem): boolean => Math.abs(page.rotation) % 180 === 90;
 
 export interface PageOrganizerProps {
   singleFile: PdfFileInfo;
@@ -48,6 +53,19 @@ export const PageOrganizer: React.FC<PageOrganizerProps> = ({
   const [draggedPageIndex, setDraggedPageIndex] = useState<number | null>(null);
   const [zoom, setZoom] = useState(50);
   const stageRef = useRef<HTMLDivElement>(null);
+  const autoZoomAppliedRef = useRef(false);
+
+  useEffect(() => {
+    autoZoomAppliedRef.current = false;
+    setZoom(50);
+  }, [singleFile.file]);
+
+  useEffect(() => {
+    const firstPage = pagesList[0];
+    if (autoZoomAppliedRef.current || !firstPage?.width || !firstPage.height) return;
+    setZoom(getDefaultPageZoom(firstPage));
+    autoZoomAppliedRef.current = true;
+  }, [pagesList]);
 
   useEffect(() => {
     setSelectedPageIndex(previous => Math.max(0, Math.min(previous, pagesList.length - 1)));
@@ -134,7 +152,7 @@ export const PageOrganizer: React.FC<PageOrganizerProps> = ({
       <div className="pdf-organizer__workspace">
         <EditorSidebar className="pdf-organizer__pages" aria-label="Document pages">
           <EditorSidebarHeader className="pdf-organizer__pages-heading">
-            <div><strong>Pages</strong><small>Page {selectedPageIndex + 1} of {pagesList.length}</small></div>
+            <div className="pdf-sidebar-heading-row"><strong>Pages</strong><small className="pdf-sidebar-page-badge">Page {selectedPageIndex + 1} of {pagesList.length}</small></div>
             <button type="button" onClick={() => setIsPagePanelCollapsed(previous => !previous)} title={isPagePanelCollapsed ? 'Expand page panel' : 'Collapse page panel'}>
               {isPagePanelCollapsed ? <PanelLeft aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
             </button>
@@ -171,8 +189,19 @@ export const PageOrganizer: React.FC<PageOrganizerProps> = ({
                 onDragEnd={() => setDraggedPageIndex(null)}
               >
                 <span className="pdf-organizer__thumbnail-number">{index + 1}</span>
-                <span className="pdf-organizer__thumbnail-paper" aria-hidden={isPagePanelCollapsed}>
-                  {item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`Source page ${item.originalIndex + 1}`} style={{ transform: `rotate(${item.rotation}deg)` }} /> : <FileText aria-label={`Rendering page ${index + 1}`} />}
+                <span className="pdf-organizer__thumbnail-paper" aria-hidden={isPagePanelCollapsed} style={{ aspectRatio: getPageAspectRatio(item) }}>
+                  {item.thumbnailUrl ? (
+                    <img
+                      src={item.thumbnailUrl}
+                      alt={`Source page ${item.originalIndex + 1}`}
+                      style={{
+                        width: isPageQuarterTurn(item) ? 'auto' : '100%',
+                        height: '100%',
+                        maxWidth: isPageQuarterTurn(item) ? 'none' : '100%',
+                        transform: `rotate(${item.rotation}deg)`,
+                      }}
+                    />
+                  ) : <FileText aria-label={`Rendering page ${index + 1}`} />}
                 </span>
                 {item.rotation !== 0 && <small>{item.rotation}°</small>}
               </button>

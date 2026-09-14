@@ -1,27 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, Command, FileAudio, FileImage, FileText, FileVideo, RefreshCw, Search, ShieldCheck, Tags, X } from 'lucide-react';
-import { TOOL_ROUTES } from '../../config/toolRoutes';
+import { searchTools } from '../../utils/toolSearch';
+import { TOOLS } from '../../pages/Dashboard/data';
 
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
   onSelectTool: (toolId: string) => void;
 }
-
-const SEARCH_ALIASES: Record<string, string> = {
-  'pdf-flatten': 'make pdf uneditable remove form fields rasterize non selectable',
-  'pdf-flatten-forms': 'lock form fields make inputs uneditable static vector preserve text search',
-  'pdf-flatten-entire': 'rasterize pages flatten entire document image only non selectable strip text',
-  'pdf-ocr': 'searchable pdf ocr extract text scanned pages recognize tesseract',
-  'pdf-protect': 'lock pdf password encrypt secure',
-  'pdf-remove-metadata': 'clean strip author title timestamps xmp privacy',
-  'pdf-remove-blank-pages': 'clean empty white blank pages delete remove auto scan',
-  'pdf-redact': 'hide remove sensitive content censor',
-  'metadata-editor': 'remove exif location privacy id3 tags',
-  'universal-converter': 'word docx to pdf file format change',
-  'image-optimizer': 'crop resize compress photo picture',
-};
 
 function iconForTool(id: string) {
   if (id.startsWith('video-')) return FileVideo;
@@ -34,17 +21,15 @@ function iconForTool(id: string) {
 
 export function CommandPalette({ open, onClose, onSelectTool }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const results = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return TOOL_ROUTES.slice(0, 8);
-    const terms = normalized.split(/\s+/).filter(Boolean);
-    return TOOL_ROUTES.filter(tool => {
-      const searchable = `${tool.title} ${tool.description} ${SEARCH_ALIASES[tool.id] || ''}`.toLowerCase();
-      return terms.every(term => searchable.includes(term));
-    });
+    if (!query.trim()) return TOOLS.slice(0, 8);
+    return searchTools(TOOLS, query).slice(0, 12);
   }, [query]);
+
+  useEffect(() => setActiveIndex(0), [query]);
 
   useEffect(() => {
     if (!open) return;
@@ -78,8 +63,10 @@ export function CommandPalette({ open, onClose, onSelectTool }: CommandPalettePr
               value={query}
               onChange={event => setQuery(event.target.value)}
               onKeyDown={event => {
-                if (event.key === 'Enter' && results[0]) {
-                  onSelectTool(results[0].id);
+                if (event.key === 'ArrowDown' && results.length) { event.preventDefault(); setActiveIndex(index => Math.min(results.length - 1, index + 1)); }
+                if (event.key === 'ArrowUp') { event.preventDefault(); setActiveIndex(index => Math.max(0, index - 1)); }
+                if (event.key === 'Enter' && results[activeIndex]) {
+                  onSelectTool(results[activeIndex].id);
                   onClose();
                 }
               }}
@@ -100,7 +87,8 @@ export function CommandPalette({ open, onClose, onSelectTool }: CommandPalettePr
                 type="button"
                 key={tool.id}
                 onClick={() => { onSelectTool(tool.id); onClose(); }}
-                className={index === 0 ? 'is-primary-result' : ''}
+                className={index === activeIndex ? 'is-primary-result' : ''}
+                onMouseEnter={() => setActiveIndex(index)}
               >
                 <span className={`command-palette__icon command-palette__icon--${tool.id.split('-')[0]}`}><ToolIcon aria-hidden="true" /></span>
                 <span><strong>{tool.title}</strong><small>{tool.description}</small></span>

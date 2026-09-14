@@ -3,6 +3,7 @@ import { Download, Eye, Archive, Share2, Check, ArrowRight, X } from 'lucide-rea
 import { formatBytes } from '../../../utils/image';
 import type { ImageProcessResult } from '../../../utils/image';
 import { downloadAll, shareResult, downloadAsZip } from '../../../utils/batch';
+import { ResultDownloadButton } from '../../../components/Common/ResultDownloadButton';
 
 export interface ImageBatchResultsProps {
   results: ImageProcessResult[];
@@ -148,15 +149,13 @@ export const ImageBatchResults: React.FC<ImageBatchResultsProps> = ({
                     <Eye className="w-3.5 h-3.5" />
                     <span>Compare</span>
                   </button>
-                  <a
-                    href={res.url}
-                    download={res.name}
+                  <ResultDownloadButton
+                    result={res}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-white text-zinc-950 hover:bg-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-sm"
                     title="Download file"
                   >
-                    <Download className="w-3.5 h-3.5" />
                     <span>Download</span>
-                  </a>
+                  </ResultDownloadButton>
                 </div>
               </div>
             );
@@ -220,13 +219,12 @@ export const ImageBatchResults: React.FC<ImageBatchResultsProps> = ({
             </div>
 
             <div className="p-4 border-t border-white/10 bg-zinc-950/60 flex items-center justify-end gap-2">
-              <a
-                href={selectedForCompare.url}
-                download={selectedForCompare.name}
+              <ResultDownloadButton
+                result={selectedForCompare}
                 className="inline-flex items-center gap-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold px-4 py-2 rounded-xl text-xs transition-all shadow-md"
               >
-                <Download className="w-3.5 h-3.5" /> Download Result
-              </a>
+                Download Result
+              </ResultDownloadButton>
             </div>
           </div>
         </div>

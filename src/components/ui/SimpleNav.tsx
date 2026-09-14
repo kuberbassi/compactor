@@ -22,8 +22,12 @@ import {
   ShieldOff,
   Search,
   Menu,
-  X
+  X,
+  ArrowUpRight,
+  Home,
+  ShieldCheck
 } from 'lucide-react';
+import { TOOLS } from '../../pages/Dashboard/data';
 
 export interface SimpleNavProps {
   onBrandClick?: () => void;
@@ -60,13 +64,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Edit PDF', href: 'pdf-edit', icon: FileText },
       { label: 'Compress PDF', href: 'pdf-compress', icon: Sliders },
+      { label: 'Organize Pages', href: 'pdf-organize', icon: Layers },
       { label: 'Merge PDF', href: 'pdf-merge', icon: FilePlus },
       { label: 'Split PDF', href: 'pdf-split', icon: Scissors },
-      { label: 'Redact PDF', href: 'pdf-redact', icon: ShieldOff },
-      { label: 'Flatten PDF', href: 'pdf-flatten', icon: Lock },
-      { label: 'Make PDF Searchable', href: 'pdf-ocr', icon: FileText },
-      { label: 'Protect PDF', href: 'pdf-protect', icon: Lock },
-      { label: 'Organize Pages', href: 'pdf-organize', icon: Layers },
+      { label: 'PDF Security', href: 'pdf-protect', icon: ShieldOff },
+      { label: 'PDF to Images', href: 'pdf-to-image', icon: ImageIcon },
+      { label: 'Markdown to PDF', href: 'pdf-word-to-pdf', icon: FileText },
     ]
   },
   {
@@ -74,6 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
     defaultHref: 'image-optimizer',
     items: [
       { label: 'Edit an Image', href: 'image-optimizer', icon: ImageIcon },
+      { label: 'Images to PDF', href: 'pdf-jpg-to-pdf', icon: FilePlus },
       { label: 'Make a Poster', href: 'rasterbator', icon: Grid }
     ]
   },
@@ -198,6 +202,16 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
     return () => window.removeEventListener('resize', update);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenu();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuOpen]);
+
   // Close on outside click/touch
   useEffect(() => {
     const handler = (e: MouseEvent | TouchEvent) => {
@@ -316,6 +330,8 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
           className="nav-mobile-toggle md:hidden"
           onClick={() => menuOpen ? closeMenu() : openMenu()}
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          aria-controls="simple-nav-sheet"
         >
           <div className={`transition-all duration-200 ${menuOpen ? 'rotate-90 scale-110' : 'rotate-0 scale-100'}`}>
             {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -346,18 +362,15 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
           }}
           className="nav-mobile-sheet max-h-[78vh] overflow-y-auto overscroll-contain"
         >
-          {/* Header â€” sticky, same glass as pill */}
           <div className="nav-mobile-sheet__header">
-            <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
-              All Tools
-            </span>
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border border-zinc-800 bg-zinc-900 text-[10px] font-mono text-zinc-300">
-              <span className="dot-glow-white shrink-0" />
-              <span>100% Private</span>
-            </div>
+            <div><strong>Explore Compactor</strong><span>{TOOLS.length} focused browser tools</span></div>
+            <span className="nav-mobile-sheet__privacy"><ShieldCheck /> Local file processing</span>
           </div>
 
-          <button type="button" className="nav-mobile-sheet__search" onClick={() => { closeMenu(); onOpenSearch?.(); }}><Search /><span>Search every tool</span><kbd>Ctrl K</kbd></button>
+          <div className="nav-mobile-sheet__quick-actions">
+            <button type="button" onClick={() => { closeMenu(); onBrandClick?.(); }}><Home /><span>Home</span></button>
+            <button type="button" onClick={() => { closeMenu(); onOpenSearch?.(); }}><Search /><span>Find a tool</span></button>
+          </div>
 
           {/* Accordion Groups */}
           <div className="p-2 flex flex-col gap-1 pb-3">
@@ -371,6 +384,7 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
                   <button
                     onClick={() => setExpandedGroup(isExpanded ? null : group.label)}
                     className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider hover:bg-zinc-800/60 transition-colors cursor-pointer"
+                    aria-expanded={isExpanded}
                   >
                     <span className="flex items-center gap-2">
                       <span>{group.label}</span>
@@ -422,6 +436,11 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
                 </div>
               );
             })}
+          </div>
+          <div className="nav-mobile-sheet__footer">
+            <button type="button" onClick={() => { closeMenu(); onLinkClick?.('privacy'); }}>Privacy</button>
+            <button type="button" onClick={() => { closeMenu(); onLinkClick?.('terms'); }}>Terms</button>
+            <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">About <ArrowUpRight /></a>
           </div>
         </div>,
         document.body

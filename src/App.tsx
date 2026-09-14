@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { Footer } from './components/Common/Footer';
+import { BrandMark } from './components/Common/BrandMark';
 import { EmbedWatermark } from './components/Common/EmbedWatermark';
 import { Dashboard } from './pages/Dashboard';
 import SimpleNav from './components/ui/SimpleNav';
@@ -10,6 +11,7 @@ import { pathForTool, toolIdFromLocation, updateToolMetadata } from './config/to
 
 import { getProcessedCount, recordProcessedFiles } from './utils/counterStorage';
 import type { ProcessedCountSnapshot } from './utils/counterStorage';
+import { ArrowUpRight, Laptop } from 'lucide-react';
 
 const VideoCompressor = lazy(() => import('./pages/VideoCompressor/VideoCompressor').then(m => ({ default: m.VideoCompressor })));
 const ImageTools = lazy(() => import('./pages/ImageTools/ImageTools').then(m => ({ default: m.ImageTools })));
@@ -120,6 +122,8 @@ function MainApp() {
         return <VideoCompressor mode="mute" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'image-optimizer':
         return <ImageTools onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'pdf-jpg-to-pdf':
+        return <ImageTools initialTab="image-to-pdf" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'audio-optimizer':
       case 'audio-joiner':
       case 'audio-bpm-finder':
@@ -151,6 +155,18 @@ function MainApp() {
 
   return (
     <div className={`app-container relative ${activeToolId ? `app-tool app-tool--${activeToolId}` : 'app-home'}`}>
+      <main className="compact-screen-notice" aria-labelledby="compact-screen-title">
+        <div className="compact-screen-notice__glow" aria-hidden="true" />
+        <header><BrandMark /><strong>compactor</strong></header>
+        <section>
+          <div className="compact-screen-notice__icon"><Laptop /></div>
+          <h1 id="compact-screen-title">Use Compactor on a desktop.</h1>
+          <p className="compact-screen-notice__message">The tools are currently available on desktop-sized screens. Open this page on a laptop or desktop to edit, convert, and export your files.</p>
+          <p className="compact-screen-notice__development">Mobile and tablet support is in development.</p>
+          <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">Visit Kuber Bassi <ArrowUpRight /></a>
+        </section>
+        <footer>Compactor · Private browser file tools</footer>
+      </main>
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <div className="mesh-gradient-sphere-1" aria-hidden="true" />
       <div className="mesh-gradient-sphere-2" aria-hidden="true" />

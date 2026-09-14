@@ -178,22 +178,18 @@ export const PosterPreviewStage: React.FC<PosterPreviewStageProps> = ({
   }
 
   return (
-    <div ref={posterViewportRef} className="image-preview-viewport workbench-scroll-region flex-1 bg-[var(--bg-color)] relative">
-      {/* Subtle checker background */}
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{ backgroundImage: 'repeating-conic-gradient(#fff 0% 25%, transparent 0% 50%)', backgroundSize: '20px 20px' }}
-      />
-
-      <div className="image-preview-stage relative min-w-full min-h-full p-6 flex flex-col items-center justify-center gap-6">
-        <div className="image-preview-zoom-layer" style={{ zoom: `${posterZoom}%` }}>
+    <div className="poster-preview-shell flex-1 min-h-0 flex flex-col bg-[var(--bg-color)]">
+      <div ref={posterViewportRef} className="rasterbator-preview-viewport image-preview-viewport workbench-scroll-region flex-1 min-h-0 relative">
+        <div className="image-preview-stage relative min-w-full min-h-full p-6 flex items-center justify-center">
+          <div className="image-preview-pan-space">
+            <div className="image-preview-zoom-layer" style={{ zoom: `${posterZoom}%` }}>
           <div
             className="relative rounded-lg overflow-hidden border border-zinc-800 shadow-2xl bg-zinc-950 select-none flex items-center justify-center transition-all duration-300"
             style={{
               aspectRatio: `${imgW} / ${imgH}`,
-              maxHeight: 'calc(100vh - 16rem)',
-              maxWidth: 'calc(100vw - 26rem)',
-              width: `min(calc(100vw - 26rem), calc((100vh - 16rem) * ${imgAspect}))`,
+              maxHeight: 'calc(100cqh - 3rem)',
+              maxWidth: 'calc(100cqw - 3rem)',
+              width: `min(calc(100cqw - 3rem), calc((100cqh - 3rem) * ${imgAspect}))`,
             }}
           >
             <PosterSourcePreview
@@ -233,11 +229,15 @@ export const PosterPreviewStage: React.FC<PosterPreviewStageProps> = ({
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
           </div>
         </div>
+      </div>
 
-        {/* Floating dimensions badge */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-zinc-900/90 border border-white/10 rounded-full text-xs text-zinc-300 shadow-xl backdrop-blur-md z-30 select-none">
+      {/* Dimensions stay outside the zoomable, scrollable canvas. */}
+      <footer className="poster-preview-footer shrink-0 flex items-center justify-center border-t border-white/10 bg-[#18191e] px-4 py-2">
+        <div className="flex items-center gap-3 text-xs text-zinc-300 select-none">
           <RulerIcon className="w-3.5 h-3.5 text-zinc-400" />
           <span className="font-semibold text-zinc-400">Total Poster:</span>
           <strong className="text-white font-bold">{posterMeterW}m × {posterMeterH}m</strong>
@@ -245,8 +245,7 @@ export const PosterPreviewStage: React.FC<PosterPreviewStageProps> = ({
           <span className="w-1 h-1 rounded-full bg-zinc-600" />
           <span className="text-zinc-300 font-semibold">{columns * rows} {pageSize} Sheets</span>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };
-

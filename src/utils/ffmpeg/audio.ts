@@ -28,6 +28,24 @@ export interface MetadataTags {
   comment?: string;
 }
 
+let metadataJobSequence = 0;
+
+const createMetadataJobName = (purpose: string, extension: string) => {
+  metadataJobSequence += 1;
+  return `${purpose}_${Date.now().toString(36)}_${metadataJobSequence}.${extension}`;
+};
+
+const safeDeleteFile = async (ffmpeg: Awaited<ReturnType<typeof getFFmpeg>>, name: string) => {
+  if (!name) return;
+  await ffmpeg.deleteFile(name).catch(() => undefined);
+};
+
+const requireSuccessfulExec = (exitCode: number, action: string) => {
+  if (exitCode !== 0) {
+    throw new Error(`${action} failed (FFmpeg exited with code ${exitCode}).`);
+  }
+};
+
 export const parseMediaTagsFromFFmpegLog = (log: string): MetadataTags => {
   const inputSection = log.match(/Input #0[\s\S]*?(?=Duration:|Stream #0:)/i)?.[0] || log;
   const metadataSection = inputSection.match(/Metadata:\s*([\s\S]*)/i)?.[1] || '';
@@ -230,47 +248,50 @@ export const readMediaMetadata = async (
   const ffmpeg = await getFFmpeg(onLog);
   
   const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp3';
-  const inputName = `input_meta.${inputExt}`;
-  
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
-  
-  // Dry run to collect logs containing metadata
-  let accumulatedLogs = '';
-  const logListener = ({ message }: { message: string }) => {
-    accumulatedLogs += message + '\n';
-  };
-  
-  ffmpeg.on('log', logListener);
-  try {
-    await ffmpeg.exec(['-i', inputName]);
-  } catch {
-    // Normal dry run exit
-  }
-  ffmpeg.off('log', logListener);
-  
-  const tags = parseMediaTagsFromFFmpegLog(accumulatedLogs);
+  const inputName = createMetadataJobName('metadata_read_input', inputExt);
+  const coverName = createMetadataJobName('metadata_cover', 'jpg');
 
-  let coverUrl: string | null = null;
-  let coverBlob: Blob | null = null;
-  
-  const coverName = 'cover_extract.jpg';
   try {
-    onLog("Checking for embedded cover art stream...");
-    await ffmpeg.exec(['-i', inputName, '-an', '-vcodec', 'mjpeg', '-frames:v', '1', '-f', 'image2', coverName]);
-    
-    const coverData = await ffmpeg.readFile(coverName);
-    coverBlob = new Blob([coverData as any], { type: 'image/jpeg' });
-    coverUrl = URL.createObjectURL(coverBlob);
-    onLog("Embedded cover art extracted successfully.");
-    
-    await ffmpeg.deleteFile(coverName);
-  } catch {
-    onLog("No embedded cover art stream found or format unsupported.");
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    // FFmpeg reports container metadata to its log. A non-zero exit is expected
+    // because this probe deliberately has no output file.
+    let accumulatedLogs = '';
+    const logListener = ({ message }: { message: string }) => {
+      accumulatedLogs += message + '\n';
+    };
+
+    ffmpeg.on('log', logListener);
+    try {
+      await ffmpeg.exec(['-i', inputName]);
+    } finally {
+      ffmpeg.off('log', logListener);
+    }
+
+    const tags = parseMediaTagsFromFFmpegLog(accumulatedLogs);
+    let coverUrl: string | null = null;
+    let coverBlob: Blob | null = null;
+
+    try {
+      onLog('Checking for embedded cover art stream...');
+      const exitCode = await ffmpeg.exec(['-i', inputName, '-an', '-vcodec', 'mjpeg', '-frames:v', '1', '-f', 'image2', '-y', coverName]);
+      requireSuccessfulExec(exitCode, 'Cover art extraction');
+      const coverData = await ffmpeg.readFile(coverName);
+      if (!(coverData instanceof Uint8Array) || coverData.byteLength === 0) {
+        throw new Error('The embedded cover art was empty.');
+      }
+      coverBlob = new Blob([coverData as BlobPart], { type: 'image/jpeg' });
+      coverUrl = URL.createObjectURL(coverBlob);
+      onLog('Embedded cover art extracted successfully.');
+    } catch {
+      onLog('No embedded cover art stream found or format unsupported.');
+    }
+
+    return { tags, coverUrl, coverBlob };
+  } finally {
+    await safeDeleteFile(ffmpeg, inputName);
+    await safeDeleteFile(ffmpeg, coverName);
   }
-  
-  await ffmpeg.deleteFile(inputName);
-  
-  return { tags, coverUrl, coverBlob };
 };
 
 /**
@@ -286,18 +307,19 @@ export const writeMediaMetadata = async (
   const ffmpeg = await getFFmpeg(onLog, onProgress);
   
   const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp3';
-  const inputName = `input_meta_write.${inputExt}`;
-  const outputName = `output_meta_write.${inputExt}`;
-  
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  const inputName = createMetadataJobName('metadata_write_input', inputExt);
+  const outputName = createMetadataJobName('metadata_write_output', inputExt);
+  let coverName = '';
+
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
   
   const isAudio = file.type.startsWith('audio/') || ['.mp3', '.m4a', '.flac', '.wav', '.ogg', '.opus'].some(e => file.name.toLowerCase().endsWith(e));
 
   const args = ['-i', inputName];
   
-  let coverName = '';
   if (newCoverBlob && isAudio) {
-    coverName = `new_cover_meta.jpg`;
+    coverName = createMetadataJobName('metadata_new_cover', 'jpg');
     await ffmpeg.writeFile(coverName, await fetchFile(newCoverBlob));
     args.push('-i', coverName);
     args.push('-map', '0:a', '-map', '1:0', '-c', 'copy', '-disposition:v:0', 'attached_pic');
@@ -333,14 +355,12 @@ export const writeMediaMetadata = async (
   args.push('-y', outputName);
   
   onLog(`Writing metadata tags: ffmpeg ${args.join(' ')}`);
-  await ffmpeg.exec(args);
-  
+  const exitCode = await ffmpeg.exec(args);
+  requireSuccessfulExec(exitCode, 'Metadata update');
+
   const data = await ffmpeg.readFile(outputName);
-  
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(outputName);
-  if (newCoverBlob) {
-    await ffmpeg.deleteFile(coverName);
+  if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+    throw new Error('Metadata update produced an empty file.');
   }
   
   const mimeType = file.type;
@@ -350,7 +370,12 @@ export const writeMediaMetadata = async (
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
   const newName = `${originalNameWithoutExt}_tagged.${inputExt}`;
   
-  return { blob, url, name: newName };
+    return { blob, url, name: newName };
+  } finally {
+    await safeDeleteFile(ffmpeg, inputName);
+    await safeDeleteFile(ffmpeg, outputName);
+    await safeDeleteFile(ffmpeg, coverName);
+  }
 };
 
 /**
@@ -364,20 +389,22 @@ export const stripMediaMetadata = async (
   const ffmpeg = await getFFmpeg(onLog, onProgress);
   
   const inputExt = file.name.split('.').pop()?.toLowerCase() || 'mp3';
-  const inputName = `input_meta_strip.${inputExt}`;
-  const outputName = `output_meta_strip.${inputExt}`;
-  
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
-  
-  const args = ['-i', inputName, '-map_metadata', '-1', '-c', 'copy', '-y', outputName];
-  
-  onLog(`Stripping all metadata tags: ffmpeg ${args.join(' ')}`);
-  await ffmpeg.exec(args);
-  
-  const data = await ffmpeg.readFile(outputName);
-  
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(outputName);
+  const inputName = createMetadataJobName('metadata_strip_input', inputExt);
+  const outputName = createMetadataJobName('metadata_strip_output', inputExt);
+
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+
+    const args = ['-i', inputName, '-map_metadata', '-1', '-c', 'copy', '-y', outputName];
+
+    onLog(`Stripping all metadata tags: ffmpeg ${args.join(' ')}`);
+    const exitCode = await ffmpeg.exec(args);
+    requireSuccessfulExec(exitCode, 'Metadata removal');
+
+    const data = await ffmpeg.readFile(outputName);
+    if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+      throw new Error('Metadata removal produced an empty file.');
+    }
   
   const mimeType = file.type;
   const blob = new Blob([data as any], { type: mimeType });
@@ -386,5 +413,9 @@ export const stripMediaMetadata = async (
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
   const newName = `${originalNameWithoutExt}_clean.${inputExt}`;
   
-  return { blob, url, name: newName };
+    return { blob, url, name: newName };
+  } finally {
+    await safeDeleteFile(ffmpeg, inputName);
+    await safeDeleteFile(ffmpeg, outputName);
+  }
 };

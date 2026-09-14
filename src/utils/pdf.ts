@@ -1,5 +1,13 @@
 import { PDFDocument, rgb, StandardFonts, PDFPage, degrees as pdfLibDegrees } from 'pdf-lib';
+import { encryptPDF } from '@pdfsmaller/pdf-encrypt';
+import { decryptPDF } from '@pdfsmaller/pdf-decrypt';
 import { extractRealPdfMarkdown, renderPdfPagesToImages } from './pdfRenderer';
+
+const isPdfEncryptionError = (error: unknown): boolean => {
+  const candidate = error as { name?: string; message?: string };
+  const message = String(candidate?.message || error).toLowerCase();
+  return candidate?.name === 'EncryptedPDFError' || message.includes('encrypt') || message.includes('password');
+};
 
 export interface PageOrganizeSpec {
   originalIndex: number;
@@ -31,8 +39,7 @@ export const checkPdfEncryptionStatus = async (
     const pdf = await PDFDocument.load(arrayBuffer);
     return { isEncrypted: false, pageCount: pdf.getPageCount() };
   } catch (e: any) {
-    const msg = String(e?.message || e).toLowerCase();
-    const isEncrypted = msg.includes('encrypt') || msg.includes('password') || e?.name === 'EncryptedPDFError';
+    const isEncrypted = isPdfEncryptionError(e);
     
     let count = 1;
     try {
@@ -220,6 +227,7 @@ export const imagesToPdf = async (
     pageSize?: 'fit' | 'a4' | 'letter';
     margin?: 'none' | 'small' | 'big';
     filter?: 'original' | 'smart-scan' | 'camscanner' | 'whiteboard' | 'bw' | 'vibrant';
+    rotations?: number[];
   }
 ): Promise<Blob> => {
   const pdf = await PDFDocument.create();
@@ -231,20 +239,28 @@ export const imagesToPdf = async (
   const marginMap = { none: 0, small: 20, big: 45 };
   const margin = marginMap[marginOpt] || 0;
 
-  for (const file of imageFiles) {
+  for (const [index, file] of imageFiles.entries()) {
     const imgData = await new Promise<{ buffer: ArrayBuffer; width: number; height: number; isPng: boolean }>((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(url);
-        const width = img.naturalWidth || img.width || 800;
-        const height = img.naturalHeight || img.height || 600;
+        const sourceWidth = img.naturalWidth || img.width || 800;
+        const sourceHeight = img.naturalHeight || img.height || 600;
+        const rotation = ((options?.rotations?.[index] || 0) % 360 + 360) % 360;
+        const isQuarterTurn = rotation === 90 || rotation === 270;
+        const width = isQuarterTurn ? sourceHeight : sourceWidth;
+        const height = isQuarterTurn ? sourceWidth : sourceHeight;
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.drawImage(img, 0, 0);
+          ctx.save();
+          ctx.translate(width / 2, height / 2);
+          ctx.rotate((rotation * Math.PI) / 180);
+          ctx.drawImage(img, -sourceWidth / 2, -sourceHeight / 2);
+          ctx.restore();
           
           // Pixel-Perfect Document Scan Filter Engine
           if (filterOpt !== 'original') {
@@ -895,40 +911,39 @@ export const watermarkPdf = async (
  * Encrypts PDF document with user password
  */
 export const protectPdfWithPassword = async (file: File, userPasswordStr: string): Promise<Blob> => {
+  if (!userPasswordStr.trim()) throw new Error('Enter a password before protecting this PDF.');
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await PDFDocument.load(arrayBuffer);
-  if (typeof (pdf as any).encrypt === 'function') {
-    (pdf as any).encrypt({
-      userPassword: userPasswordStr,
-      ownerPassword: userPasswordStr,
-      permissions: {
-        printing: 'highResolution',
-        modifying: false,
-        copying: false,
-        annotating: false,
-      },
-    });
+  const encryptedBytes = await encryptPDF(new Uint8Array(arrayBuffer), userPasswordStr, {
+    algorithm: 'AES-256',
+    allowPrinting: true,
+    allowHighQualityPrint: true,
+    allowModifying: false,
+    allowCopying: false,
+    allowAnnotating: false,
+    allowFillingForms: true,
+    allowExtraction: false,
+    allowAssembly: false,
+  });
+
+  try {
+    await PDFDocument.load(encryptedBytes);
+    throw new Error('PDF protection verification failed.');
+  } catch (error) {
+    if (!isPdfEncryptionError(error)) throw error;
   }
-  const pdfBytes = await pdf.save({ useObjectStreams: true });
-  return new Blob([pdfBytes as any], { type: 'application/pdf' });
+
+  return new Blob([encryptedBytes as any], { type: 'application/pdf' });
 };
 
 /**
  * Decrypts / Removes password protection from a PDF document
  */
 export const unlockPdfWithPassword = async (file: File, userPasswordStr?: string): Promise<Blob> => {
+  if (!userPasswordStr?.trim()) throw new Error('Enter the current PDF password.');
   const arrayBuffer = await file.arrayBuffer();
-  const pdf = await PDFDocument.load(arrayBuffer, { 
-    ignoreEncryption: true,
-    ...(userPasswordStr ? { password: userPasswordStr } : {})
-  });
-  
-  const unlockedPdf = await PDFDocument.create();
-  const copiedPages = await unlockedPdf.copyPages(pdf, pdf.getPageIndices());
-  copiedPages.forEach((page) => unlockedPdf.addPage(page));
-
-  const pdfBytes = await unlockedPdf.save({ useObjectStreams: true });
-  return new Blob([pdfBytes as any], { type: 'application/pdf' });
+  const decryptedBytes = await decryptPDF(new Uint8Array(arrayBuffer), userPasswordStr);
+  await PDFDocument.load(decryptedBytes);
+  return new Blob([decryptedBytes as any], { type: 'application/pdf' });
 };
 
 

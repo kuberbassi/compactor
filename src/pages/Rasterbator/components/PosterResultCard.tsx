@@ -1,7 +1,8 @@
 import React from 'react';
 import { Card, CardTitle, CardDescription } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
-import { CheckCircle, Download, Printer as PrinterIcon, RefreshCw } from 'lucide-react';
+import { CheckCircle, Printer as PrinterIcon, RefreshCw } from 'lucide-react';
+import { ResultDownloadButton } from '../../../components/Common/ResultDownloadButton';
 
 export interface PosterResultCardProps {
   resultUrl: string;
@@ -49,13 +50,12 @@ export const PosterResultCard: React.FC<PosterResultCardProps> = ({
         </div>
 
         <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-          <a
-            href={resultUrl}
-            download={resultName}
+          <ResultDownloadButton
+            result={{ url: resultUrl, name: resultName }}
             className="inline-flex items-center justify-center gap-2 bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-black px-6 py-3.5 rounded-full text-xs shadow-sm cursor-pointer transition-all hover:scale-[1.02]"
           >
-            <Download className="w-4 h-4" /> Download Poster PDF
-          </a>
+            Download Poster PDF
+          </ResultDownloadButton>
           <Button variant="outline" onClick={onReset} className="rounded-full h-11 px-5 text-xs border-[var(--border-color)] cursor-pointer">
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Create Another Poster
           </Button>
@@ -64,4 +64,3 @@ export const PosterResultCard: React.FC<PosterResultCardProps> = ({
     </div>
   );
 };
-

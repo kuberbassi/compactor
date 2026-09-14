@@ -1,76 +1,33 @@
 import React from 'react';
+import { BarChart3, Database, ExternalLink, FileLock2, HardDrive, Shield } from 'lucide-react';
 import { ToolHeader } from '../components/Common/ToolHeader';
-import { Shield, Lock, EyeOff, Server } from 'lucide-react';
-import { Card } from '../components/ui/card';
 
-interface PrivacyPolicyProps {
-  onGoHome: () => void;
-}
+interface PrivacyPolicyProps { onGoHome: () => void }
 
-export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onGoHome }) => {
-  return (
-    <div className="legal-page">
-      <ToolHeader 
-        title="Privacy Policy" 
-        description="Compactor is engineered with 100% client-side privacy. Your files never leave your device." 
-        icon={Shield} 
-        onGoHome={onGoHome} 
-      />
+const sections = [
+  { icon: FileLock2, title: 'Your files', body: 'Supported editing and conversion tools process the files you select in your browser. We do not send those file contents or filenames to a Compactor file-processing server.' },
+  { icon: Database, title: 'Browser storage', body: 'The app may store your theme, recent tools, editor settings, pending jobs, and local completion counts in localStorage or IndexedDB. You can remove this data through your browser settings.' },
+  { icon: BarChart3, title: 'Site analytics and counters', body: 'We use Vercel Analytics to understand general site usage. The app also contacts a Compactor endpoint to read or update an aggregate processed-file count. These requests do not include your selected files.' },
+  { icon: ExternalLink, title: 'External resources', body: 'A feature may contact another URL when you provide a remote image or when the app loads a required browser module or font. That provider receives ordinary network information such as your IP address.' },
+];
 
-      <div className="legal-page__content">
-        <Card className="legal-card">
-          <div className="flex items-center gap-3 border-b border-[var(--border-color)] pb-4">
-            <div className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-white">
-              <Lock className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-[var(--text-primary)]">Zero Server Uploads</h2>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">Your files stay on your hardware at all times.</p>
-            </div>
-          </div>
-
-          <div className="space-y-4 text-xs text-[var(--text-secondary)] leading-relaxed">
-            <p>
-              At <strong className="text-[var(--text-primary)]">Compactor</strong>, privacy is not an afterthought — it is the fundamental core of our architecture. Every video compression, PDF edit, image optimization, audio transcode, and format conversion is executed <strong className="text-[var(--text-primary)]">100% inside your web browser</strong> using client-side WebAssembly and HTML5 technologies.
-            </p>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div className="p-4 rounded-xl bg-zinc-950/60 border border-[var(--border-color)] space-y-2">
-                <div className="flex items-center gap-2 text-white font-bold text-xs">
-                  <Server className="w-4 h-4 text-rose-400" />
-                  <span>No Backend Servers</span>
-                </div>
-                <p className="text-[11px]">We do not operate file upload servers. Your documents, photos, and videos are never sent over the internet.</p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-zinc-950/60 border border-[var(--border-color)] space-y-2">
-                <div className="flex items-center gap-2 text-white font-bold text-xs">
-                  <EyeOff className="w-4 h-4 text-emerald-400" />
-                  <span>No Tracking & No Storage</span>
-                </div>
-                <p className="text-[11px]">We do not log file contents, filenames, or personal identifiers. Your data remains strictly confidential.</p>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-[var(--border-color)] space-y-2">
-              <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Local Storage Usage</h3>
-              <p>
-                Compactor uses standard browser features (`localStorage` and `IndexedDB`) solely to persist non-sensitive user preferences and an aggregate file completion metric on your local device.
-              </p>
-            </div>
-
-            <div className="pt-2 border-t border-[var(--border-color)] space-y-1">
-              <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider">Contact & Inquiries</h3>
-              <p>
-                If you have any questions regarding this Privacy Policy, please visit{' '}
-                <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer" className="text-[var(--text-primary)] hover:underline font-bold">
-                  kuberbassi.com
-                </a>.
-              </p>
-            </div>
-          </div>
-        </Card>
+export const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onGoHome }) => (
+  <div className="legal-page">
+    <ToolHeader title="Privacy Policy" description="What Compactor processes locally, what it stores, and when it uses the network." icon={Shield} onGoHome={onGoHome} />
+    <article className="legal-document" aria-labelledby="privacy-title">
+      <header className="legal-document__hero">
+        <span className="legal-document__eyebrow"><Shield /> Privacy at a glance</span>
+        <h1 id="privacy-title">Your file contents stay in your browser.</h1>
+        <p>Compactor is designed to process selected files on your device. Limited network requests support site analytics, an aggregate usage counter, and features you explicitly ask to load from another URL.</p>
+        <div className="legal-document__meta"><span>Effective September 14, 2026</span><span>No account required</span></div>
+      </header>
+      <div className="legal-document__grid">
+        {sections.map(({ icon: Icon, title, body }) => <section key={title} className="legal-document__summary"><Icon /><div><h2>{title}</h2><p>{body}</p></div></section>)}
       </div>
-    </div>
-  );
-};
+      <section className="legal-document__section"><h2><span>01</span> Information we handle</h2><p>Compactor handles files you choose, along with settings needed to perform the requested operation. We do not require a profile, email address, or account. Basic technical and usage data may be collected by the hosting analytics service, and the aggregate counter records completion events without attaching file contents.</p></section>
+      <section className="legal-document__section"><h2><span>02</span> Retention and control</h2><p>Selected files and generated results remain in the current browser session unless you download them or a tool keeps a local pending job. Closing or refreshing the page may discard active work. Browser preferences remain until you clear site data. Analytics retention is controlled by the analytics provider.</p></section>
+      <section className="legal-document__section"><h2><span>03</span> Security and changes</h2><p>Local processing reduces file-transfer exposure, but no browser application can promise absolute security. Keep an original copy of important files and use an up-to-date browser. We may update this notice when the app’s features or data practices change; the effective date above identifies the latest version.</p></section>
+      <aside className="legal-document__contact"><HardDrive /><div><strong>Questions about privacy?</strong><p>Contact the maintainer through <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">kuberbassi.com <ExternalLink /></a>.</p></div></aside>
+    </article>
+  </div>
+);

@@ -1,25 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Trash2 as TrashIcon,
-  ZoomIn as ZoomIcon,
-  Palette as FilterIcon
-} from 'lucide-react';
-import { Button } from '../../../components/ui/button';
-import { Card } from '../../../components/ui/card';
+import { ArrowDown, ArrowUp, FileImage, Images, PanelLeft, PanelLeftClose, Palette, Plus, RotateCw, Trash2, ZoomIn } from 'lucide-react';
 import { FileUploader } from '../../../components/Common/FileUploader';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../../components/ui/select';
+import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../../components/Workspace/EditorChrome';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../../components/ui/select';
+import { formatBytes } from '../../../utils/image';
+import { applyDocumentScanFilter } from '../../../utils/pdf';
 import type { PdfFileInfo } from './LivePdfPreview';
 
 export interface ImagesToPdfPanelProps {
   multipleFiles: PdfFileInfo[];
-  imgFilter: string;
-  setImgFilter: (filter: any) => void;
+  imgFilter: 'original' | 'bw' | 'smart-scan' | 'camscanner' | 'whiteboard' | 'vibrant';
+  setImgFilter: (filter: 'original' | 'bw' | 'smart-scan' | 'camscanner' | 'whiteboard' | 'vibrant') => void;
   imgOrientation: 'portrait' | 'landscape' | 'auto';
   setImgOrientation: (orientation: 'portrait' | 'landscape' | 'auto') => void;
   imgPageSize: 'fit' | 'a4' | 'letter';
@@ -32,224 +23,190 @@ export interface ImagesToPdfPanelProps {
   onAddFiles: (files: File[]) => void;
   onClearAll: () => void;
   onRunConvert: () => void;
+  rotations: number[];
+  onRotateItem: (index: number) => void;
+  toolSelector?: React.ReactNode;
 }
 
-const ImageQueueThumbnail: React.FC<{ file: File; onOpen: () => void }> = ({ file, onOpen }) => {
+const ImageQueueThumbnail: React.FC<{ file: File; filter: ImagesToPdfPanelProps['imgFilter']; rotation: number; onOpen: () => void }> = ({ file, filter, rotation, onOpen }) => {
   const [url, setUrl] = useState('');
   useEffect(() => {
-    const nextUrl = URL.createObjectURL(file);
-    setUrl(nextUrl);
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [file]);
-
+    let active = true;
+    let generatedUrl = '';
+    const sourceUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      if (!active) return;
+      const sourceWidth = image.naturalWidth || image.width || 800;
+      const sourceHeight = image.naturalHeight || image.height || 600;
+      const isQuarterTurn = rotation % 180 !== 0;
+      const maxDimension = 1200;
+      const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+      const drawWidth = Math.max(1, Math.round(sourceWidth * scale));
+      const drawHeight = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = isQuarterTurn ? drawHeight : drawWidth;
+      canvas.height = isQuarterTurn ? drawWidth : drawHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.drawImage(image, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+      applyDocumentScanFilter(ctx, canvas.width, canvas.height, filter);
+      generatedUrl = canvas.toDataURL('image/jpeg', 0.92);
+      if (active) setUrl(generatedUrl);
+    };
+    image.src = sourceUrl;
+    return () => { active = false; URL.revokeObjectURL(sourceUrl); };
+  }, [file, filter, rotation]);
   return (
-    <button type="button" onClick={onOpen} className="w-full aspect-[1/1.2] bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden relative cursor-pointer group/imgCard shadow-inner flex items-center justify-center" aria-label={`Preview ${file.name}`}>
-      {url && <img src={url} alt="" className="w-full h-full object-contain bg-zinc-950 group-hover/imgCard:scale-105 transition-transform duration-300" />}
-      <span className="absolute inset-0 bg-black/60 opacity-0 group-hover/imgCard:opacity-100 flex items-center justify-center transition-opacity">
-        <span className="text-[9px] font-bold text-white bg-zinc-950/95 border border-zinc-700 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-lg"><ZoomIcon className="w-3 h-3" /> View Image</span>
-      </span>
+    <button type="button" onClick={onOpen} className="pdf-image-card__preview" aria-label={`Preview ${file.name}`}>
+      {url && <img src={url} alt="" />}
+      <span><ZoomIn aria-hidden="true" /> Preview</span>
     </button>
   );
 };
 
 export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
-  multipleFiles,
-  imgFilter,
-  setImgFilter,
-  imgOrientation,
-  setImgOrientation,
-  imgPageSize,
-  setImgPageSize,
-  imgMargin,
-  setImgMargin,
-  onMoveItem,
-  onRemoveItem,
-  onPeekImage,
-  onAddFiles,
-  onClearAll,
-  onRunConvert,
+  multipleFiles, imgFilter, setImgFilter, imgOrientation, setImgOrientation,
+  imgPageSize, setImgPageSize, imgMargin, setImgMargin, onMoveItem,
+  onRemoveItem, onPeekImage, onAddFiles, onClearAll, onRunConvert, rotations, onRotateItem, toolSelector,
 }) => {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const totalBytes = multipleFiles.reduce((sum, item) => sum + item.file.size, 0);
+  const firstFile = multipleFiles[0]?.file;
+  const addInputFiles = (input: HTMLInputElement) => {
+    if (input.files?.length) onAddFiles(Array.from(input.files));
+    input.value = '';
+  };
+
   return (
-    <div className="images-to-pdf-workspace grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-      <Card className="lg:col-span-8 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-4">
-        <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
+    <section className={`pdf-organizer pdf-images-workspace ${isSidebarCollapsed ? 'is-page-panel-collapsed' : ''}`} aria-label="Images to PDF">
+      <EditorCommandBar className="pdf-organizer__commandbar">
+        <div className="pdf-organizer__file">
+          <FileImage aria-hidden="true" />
           <div>
-            <span className="text-xs font-bold text-[var(--text-primary)] block">Uploaded Images ({multipleFiles.length} files)</span>
-            <span className="text-[10px] text-zinc-500 font-medium">Reorder image sequence or click cards to view full resolution</span>
+            <strong title={firstFile?.name || 'Images to PDF'}>{firstFile?.name || 'Images to PDF'}</strong>
+            <span>{multipleFiles.length} {multipleFiles.length === 1 ? 'image' : 'images'} · {formatBytes(totalBytes)}</span>
           </div>
-          <Button variant="ghost" onClick={onClearAll} className="text-rose-500 hover:text-rose-600 text-xs h-7 px-2 cursor-pointer">
-            Clear All
-          </Button>
         </div>
+        <div className="pdf-organizer__header-actions">
+          {toolSelector}
+          <div className="pdf-organizer__commands" aria-label="Image conversion commands">
+            <span className="pdf-organizer__separator" />
+            {multipleFiles.length > 0 && <button type="button" className="pdf-organizer__change" onClick={onClearAll}>Change files</button>}
+            <button type="button" className="pdf-organizer__export" onClick={onRunConvert} disabled={!multipleFiles.length}>
+              <FileImage aria-hidden="true" /><span>Convert to PDF</span>
+            </button>
+          </div>
+        </div>
+      </EditorCommandBar>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 max-h-[460px] overflow-y-auto pr-1">
-          {multipleFiles.map((info, idx) => {
-            return (
-              <div 
-                key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${idx}`}
-                className="bg-zinc-950/60 border border-[var(--border-color)] rounded-xl p-2.5 flex flex-col justify-between items-center relative group hover:border-zinc-500 transition-all shadow-sm select-none"
-              >
-                <div className="flex items-center justify-between w-full text-[10px] font-bold text-zinc-400 mb-1">
-                  <span className="bg-zinc-900 border border-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded font-mono">
-                    #{idx + 1}
-                  </span>
-                  <button
-                    onClick={() => onRemoveItem(idx)}
-                    className="text-rose-400 hover:text-rose-300 p-0.5 rounded hover:bg-rose-950/30 transition-colors cursor-pointer"
-                    title="Remove image"
-                  >
-                    <TrashIcon className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+      <div className="pdf-organizer__workspace">
+        <EditorSidebar className="pdf-organizer__pages" aria-label="Image to PDF controls">
+          <EditorSidebarHeader className="pdf-organizer__pages-heading">
+            <div className="pdf-sidebar-heading-row"><strong>PDF setup</strong><small className="pdf-sidebar-page-badge">{multipleFiles.length} {multipleFiles.length === 1 ? 'image' : 'images'}</small></div>
+            <button type="button" onClick={() => setIsSidebarCollapsed(value => !value)} title={isSidebarCollapsed ? 'Expand controls' : 'Collapse controls'}>
+              {isSidebarCollapsed ? <PanelLeft aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
+            </button>
+          </EditorSidebarHeader>
 
-                <ImageQueueThumbnail file={info.file} onOpen={() => onPeekImage(idx)} />
-
-                <span className="text-[10px] font-medium text-zinc-400 truncate w-full mt-1.5 text-center">
-                  {info.file.name}
-                </span>
-
-                <div className="grid grid-cols-2 gap-1 w-full mt-1.5 pt-1.5 border-t border-zinc-900">
-                  <button
-                    onClick={() => onMoveItem(idx, idx - 1)}
-                    disabled={idx === 0}
-                    className="py-1 text-[10px] bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed rounded border border-zinc-800 flex items-center justify-center cursor-pointer"
-                  >
-                    &larr; Prev
-                  </button>
-                  <button
-                    onClick={() => onMoveItem(idx, idx + 1)}
-                    disabled={idx === multipleFiles.length - 1}
-                    className="py-1 text-[10px] bg-zinc-900 hover:bg-zinc-800 text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed rounded border border-zinc-800 flex items-center justify-center cursor-pointer"
-                  >
-                    Next &rarr;
-                  </button>
+          {isSidebarCollapsed ? (
+            <div className="pdf-sidebar-rail pdf-image-sidebar-rail">
+              <button type="button" onClick={() => setIsSidebarCollapsed(false)} title="Open PDF setup" aria-label="Open PDF setup">
+                <Palette aria-hidden="true" />
+                <span>Setup</span>
+              </button>
+              <span className="pdf-image-sidebar-rail__divider" />
+              <label title="Add more images" aria-label="Add more images">
+                <input type="file" accept="image/png,image/jpeg,image/webp" multiple className="sr-only" onChange={event => addInputFiles(event.currentTarget)} />
+                <Plus aria-hidden="true" />
+                <span>Add</span>
+              </label>
+              {multipleFiles.length > 0 && <small aria-label={`${multipleFiles.length} images in sequence`}>{multipleFiles.length}</small>}
+            </div>
+          ) : (
+            <div className="pdf-image-settings workbench-scroll-region">
+              <div className="pdf-control-group">
+                <label><Palette aria-hidden="true" /> Document filter</label>
+                <Select
+                  value={imgFilter === 'camscanner' ? 'smart-scan' : imgFilter}
+                  onValueChange={value => value && setImgFilter(value as 'original' | 'bw' | 'smart-scan' | 'whiteboard' | 'vibrant')}
+                >
+                  <SelectTrigger><SelectValue>{imgFilter === 'bw' ? 'Black & white' : imgFilter === 'whiteboard' ? 'Whiteboard clean' : imgFilter === 'vibrant' ? 'Vibrant' : imgFilter === 'original' ? 'Original' : 'High contrast'}</SelectValue></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="smart-scan">High contrast</SelectItem><SelectItem value="whiteboard">Whiteboard clean</SelectItem>
+                    <SelectItem value="bw">Black &amp; white</SelectItem><SelectItem value="vibrant">Vibrant</SelectItem><SelectItem value="original">Original</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="pdf-control-group">
+                <label>Orientation</label>
+                <div className="pdf-segmented-control is-three">
+                  {(['auto', 'portrait', 'landscape'] as const).map(option => <button key={option} type="button" className={imgOrientation === option ? 'is-active' : ''} onClick={() => setImgOrientation(option)}>{option}</button>)}
                 </div>
               </div>
-            );
-          })}
-        </div>
+              <div className="pdf-control-group">
+                <label>Page size</label>
+                <Select value={imgPageSize} onValueChange={value => setImgPageSize(value as 'fit' | 'a4' | 'letter')}>
+                  <SelectTrigger><SelectValue>{imgPageSize === 'fit' ? 'Fit image' : imgPageSize === 'a4' ? 'A4' : 'US Letter'}</SelectValue></SelectTrigger><SelectContent><SelectItem value="fit">Fit image</SelectItem><SelectItem value="a4">A4</SelectItem><SelectItem value="letter">US Letter</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="pdf-control-group">
+                <label>Page margin</label>
+                <Select value={imgMargin} onValueChange={value => setImgMargin(value as 'none' | 'small' | 'big')}>
+                  <SelectTrigger><SelectValue>{imgMargin === 'none' ? 'None' : imgMargin === 'small' ? 'Small' : 'Large'}</SelectValue></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem><SelectItem value="small">Small</SelectItem><SelectItem value="big">Large</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <label className="pdf-add-files"><input type="file" accept="image/png,image/jpeg,image/webp" multiple className="sr-only" onChange={event => addInputFiles(event.currentTarget)} /><Plus aria-hidden="true" /> Add images</label>
+            </div>
+          )}
+        </EditorSidebar>
 
-        <FileUploader 
-          accept="image/png,image/jpeg,image/webp"
-          multiple={true}
-          label="Append more images"
-          onFilesSelected={onAddFiles}
-          compact
-        />
-      </Card>
-
-      <Card className="lg:col-span-4 border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-5">
-        <div className="border-b border-[var(--border-color)] pb-3">
-          <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider block">Image to PDF Options</span>
-          <span className="text-[10px] text-zinc-500 font-medium">Customize layout, orientation & document scan filters</span>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block flex items-center gap-1.5">
-            <FilterIcon className="w-3.5 h-3.5 text-white" /> Document Filter
-          </label>
-          <Select value={imgFilter === 'camscanner' ? 'smart-scan' : imgFilter} onValueChange={(val: any) => setImgFilter(val)}>
-            <SelectTrigger className="w-full h-9 text-xs bg-zinc-950 border border-[var(--border-color)] font-semibold truncate">
-              <SelectValue>
-                {imgFilter === 'smart-scan' || imgFilter === 'camscanner' ? 'High Contrast (Boost Text & Clean)' :
-                 imgFilter === 'whiteboard' ? 'Whiteboard Clean (High Contrast B&W)' :
-                 imgFilter === 'bw' ? 'B&W Binary Document Scan' :
-                 imgFilter === 'vibrant' ? 'Vibrant Diagram Scan' : 'Original Photo (No Filter)'}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="smart-scan">High Contrast (Boost Text & Clean)</SelectItem>
-              <SelectItem value="whiteboard">Whiteboard Clean (High Contrast B&W)</SelectItem>
-              <SelectItem value="bw">B&W Binary Document Scan</SelectItem>
-              <SelectItem value="vibrant">Vibrant Diagram Scan</SelectItem>
-              <SelectItem value="original">Original Photo (No Filter)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Page Orientation</label>
-          <div className="grid grid-cols-3 gap-1.5">
-            <button
-              type="button"
-              onClick={() => setImgOrientation('auto')}
-              className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                imgOrientation === 'auto'
-                  ? 'border-white bg-zinc-800 text-white shadow-sm font-bold'
-                  : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <span className="text-[10px] font-bold font-mono text-zinc-200">AUTO</span>
-              <span className="text-[10px]">Same as Image</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setImgOrientation('portrait')}
-              className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                imgOrientation === 'portrait'
-                  ? 'border-white bg-zinc-800 text-white shadow-sm font-bold'
-                  : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <div className="w-3.5 h-5 border-2 border-current rounded-sm" />
-              <span className="text-[10px]">Portrait</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setImgOrientation('landscape')}
-              className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                imgOrientation === 'landscape'
-                  ? 'border-white bg-zinc-800 text-white shadow-sm font-bold'
-                  : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <div className="w-5 h-3.5 border-2 border-current rounded-sm" />
-              <span className="text-[10px]">Landscape</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Page Size</label>
-            <Select value={imgPageSize} onValueChange={(val: any) => setImgPageSize(val)}>
-              <SelectTrigger className="w-full h-9 text-xs bg-zinc-950 border border-[var(--border-color)] font-semibold">
-                <SelectValue>
-                  {imgPageSize === 'fit' ? 'Fit Image' : imgPageSize === 'a4' ? 'A4 Page' : 'US Letter'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="fit">Fit Image</SelectItem>
-                <SelectItem value="a4">A4 Page</SelectItem>
-                <SelectItem value="letter">US Letter</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider block">Page Margin</label>
-            <Select value={imgMargin} onValueChange={(val: any) => setImgMargin(val)}>
-              <SelectTrigger className="w-full h-9 text-xs bg-zinc-950 border border-[var(--border-color)] font-semibold">
-                <SelectValue>
-                  {imgMargin === 'none' ? 'No Margin' : imgMargin === 'small' ? 'Small' : 'Big Margin'}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No Margin</SelectItem>
-                <SelectItem value="small">Small</SelectItem>
-                <SelectItem value="big">Big Margin</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <Button 
-          onClick={onRunConvert} 
-          className="w-full bg-zinc-950 hover:bg-zinc-800 text-white dark:bg-zinc-50 dark:hover:bg-zinc-200 dark:text-zinc-950 font-bold rounded-full h-11 text-xs cursor-pointer shadow-sm mt-2"
-        >
-          Convert to PDF Document &rarr;
-        </Button>
-      </Card>
-    </div>
+        <main className="pdf-organizer__stage pdf-organizer__stage--clean">
+          <section className={`pdf-image-stage ${multipleFiles.length === 0 ? 'is-empty' : ''}`}>
+            {multipleFiles.length > 0 && (
+              <div className="audio-preview-heading pdf-preview-heading">
+                <div><span>Page sequence</span><h2>{multipleFiles.length === 1 ? '1 image ready' : `${multipleFiles.length} images ready`}</h2></div>
+                <Images aria-hidden="true" />
+              </div>
+            )}
+            {multipleFiles.length > 0 ? (
+              <div className="pdf-image-grid workbench-scroll-region">
+                {multipleFiles.map((info, index) => (
+                  <article className="pdf-image-card" key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${index}`}>
+                    <div className="pdf-image-card__header"><b>{index + 1}</b><button type="button" onClick={() => onRemoveItem(index)} title="Remove image"><Trash2 aria-hidden="true" /></button></div>
+                    <ImageQueueThumbnail file={info.file} filter={imgFilter} rotation={rotations[index] || 0} onOpen={() => onPeekImage(index)} />
+                    <strong title={info.file.name}>{info.file.name}</strong>
+                    <nav aria-label={`Arrange ${info.file.name}`}>
+                      <button type="button" disabled={index === 0} onClick={() => onMoveItem(index, index - 1)} title="Move earlier"><ArrowUp aria-hidden="true" /></button>
+                      <button type="button" disabled={index === multipleFiles.length - 1} onClick={() => onMoveItem(index, index + 1)} title="Move later"><ArrowDown aria-hidden="true" /></button>
+                      <button type="button" onClick={() => onRotateItem(index)} title="Rotate image clockwise" aria-label={`Rotate ${info.file.name} clockwise`}><RotateCw aria-hidden="true" /></button>
+                    </nav>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="pdf-image-workspace-empty pdf-join-preview">
+                <div>
+                  <span>Build a PDF</span>
+                  <h3>Add your images</h3>
+                  <p>Choose PNG, JPG, or WebP files, then arrange, rotate, and preview every page.</p>
+                </div>
+                <FileUploader
+                  accept="image/png,image/jpeg,image/webp"
+                  multiple
+                  compact
+                  label="Choose images"
+                  subLabel="Choose files or drop them here"
+                  onFilesSelected={onAddFiles}
+                  maxSizeMB={150}
+                />
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+    </section>
   );
 };

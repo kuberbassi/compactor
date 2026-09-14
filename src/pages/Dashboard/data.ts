@@ -43,10 +43,10 @@ export const TOOLS: ToolItem[] = [
   {
     id: 'pdf-edit',
     title: 'Edit PDF',
-    subtitle: 'Add text, shapes & annotations',
-    description: 'Edit PDF pages locally with text, shapes, layers, styling, and private export.',
+    subtitle: 'Text, shapes, redaction & watermarks',
+    description: 'Add styled text, shapes, highlights, stamps, signatures, watermarks, and permanent redactions locally.',
     category: 'PDF',
-    tags: ['Text & Shapes', 'Layer Controls', 'Private Export'],
+    tags: ['Text & Shapes', 'Redaction', 'Stamps & Watermarks', 'Private Export'],
     illustrationType: 'pdf-edit'
   },
   {
@@ -95,31 +95,13 @@ export const TOOLS: ToolItem[] = [
     illustrationType: 'pdf-compress'
   },
   {
-    id: 'pdf-stamps',
-    title: 'Stamp PDF',
-    subtitle: 'Brand PDF with watermark',
-    description: 'Apply text or image stamps (APPROVED, CONFIDENTIAL) with opacity control.',
-    category: 'PDF',
-    tags: ['Watermark Text', 'Image Stamp', 'Opacity Control'],
-    illustrationType: 'pdf-stamp'
-  },
-  {
     id: 'pdf-protect',
-    title: 'Protect PDF',
-    subtitle: 'Encrypt PDF with AES',
-    description: 'Encrypt PDF files with passwords to prevent unauthorized viewing.',
+    title: 'PDF Security',
+    subtitle: 'Protect, unlock, flatten & OCR',
+    description: 'Protect or unlock a PDF, flatten forms or pages, make scans searchable, and remove private metadata.',
     category: 'PDF',
-    tags: ['AES Encryption', 'Password Protect', 'Secure Data'],
+    tags: ['Password Protection', 'Unlock PDF', 'Flatten PDF', 'OCR', 'Remove Metadata'],
     illustrationType: 'pdf-protect'
-  },
-  {
-    id: 'pdf-unlock',
-    title: 'Unlock PDF',
-    subtitle: 'Remove PDF password restriction',
-    description: 'Decrypt password-protected PDFs to restore unrestricted printing & copying.',
-    category: 'PDF',
-    tags: ['Remove Password', 'Decrypt PDF', 'Instant Access'],
-    illustrationType: 'pdf-unlock'
   },
   {
     id: 'pdf-page-numbers',
@@ -144,7 +126,7 @@ export const TOOLS: ToolItem[] = [
     title: 'Images to PDF',
     subtitle: 'Convert images to PDF',
     description: 'Combine multiple image files (JPG, PNG) into a single polished PDF document.',
-    category: 'PDF',
+    category: 'IMAGE',
     tags: ['Scan Filter', 'Image to PDF', 'Layout Control'],
     illustrationType: 'pdf-images'
   },

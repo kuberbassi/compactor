@@ -6,6 +6,7 @@ import { formatBytes } from '../../../utils/image';
 import { downloadAll, downloadAsZip, shareResult } from '../../../utils/batch';
 import type { CompressionResult } from '../pdfToolsConfig';
 import type { PdfFileInfo } from './LivePdfPreview';
+import { ResultDownloadButton } from '../../../components/Common/ResultDownloadButton';
 
 export interface PdfResultViewsProps {
   resultUrl: string | null;
@@ -34,7 +35,7 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
     <>
       {/* BULK COMPRESSION RESULTS */}
       {compressionResults.length > 0 && (
-        <Card className="max-w-3xl mx-auto border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-5">
+        <Card className="pdf-export-result pdf-export-result--batch max-w-3xl mx-auto p-6 space-y-5">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
             <div>
               <CardTitle className="text-lg font-black text-[var(--text-primary)]">PDF optimization complete</CardTitle>
@@ -97,13 +98,12 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
                       >
                         Share
                       </button>
-                      <a
-                        href={result.url}
-                        download={result.outputName}
+                      <ResultDownloadButton
+                        result={{ url: result.url, name: result.outputName }}
                         className="batch-action batch-action--primary cursor-pointer"
                       >
-                        <Download className="w-3.5 h-3.5" /> Download
-                      </a>
+                        Download
+                      </ResultDownloadButton>
                     </div>
                   )}
                 </div>
@@ -139,7 +139,7 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
 
       {/* EXTRACTED IMAGES GRID RESULT */}
       {extractedImages.length > 0 && (
-        <Card className="max-w-4xl mx-auto border-[var(--border-color)] bg-[var(--surface-color)] p-6 space-y-5">
+        <Card className="pdf-export-result pdf-export-result--gallery max-w-4xl mx-auto p-6 space-y-5">
           <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
             <div>
               <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider block">Extracted PDF Page Images ({extractedImages.length} Pages)</span>
@@ -153,13 +153,12 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
               <div key={img.pageNumber} className="bg-zinc-950/60 border border-zinc-800 rounded-xl p-2.5 flex flex-col justify-between items-center gap-2">
                 <span className="text-[10px] font-bold text-zinc-400">Page {img.pageNumber}</span>
                 <img src={img.url} alt={`Page ${img.pageNumber}`} className="w-full aspect-[1/1.3] object-contain bg-white rounded border border-zinc-800" />
-                <a 
-                  href={img.url} 
-                  download={`page_${img.pageNumber}.${pdfExportImgFormat}`}
+                <ResultDownloadButton
+                  result={{ url: img.url, blob: img.blob, name: `page_${img.pageNumber}.${pdfExportImgFormat}` }}
                   className="w-full py-1.5 bg-zinc-900 hover:bg-zinc-800 text-white text-[10px] font-bold rounded flex items-center justify-center gap-1 border border-zinc-700 cursor-pointer"
                 >
-                  <Download className="w-3 h-3" /> Save P.{img.pageNumber}
-                </a>
+                  Save P.{img.pageNumber}
+                </ResultDownloadButton>
               </div>
             ))}
           </div>
@@ -194,18 +193,18 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
 
       {/* SINGLE FILE EXPORT RESULT */}
       {resultUrl && extractedImages.length === 0 && (
-        <div className="max-w-xl mx-auto space-y-6">
-          <Card className="border-[var(--border-color)] bg-[var(--surface-color)] shadow-sm text-center p-6 space-y-5">
-            <div className="w-14 h-14 bg-zinc-100 dark:bg-zinc-800/60 text-zinc-900 dark:text-zinc-100 rounded-full flex items-center justify-center mx-auto shadow-inner border border-[var(--border-color)]">
+        <div className="pdf-export-result-wrap max-w-xl mx-auto">
+          <Card className="pdf-export-result pdf-export-result--single text-center p-6 space-y-5">
+            <div className="pdf-export-result__success-icon">
               <CheckCircle className="w-7 h-7" />
             </div>
 
             <div>
-              <CardTitle className="text-xl font-black text-[var(--text-primary)]">Document Export Ready!</CardTitle>
-              <CardDescription className="text-xs text-[var(--text-secondary)] mt-1">Your compiled file has been generated and saved.</CardDescription>
+              <CardTitle className="text-xl font-black text-[var(--text-primary)]">Export ready</CardTitle>
+              <CardDescription className="text-xs text-[var(--text-secondary)] mt-1">Your file was created locally and is ready to download.</CardDescription>
             </div>
 
-            <div className="flex items-center gap-3 p-4 bg-zinc-950/40 border border-[var(--border-color)] rounded-xl text-left">
+            <div className="pdf-export-result__file flex items-center gap-3 p-4 text-left">
               <div className="w-10 h-10 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-200 font-bold text-xs uppercase flex-shrink-0">
                 {resultName.endsWith('.md') ? 'MD' : 'PDF'}
               </div>
@@ -218,19 +217,18 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
             </div>
 
             <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-              <a 
-                href={resultUrl} 
-                download={resultName}
-                className="inline-flex items-center justify-center gap-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-3 rounded-full text-xs shadow-sm cursor-pointer transition-all active:scale-95"
+              <ResultDownloadButton
+                result={{ url: resultUrl, name: resultName }}
+                className="pdf-export-result__primary inline-flex items-center justify-center gap-2 font-bold px-6 py-3 text-xs cursor-pointer"
               >
-                <Download className="w-4 h-4" /> Download Export File
-              </a>
+                Download file
+              </ResultDownloadButton>
               <Button 
                 variant="outline" 
                 onClick={onReset}
                 className="rounded-full h-10 text-xs border-[var(--border-color)] cursor-pointer"
               >
-                <RefreshCw className="w-3.5 h-3.5 mr-1" /> Process Another Document
+                  <RefreshCw className="w-3.5 h-3.5 mr-1" /> Start again
               </Button>
             </div>
           </Card>
@@ -239,4 +237,3 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
     </>
   );
 };
-

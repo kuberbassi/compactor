@@ -6,7 +6,7 @@ describe('CommandPalette', () => {
   it('finds tools using plain-language aliases', () => {
     render(<CommandPalette open onClose={() => undefined} onSelectTool={() => undefined} />);
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search tools and actions' }), { target: { value: 'make pdf uneditable' } });
-    const matchingButtons = screen.getAllByRole('button', { name: /Flatten PDF/i });
+    const matchingButtons = screen.getAllByRole('button', { name: /PDF Security/i });
     expect(matchingButtons.length).toBeGreaterThanOrEqual(1);
     expect(matchingButtons[0]).toBeInTheDocument();
   });

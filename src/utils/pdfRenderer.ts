@@ -5,6 +5,26 @@ import { isCanvasBlank } from './canvasBlankCheck';
 // Bundle worker locally via Vite asset import to ensure zero network/CORS blocks
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
+/** Returns whether at least one page has an embedded, selectable text layer. */
+export const hasSelectablePdfText = async (file: File): Promise<boolean> => {
+  try {
+    const loadingTask = pdfjsLib.getDocument({
+      data: new Uint8Array(await file.arrayBuffer()),
+      verbosity: 0,
+    });
+    const pdfDoc = await loadingTask.promise;
+    for (let index = 1; index <= pdfDoc.numPages; index += 1) {
+      const textContent = await (await pdfDoc.getPage(index)).getTextContent();
+      if (textContent.items.some(item => 'str' in item && typeof item.str === 'string' && item.str.trim().length > 0)) {
+        return true;
+      }
+    }
+  } catch (error) {
+    console.warn('Unable to inspect the PDF text layer:', error);
+  }
+  return false;
+};
+
 /**
  * Renders real high-resolution visual thumbnails for each page of a PDF file using pdfjs-dist
  */
@@ -13,7 +33,7 @@ export const renderPdfThumbnails = async (
   maxPages: number = 100,
   scale: number = 1.5,
   onProgress?: (renderedCount: number, total: number) => void,
-  onThumbnail?: (pageIndex: number, thumbnailUrl: string) => void,
+  onThumbnail?: (pageIndex: number, thumbnailUrl: string, width: number, height: number) => void,
   onBlankPageAssessment?: (pageIndex: number, isBlank: boolean | null) => void
 ): Promise<string[]> => {
   try {
@@ -28,6 +48,8 @@ export const renderPdfThumbnails = async (
     const thumbnails: string[] = [];
 
     for (let i = 1; i <= numPages; i++) {
+      let renderedWidth = 0;
+      let renderedHeight = 0;
       try {
         const page = await pdfDoc.getPage(i);
         const viewport = page.getViewport({ scale });
@@ -35,6 +57,8 @@ export const renderPdfThumbnails = async (
         const canvas = document.createElement('canvas');
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
+        renderedWidth = canvas.width;
+        renderedHeight = canvas.height;
 
         const context = canvas.getContext('2d', { alpha: false });
         if (context) {
@@ -74,7 +98,7 @@ export const renderPdfThumbnails = async (
         onProgress(i, numPages);
       }
       if (onThumbnail) {
-        onThumbnail(i - 1, thumbnails[i - 1]);
+        onThumbnail(i - 1, thumbnails[i - 1], renderedWidth, renderedHeight);
       }
     }
 

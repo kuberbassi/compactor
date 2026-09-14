@@ -92,12 +92,12 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="poster-settings-stack space-y-4">
       {/* ═══ 1. PAGE SETUP TAB ═══════════════════════════════════════════════ */}
       {activeTab === 'grid' && (
-        <div className="space-y-4">
+        <div className="poster-settings-stack space-y-4">
           {/* Tile Dimensions */}
-          <div className="space-y-3 p-3 bg-white/5 border border-white/10 rounded-xl">
+          <div className="poster-setting-card space-y-3 p-3 bg-white/5 border border-white/10 rounded-xl">
             <span className="text-[11px] font-bold text-white uppercase tracking-wider block">Tile Dimensions</span>
             
             <div className="space-y-2">
@@ -146,8 +146,8 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
           </div>
 
           {/* Tile Count (Grid) */}
-          <div className="space-y-3 p-3 bg-white/5 border border-white/10 rounded-xl">
-            <div className="flex items-center justify-between">
+          <div className="poster-setting-card poster-tile-count space-y-3 p-3 bg-white/5 border border-white/10 rounded-xl">
+            <div className="poster-setting-card__header flex items-center justify-between">
               <span className="text-[11px] font-bold text-white uppercase tracking-wider">Tile Count</span>
               <label className="flex items-center gap-1.5 text-[11px] text-zinc-400 cursor-pointer select-none">
                 <Switch
@@ -158,10 +158,10 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
               </label>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
+            <div className="poster-count-grid grid grid-cols-2 gap-3">
+              <div className="poster-count-field space-y-1">
                 <span className="text-[10px] text-zinc-400 uppercase font-semibold">Columns</span>
-                <div className="flex items-center gap-1">
+                <div className="poster-stepper flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => onColumnsChange(Math.max(1, columns - 1))}
@@ -189,9 +189,9 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
                 </div>
               </div>
 
-              <div className="space-y-1">
+              <div className="poster-count-field space-y-1">
                 <span className="text-[10px] text-zinc-400 uppercase font-semibold">Rows</span>
-                <div className="flex items-center gap-1">
+                <div className="poster-stepper flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => onRowsChange(Math.max(1, rows - 1))}
@@ -224,15 +224,15 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
             <button
               type="button"
               onClick={onSwapGrid}
-              className="w-full h-8 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
+              className="poster-swap-grid w-full h-8 rounded-lg bg-zinc-900/90 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-[0.98]"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-zinc-400" />
-              <span>Swap ({columns}×{rows} ⇄ {rows}×{columns})</span>
+              <span>Swap</span>
             </button>
           </div>
 
           {/* Print Guides */}
-          <div className="space-y-2 p-3 bg-white/5 border border-white/10 rounded-xl">
+          <div className="poster-setting-card poster-print-guides space-y-2 p-3 bg-white/5 border border-white/10 rounded-xl">
             <span className="text-[11px] font-bold text-white uppercase tracking-wider block">Print Guides</span>
             <div className="flex items-center justify-between">
               <span className="text-xs text-zinc-300">Corner Crop Marks</span>
@@ -290,13 +290,10 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
                   onValueChange={v => setDotSize(Array.isArray(v) ? v[0] : v)}
                 />
 
-                <div className="flex items-center justify-between pt-1 border-t border-white/10">
-                  <div>
-                    <span className="text-xs font-semibold text-zinc-200 block">Invert Halftone</span>
-                    <span className="text-[10px] text-zinc-400 block">White dots on dark background</span>
-                  </div>
+                <label className="halftone-invert-row flex items-center justify-between cursor-pointer">
+                  <span className="text-xs font-semibold text-zinc-200">Invert Dots</span>
                   <Switch checked={invertHalftone} onCheckedChange={setInvertHalftone} />
-                </div>
+                </label>
               </div>
             )}
           </div>
@@ -372,4 +369,3 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
     </div>
   );
 };
-

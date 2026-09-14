@@ -6,6 +6,25 @@ export interface DownloadableResult {
   blob?: Blob;
 }
 
+export const downloadResult = (result: DownloadableResult): void => {
+  if (!result.name || (!result.blob && !result.url)) {
+    throw new Error('The exported file is unavailable. Please run the export again.');
+  }
+
+  const temporaryUrl = result.blob ? URL.createObjectURL(result.blob) : null;
+  const anchor = document.createElement('a');
+  anchor.href = temporaryUrl || result.url;
+  anchor.download = result.name;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  if (temporaryUrl) {
+    window.setTimeout(() => URL.revokeObjectURL(temporaryUrl), 2000);
+  }
+};
+
 export const fileIdentity = (file: File): string =>
   `${file.name.toLocaleLowerCase()}:${file.size}:${file.lastModified}`;
 
@@ -42,13 +61,7 @@ export const downloadAll = (results: DownloadableResult[]): void => {
   const names = makeUniqueNames(results.map(result => result.name));
   results.forEach((result, index) => {
     window.setTimeout(() => {
-      const anchor = document.createElement('a');
-      anchor.href = result.url;
-      anchor.download = names[index];
-      anchor.style.display = 'none';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
+      downloadResult({ ...result, name: names[index] });
     }, index * 180);
   });
 };

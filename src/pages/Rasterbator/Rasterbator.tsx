@@ -353,8 +353,8 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onSelectTool
 
       {/* Processing State - Full Center Screen */}
       {processing && (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 bg-zinc-950/40 z-30">
-          <div className="max-w-md w-full flex flex-col items-center gap-6">
+        <div className="tool-processing-stage">
+          <div className="tool-processing-stage__content">
             <ProgressBar
               progress={progress}
               statusText={statusText}
@@ -504,7 +504,7 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onSelectTool
                       type="button"
                       onClick={generatePoster}
                       disabled={processing}
-                      className="w-full h-10 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] disabled:opacity-50"
+                      className="workspace-primary-action w-full h-10 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
                     >
                       <span>{processing ? 'Generating…' : `Generate Poster (${columns * rows} Pages)`}</span>
                       <span className="text-sm">→</span>

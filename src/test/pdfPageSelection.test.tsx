@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LivePdfPreview } from '../pages/PdfTools/components/LivePdfPreview';
-import { parsePageRanges } from '../pages/PdfTools/pdfToolsConfig';
+import { formatPageRanges, parsePageRanges } from '../pages/PdfTools/pdfToolsConfig';
 
 describe('PDF page selection', () => {
   it('does not reselect gaps when a page chip is removed', () => {
@@ -13,5 +13,9 @@ describe('PDF page selection', () => {
   it('bounds huge ranges before iterating', () => {
     expect(parsePageRanges('1-999999999999', 3)).toEqual([1, 2, 3]);
     expect(parsePageRanges('5-2', 6)).toEqual([2, 3, 4, 5]);
+  });
+  it('keeps separated selections separate and permits an empty selection', () => {
+    expect(formatPageRanges([1, 3, 5, 6, 8])).toBe('1, 3, 5-6, 8');
+    expect(formatPageRanges([])).toBe('');
   });
 });

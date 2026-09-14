@@ -9,9 +9,11 @@ import './index.css'
 import './styles/workbench.css'
 import App from './App.tsx'
 
+const shouldLoadAnalytics = window.location.hostname === 'compactor.kuberbassi.com';
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
-    <Analytics />
+    {shouldLoadAnalytics && <Analytics />}
   </StrictMode>,
 )

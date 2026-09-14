@@ -2,6 +2,7 @@ import React from 'react';
 import { Slider } from '../../../components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger } from '../../../components/ui/select';
 import { Input } from '../../../components/ui/input';
+import { Switch } from '../../../components/ui/switch';
 import { CompressionPresetSelector } from '../../../components/Common/CompressionPresetSelector';
 import type { CompressionPreset } from '../../../utils/batch';
 import type { FileSettings, ImageTabId } from '../imageToolsConfig';
@@ -30,6 +31,14 @@ export interface ImageSidebarControlsProps {
   setDisplayGrid: (val: boolean) => void;
   applyImmediateCrop: () => void;
   revertImmediateCrop: () => void;
+  pdfFilter: 'original' | 'smart-scan' | 'whiteboard' | 'bw' | 'vibrant';
+  setPdfFilter: (value: 'original' | 'smart-scan' | 'whiteboard' | 'bw' | 'vibrant') => void;
+  pdfOrientation: 'auto' | 'portrait' | 'landscape';
+  setPdfOrientation: (value: 'auto' | 'portrait' | 'landscape') => void;
+  pdfPageSize: 'fit' | 'a4' | 'letter';
+  setPdfPageSize: (value: 'fit' | 'a4' | 'letter') => void;
+  pdfMargin: 'none' | 'small' | 'big';
+  setPdfMargin: (value: 'none' | 'small' | 'big') => void;
 }
 
 export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
@@ -55,6 +64,8 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
   setDisplayGrid,
   applyImmediateCrop,
   revertImmediateCrop,
+  pdfFilter, setPdfFilter, pdfOrientation, setPdfOrientation,
+  pdfPageSize, setPdfPageSize, pdfMargin, setPdfMargin,
 }) => {
   const quality = activeSettings?.quality ?? 80;
   const compressMethod = activeSettings?.compressMethod ?? 'auto';
@@ -520,13 +531,11 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
                   />
                 </div>
 
-                <label className="flex items-center justify-between py-2 px-3 rounded-xl border border-white/10 bg-zinc-900/60 hover:bg-zinc-800/80 cursor-pointer transition-colors">
-                  <span className="text-xs font-semibold text-zinc-200">Invert Dots (White on Black)</span>
-                  <input
-                    type="checkbox"
+                <label className="halftone-invert-row flex items-center justify-between cursor-pointer">
+                  <span className="text-xs font-semibold text-zinc-200">Invert Dots</span>
+                  <Switch
                     checked={activeSettings?.halftoneInvert ?? false}
-                    onChange={e => updateSetting('halftoneInvert', e.target.checked)}
-                    className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-zinc-100 cursor-pointer"
+                    onCheckedChange={checked => updateSetting('halftoneInvert', checked)}
                   />
                 </label>
               </div>
@@ -622,10 +631,13 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
       )}
 
       {activeTab === 'image-to-pdf' && (
-        <div className="space-y-3">
-          <div className="p-3 rounded-xl border border-zinc-800 bg-zinc-950/40 text-xs text-zinc-400 leading-relaxed">
-            Fits images onto standard A4 document pages with lossless vector embedding.
-          </div>
+        <div className="image-pdf-controls">
+          <div className="image-pdf-controls__intro"><strong>PDF setup</strong><span>Settings apply to every page.</span></div>
+          <label>Document filter<Select value={pdfFilter} onValueChange={value => setPdfFilter(value as typeof pdfFilter)}><SelectTrigger><span>{pdfFilter === 'smart-scan' ? 'Magic color' : pdfFilter === 'bw' ? 'Black & white' : pdfFilter === 'whiteboard' ? 'Whiteboard clean' : pdfFilter === 'vibrant' ? 'Vibrant' : 'Original'}</span></SelectTrigger><SelectContent><SelectItem value="smart-scan">Magic color</SelectItem><SelectItem value="whiteboard">Whiteboard clean</SelectItem><SelectItem value="bw">Black &amp; white</SelectItem><SelectItem value="vibrant">Vibrant</SelectItem><SelectItem value="original">Original</SelectItem></SelectContent></Select></label>
+          <fieldset><legend>Orientation</legend><div className="image-pdf-controls__segments">{(['auto','portrait','landscape'] as const).map(value => <button type="button" key={value} className={pdfOrientation === value ? 'is-active' : ''} onClick={() => setPdfOrientation(value)}>{value}</button>)}</div></fieldset>
+          <label>Page size<Select value={pdfPageSize} onValueChange={value => setPdfPageSize(value as typeof pdfPageSize)}><SelectTrigger><span>{pdfPageSize === 'fit' ? 'Fit image' : pdfPageSize === 'a4' ? 'A4' : 'US Letter'}</span></SelectTrigger><SelectContent><SelectItem value="fit">Fit image</SelectItem><SelectItem value="a4">A4</SelectItem><SelectItem value="letter">US Letter</SelectItem></SelectContent></Select></label>
+          <label>Page margin<Select value={pdfMargin} onValueChange={value => setPdfMargin(value as typeof pdfMargin)}><SelectTrigger><span>{pdfMargin === 'none' ? 'None' : pdfMargin === 'small' ? 'Small' : 'Large'}</span></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem><SelectItem value="small">Small</SelectItem><SelectItem value="big">Large</SelectItem></SelectContent></Select></label>
+          <fieldset><legend>Rotate selected image</legend><div className="image-pdf-controls__segments is-two"><button type="button" onClick={() => updateSetting('rotation', (rotation + 270) % 360)}>↶ Left</button><button type="button" onClick={() => updateSetting('rotation', (rotation + 90) % 360)}>Right ↷</button></div><small>{rotation}° rotation</small></fieldset>
         </div>
       )}
     </div>

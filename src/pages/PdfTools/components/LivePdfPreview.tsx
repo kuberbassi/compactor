@@ -372,28 +372,7 @@ export const LivePdfPreview: React.FC<LivePdfPreviewProps> = ({
         </div>
       )}
 
-      {/* FLATTEN FORMS / ENTIRE CARDS */}
-      {(activeTool === 'pdf-flatten' || activeTool === 'pdf-flatten-forms') && (
-        <div className="bg-zinc-950/60 p-4 rounded-xl border border-[var(--border-color)] space-y-2">
-          <div className="flex items-center gap-2 text-zinc-200 font-bold text-xs">
-            <CheckCircle className="w-4 h-4 text-white" /> Vector Form Flattening
-          </div>
-          <p className="text-[10px] text-zinc-400 leading-relaxed">
-            All fillable text inputs, checkboxes, and signatures will be permanently converted into static vector elements, keeping text fully searchable.
-          </p>
-        </div>
-      )}
 
-      {activeTool === 'pdf-flatten-entire' && (
-        <div className="bg-zinc-950/60 p-4 rounded-xl border border-[var(--border-color)] space-y-2">
-          <div className="flex items-center gap-2 text-zinc-200 font-bold text-xs">
-            <CheckCircle className="w-4 h-4 text-white" /> Rasterized Page Flattening
-          </div>
-          <p className="text-[10px] text-zinc-400 leading-relaxed">
-            All pages will be converted into non-selectable high-resolution images, destroying scripts, annotations, and interactive controls.
-          </p>
-        </div>
-      )}
 
       {/* OCR SEARCHABLE CARD */}
       {activeTool === 'pdf-ocr' && (

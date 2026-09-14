@@ -26,6 +26,30 @@ export interface VideoCompressResult {
   newSize: number;
 }
 
+let videoExportSequence = 0;
+
+const createVideoExportName = (purpose: string, extension?: string) => {
+  videoExportSequence += 1;
+  const suffix = extension ? `.${extension}` : '';
+  return `${purpose}_${Date.now().toString(36)}_${videoExportSequence}${suffix}`;
+};
+
+const safeDeleteVideoFile = async (ffmpeg: Awaited<ReturnType<typeof getFFmpeg>>, name: string) => {
+  await ffmpeg.deleteFile(name).catch(() => undefined);
+};
+
+const readVideoExport = async (
+  ffmpeg: Awaited<ReturnType<typeof getFFmpeg>>,
+  outputName: string,
+  action: string,
+) => {
+  const data = await ffmpeg.readFile(outputName);
+  if (!(data instanceof Uint8Array) || data.byteLength === 0) {
+    throw new Error(`${action} finished without producing a valid output file.`);
+  }
+  return data;
+};
+
 export const buildGifPaletteFilter = (inputLabel: string, frameRate: number, scaleFilter: string): string =>
   `${inputLabel}fps=${frameRate},${scaleFilter}:flags=lanczos,split[gif_frames][gif_palette_source];` +
   '[gif_palette_source]palettegen[gif_palette];' +
@@ -85,13 +109,13 @@ export const compressVideo = async (
 ): Promise<VideoCompressResult> => {
   const ffmpeg = await getFFmpeg(onLog, onProgress);
   
-  const inputName = 'input_video';
+  const inputExt = file.name.split('.').pop()?.toLowerCase() || 'video';
+  const inputName = createVideoExportName('video_input', inputExt);
   const ext = options.format === 'gif' ? 'gif' : options.format;
-  const outputName = `output_video.${ext}`;
+  const outputName = createVideoExportName('video_output', ext);
 
-  // Write file to memory
-  await ffmpeg.deleteFile(outputName).catch(() => undefined);
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  try {
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
 
   // Determine Duration
   let duration = options.duration;
@@ -287,7 +311,7 @@ export const compressVideo = async (
   }
 
   if (options.removeMetadata) args.push('-map_metadata', '-1');
-  args.push(outputName);
+  args.push('-y', outputName);
   
   onLog(`Executing FFmpeg: ffmpeg ${args.join(' ')}`);
   const exitCode = await ffmpeg.exec(args);
@@ -295,10 +319,7 @@ export const compressVideo = async (
     throw new Error(`FFmpeg export failed with exit code ${exitCode}. No output file was created.`);
   }
 
-  let data = await ffmpeg.readFile(outputName);
-  if (!(data instanceof Uint8Array) || data.byteLength === 0) {
-    throw new Error('FFmpeg finished without producing a valid output file. Please retry with a shorter clip or smaller output size.');
-  }
+  let data = await readVideoExport(ffmpeg, outputName, 'Video export');
   const isAudio = ['mp3', 'aac', 'wav', 'm4a', 'flac', 'ogg'].includes(options.format);
   const mimeType = options.format === 'gif' 
     ? 'image/gif' 
@@ -339,12 +360,13 @@ export const compressVideo = async (
     } else {
       fallbackArgs.push('-acodec', 'aac', '-b:a', '96k');
     }
-    fallbackArgs.push(outputName);
+    fallbackArgs.push('-y', outputName);
 
     onLog(`Executing Fallback FFmpeg: ffmpeg ${fallbackArgs.join(' ')}`);
-    await ffmpeg.exec(fallbackArgs);
+    const fallbackExitCode = await ffmpeg.exec(fallbackArgs);
+    if (fallbackExitCode !== 0) throw new Error(`Fallback video export failed with exit code ${fallbackExitCode}.`);
 
-    data = await ffmpeg.readFile(outputName);
+    data = await readVideoExport(ffmpeg, outputName, 'Fallback video export');
     blob = new Blob([data as any], { type: mimeType });
   }
 
@@ -382,12 +404,13 @@ export const compressVideo = async (
     } else {
       clampArgs.push('-acodec', 'aac', '-b:a', '96k');
     }
-    clampArgs.push(outputName);
+    clampArgs.push('-y', outputName);
 
     onLog(`Executing Size Clamping Pass (${targetBitrateKbps} Kbps): ffmpeg ${clampArgs.join(' ')}`);
-    await ffmpeg.exec(clampArgs);
+    const clampExitCode = await ffmpeg.exec(clampArgs);
+    if (clampExitCode !== 0) throw new Error(`Size-limited video export failed with exit code ${clampExitCode}.`);
 
-    data = await ffmpeg.readFile(outputName);
+    data = await readVideoExport(ffmpeg, outputName, 'Size-limited video export');
     blob = new Blob([data as any], { type: mimeType });
   }
 
@@ -397,21 +420,22 @@ export const compressVideo = async (
     blob = file;
   }
 
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(outputName);
-  
   const url = URL.createObjectURL(blob);
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
   const outExt = blob === file ? (file.name.split('.').pop() || options.format) : options.format;
   const newName = `${originalNameWithoutExt}_optimized.${outExt}`;
 
-  return {
+    return {
     blob,
     url,
     name: newName,
     originalSize: file.size,
     newSize: blob.size
-  };
+    };
+  } finally {
+    await safeDeleteVideoFile(ffmpeg, inputName);
+    await safeDeleteVideoFile(ffmpeg, outputName);
+  }
 };
 
 /**

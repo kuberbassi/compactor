@@ -5,8 +5,7 @@ import { Dashboard } from '../pages/Dashboard';
 describe('Dashboard Component', () => {
   it('renders the product headline and privacy positioning', () => {
     render(<Dashboard onSelectTool={vi.fn()} processedCount={{ count: 1500000, scope: 'global' }} />);
-    expect(screen.getByText(/Your private file workspace/i)).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /Every file.*Under control/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Edit, convert,.*and keep control/i })).toBeInTheDocument();
   });
 
   it('shows popular tools first and expands the complete library on request', () => {
@@ -35,5 +34,15 @@ describe('Dashboard Component', () => {
     expect(screen.getByText('Organize Pages')).toBeInTheDocument();
     expect(screen.getByText('Edit PDF')).toBeInTheDocument();
     expect(screen.getByText('Markdown to PDF')).toBeInTheDocument();
+  });
+
+  it('finds tools by action aliases and opens the top result with Enter', () => {
+    const handleSelectTool = vi.fn();
+    render(<Dashboard onSelectTool={handleSelectTool} processedCount={{ count: 1500000, scope: 'global' }} />);
+    const search = screen.getByRole('searchbox', { name: /Search all tools/i });
+    fireEvent.change(search, { target: { value: 'add text to pdf' } });
+    expect(screen.getByText('Edit PDF')).toBeInTheDocument();
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(handleSelectTool).toHaveBeenCalledWith('pdf-edit');
   });
 });

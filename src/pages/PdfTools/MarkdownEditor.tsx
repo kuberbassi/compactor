@@ -11,6 +11,7 @@ import { MarkdownPdfPreview } from './components/MarkdownPdfPreview';
 import '../../styles/markdown.css';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
+import { ExportNotice } from '../../components/Common/ExportNotice';
 import { WorkspaceZoomControls } from '../../components/Workspace/WorkspaceControls';
 
 interface MarkdownEditorProps {
@@ -201,6 +202,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [exportedFileName, setExportedFileName] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -310,6 +312,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       a.click();
       document.body.removeChild(a);
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExportedFileName(a.download);
       if (onExportSuccess) onExportSuccess();
     } catch (err) {
       console.error('Failed exporting MD to PDF:', err);
@@ -348,6 +351,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
 
   return (
     <div ref={editorRef} className="markdown-editor flex flex-col h-full flex-1 rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden">
+      {exportedFileName && <ExportNotice fileName={exportedFileName} onDismiss={() => setExportedFileName(null)} />}
       {errorMessage && (
         <div className="p-3 bg-zinc-950/80 border-b border-zinc-800">
           <ErrorBanner 

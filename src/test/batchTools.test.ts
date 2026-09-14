@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   appendUniqueFiles,
   downloadAll,
+  downloadResult,
   fileIdentity,
   getSizeSummary,
   loadSetting,
@@ -53,6 +54,30 @@ describe('shared compressor batch rules', () => {
     vi.runAllTimers();
     expect(click).toHaveBeenCalledTimes(2);
     click.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('downloads blob results through a temporary URL without navigating the page', () => {
+    vi.useFakeTimers();
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fresh-export');
+    const revokeObjectURL = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    downloadResult({
+      url: 'blob:preview-url',
+      name: 'finished.mp4',
+      blob: new Blob(['video'], { type: 'video/mp4' }),
+    });
+
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(click).toHaveBeenCalledOnce();
+    expect(document.querySelector('a[href="blob:fresh-export"]')).toBeNull();
+    vi.runAllTimers();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fresh-export');
+
+    click.mockRestore();
+    createObjectURL.mockRestore();
+    revokeObjectURL.mockRestore();
     vi.useRealTimers();
   });
 });

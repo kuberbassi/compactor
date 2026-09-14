@@ -3,6 +3,7 @@ import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { ToolModeSwitcher } from '../../components/Common/ToolModeSwitcher';
+import { ResultDownloadButton } from '../../components/Common/ResultDownloadButton';
 import { formatBytes } from '../../utils/image';
 import {
   getCommonSupportedTargets,
@@ -386,7 +387,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                 type="button"
                 onClick={() => startConversion()}
                 disabled={!supportedTargets.has(targetFormat)}
-                className="w-full h-11 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] disabled:opacity-50"
+                className="workspace-primary-action converter-final-action w-full h-11 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
               >
                 <span>Convert to {targetFormat ? targetFormat.toUpperCase() : 'FORMAT'}</span>
                 <span className="text-sm font-black">→</span>
@@ -459,12 +460,13 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                         key={category}
                         type="button"
                         disabled={!hasSupported}
+                        aria-pressed={isSelected}
                         onClick={() => {
                           setTargetCategory(category);
                           const first = categoryFormats.find(format => supportedTargets.has(format));
                           if (first) setTargetFormat(first);
                         }}
-                        className={`min-h-10 rounded-lg border px-2 text-xs font-bold uppercase transition-all ${
+                        className={`converter-choice min-h-10 rounded-lg border px-2 text-xs font-bold uppercase transition-all ${
                           isSelected
                             ? 'border-white bg-white text-zinc-950 font-black shadow-sm'
                             : 'border-transparent text-zinc-400 hover:text-white hover:bg-white/10'
@@ -488,8 +490,9 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                         key={format}
                         type="button"
                         disabled={!enabled}
+                        aria-pressed={isSelected}
                         onClick={() => setTargetFormat(format)}
-                        className={`min-h-10 rounded-xl border px-2 text-xs font-black uppercase transition-all ${
+                        className={`converter-choice min-h-10 rounded-xl border px-2 text-xs font-black uppercase transition-all ${
                           isSelected
                             ? 'border-white bg-white text-zinc-950 shadow-md'
                             : enabled
@@ -563,7 +566,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-2">
-                    {item.result && <a href={item.result.url} download={item.result.name} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-xs font-bold text-zinc-200 hover:bg-zinc-800 sm:flex-none"><Download className="h-3.5 w-3.5" /> Download</a>}
+                    {item.result && <ResultDownloadButton result={item.result} className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-zinc-700 px-3 text-xs font-bold text-zinc-200 hover:bg-zinc-800 sm:flex-none">Download</ResultDownloadButton>}
                     {item.status === 'error' && <Button variant="outline" onClick={() => startConversion([item.id])} className="min-h-10 flex-1 text-xs sm:flex-none"><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Retry</Button>}
                   </div>
                 </div>

@@ -365,6 +365,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
     setProcessing(true);
     setProgress(0);
     setLogs([]);
+    setErrorMessage(null);
     setStatusText('Preparing sandbox pipelines...');
 
     try {
@@ -458,8 +459,8 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
       )}
 
       {/* Active Video Workbench Workspace */}
-      {file && !result && !processing && (
-        <div className={`image-workbench flex-1 flex h-full overflow-hidden bg-[#111216] ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+      {file && !result && (
+        <div className={`image-workbench flex-1 flex h-full overflow-hidden bg-[#111216] ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${processing ? 'is-processing' : ''}`}>
             {/* ═══ LEFT SIDEBAR ═══════════════════════════════════════════════════ */}
             <aside className={`image-workbench__sidebar ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
               {sidebarCollapsed ? (
@@ -614,7 +615,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                       type="button"
                       onClick={startCompression}
                       disabled={processing}
-                      className="w-full h-11 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] disabled:opacity-50"
+                      className="workspace-primary-action w-full h-11 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
                     >
                       <span>{exceedsBrowserProcessingLimit ? 'File too large for browser encoding' : processing ? 'Processing Video…' : getActionButtonText()}</span>
                       <span className="text-sm font-black">→</span>
@@ -638,7 +639,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                   )}
                 </div>
 
-                {!sourceIsGif && (
+                {!sourceIsGif && !processing && (
                   <button
                     type="button"
                     onClick={togglePlay}
@@ -660,20 +661,20 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
 
               {/* Processing Overlay State */}
               {processing && (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-zinc-950/80 z-30 overflow-y-auto">
-                  <div className="max-w-md w-full space-y-6 flex flex-col items-center">
+                <div className="video-processing-overlay">
+                  <section className="video-processing-panel" aria-label="Video processing status">
                     <ProgressBar
                       progress={progress}
                       statusText={statusText}
                       subText="Encoding video frames safely inside your browser"
                     />
 
-                    <div className="flex items-center gap-3 w-full justify-center">
+                    <div className="video-processing-panel__actions">
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         onClick={() => setShowLogs(!showLogs)}
-                        className="text-xs text-zinc-400 hover:text-white"
+                        className="video-processing-log-button"
                       >
                         {showLogs ? 'Hide Logs' : 'Console Logs'}
                       </Button>
@@ -681,18 +682,18 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
                         variant="outline"
                         size="sm"
                         onClick={() => setShowAbortConfirm(true)}
-                        className="text-xs border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
+                        className="video-processing-cancel-button"
                       >
-                        Abort Job
+                        Cancel processing
                       </Button>
                     </div>
 
                     {showLogs && (
-                      <pre className="w-full max-h-40 overflow-y-auto p-3 rounded-xl bg-black/60 border border-white/10 text-[10px] text-zinc-300 font-mono text-left">
+                      <pre className="video-processing-console">
                         {logs.map((l, i) => <div key={i}>{l}</div>)}
                       </pre>
                     )}
-                  </div>
+                  </section>
                 </div>
               )}
 

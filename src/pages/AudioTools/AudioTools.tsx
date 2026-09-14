@@ -5,6 +5,7 @@ import { ProgressBar } from '../../components/Common/ProgressBar';
 import { TrimTimeline } from '../../components/Common/TrimTimeline';
 import type { TrimSegment } from '../../components/Common/TrimTimeline';
 import { CustomAudioPlayer } from '../../components/Common/CustomAudioPlayer';
+import { ResultDownloadButton } from '../../components/Common/ResultDownloadButton';
 import { EditorSidebar } from '../../components/Workspace/EditorChrome';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
@@ -19,7 +20,7 @@ import { joinAudioFiles } from '../../utils/audioJoiner';
 import { processPitchAndSpeed } from '../../utils/audioPitchSpeed';
 
 import { 
-  Music, Download, RefreshCw, CheckCircle, 
+  Music, RefreshCw, CheckCircle,
   Disc, Sliders, Layers, PanelLeft, PanelLeftClose
 } from 'lucide-react';
 import { Switch } from '../../components/ui/switch';
@@ -798,7 +799,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
               </div>
               <div className="audio-result-hero__actions">
                 <Button variant="outline" onClick={() => shareResult(result).catch(console.error)}>Share</Button>
-                <a href={result.url} download={result.name} className="audio-result-download"><Download /> Download</a>
+                <ResultDownloadButton result={result} className="audio-result-download">Download</ResultDownloadButton>
               </div>
             </section>
 

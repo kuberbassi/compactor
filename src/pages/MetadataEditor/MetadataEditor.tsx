@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { FileUploader } from '../../components/Common/FileUploader';
 import { ProgressBar } from '../../components/Common/ProgressBar';
-import { readMediaMetadata, writeMediaMetadata, terminateFFmpeg } from '../../utils/ffmpeg';
+import { readMediaMetadata, writeMediaMetadata } from '../../utils/ffmpeg';
 import type { MetadataTags } from '../../utils/ffmpeg';
 import { formatBytes } from '../../utils/image';
 import { getFileFormatLabel } from '../../utils/conversionCapabilities';
 import { 
-  Download, RefreshCw, 
+  RefreshCw,
   CheckCircle, Tag as TagIcon,
   Image as ImageIcon,
   Trash2,
@@ -19,6 +19,7 @@ import { Input } from '../../components/ui/input';
 import { ToolHeader } from '../../components/Common/ToolHeader';
 import { ToolModeSwitcher } from '../../components/Common/ToolModeSwitcher';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
+import { ResultDownloadButton } from '../../components/Common/ResultDownloadButton';
 
 export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUploadSuccess }: { onGoHome: () => void; onSelectTool?: (toolId: string) => void; onUploadSuccess: () => void }) {
   const [file, setFile] = useState<File | null>(null);
@@ -56,12 +57,6 @@ export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUpl
       if (result?.url) URL.revokeObjectURL(result.url);
     };
   }, [coverUrl, newCoverPreview, result?.url]);
-
-  useEffect(() => {
-    return () => {
-      terminateFFmpeg().catch(() => {});
-    };
-  }, []);
 
   const handleFileSelected = async (files: File[]) => {
     if (files.length === 0) return;
@@ -218,13 +213,13 @@ export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUpl
       />
 
       {reading && (
-        <div className="max-w-2xl mx-auto py-12">
+        <div className="tool-processing-stage">
           <ProgressBar progress={50} statusText="Reading file tags & artwork..." subText="Extracting media headers client-side" />
         </div>
       )}
 
       {processing && (
-        <div className="max-w-2xl mx-auto py-12">
+        <div className="tool-processing-stage">
           <ProgressBar progress={progress} statusText={statusText} subText="Rebuilding file containers with updated tags" />
         </div>
       )}
@@ -335,7 +330,7 @@ export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUpl
               <button
                 type="button"
                 onClick={saveMetadata}
-                className="w-full h-11 bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                className="workspace-primary-action w-full h-11 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
               >
                 <span>Save File</span>
                 <span className="text-sm font-black">→</span>
@@ -473,13 +468,12 @@ export function MetadataEditor({ onGoHome, onSelectTool = () => undefined, onUpl
             </div>
 
             <div className="flex flex-col sm:flex-row justify-center gap-3 pt-2">
-              <a 
-                href={result.url} 
-                download={result.name}
+              <ResultDownloadButton
+                result={result}
                 className="inline-flex items-center justify-center gap-2 bg-white hover:bg-zinc-200 text-zinc-950 font-bold px-6 py-3 rounded-xl text-xs shadow-lg cursor-pointer transition-all active:scale-[0.98]"
               >
-                <Download className="w-4 h-4" /> Download File
-              </a>
+                Download File
+              </ResultDownloadButton>
               <Button 
                 onClick={reset} 
                 variant="outline" 

@@ -3,7 +3,6 @@ import {
   Split as SplitIcon,
   Settings as SettingsIcon,
   Lock as LockIcon,
-  FileText,
   Image as ImageIcon
 } from 'lucide-react';
 
@@ -43,34 +42,32 @@ export type WorkflowCategoryId = typeof WORKFLOW_CATEGORIES[number]['id'];
 export const TOOL_GROUPS: ToolGroup[] = [
   {
     id: 'organize',
-    title: 'Page Workspace',
+    title: 'Pages',
     items: [
       { id: 'pdf-organize', label: 'Organize Pages', icon: LayersIcon, desc: 'Reorder, rotate & delete pages visually', category: 'organize' },
-      { id: 'pdf-merge', label: 'Merge PDF', icon: LayersIcon, desc: 'Combine multiple PDFs into one document', category: 'organize' },
       { id: 'pdf-split', label: 'Split PDF', icon: SplitIcon, desc: 'Extract specific page ranges or split pages', category: 'organize' },
+      { id: 'pdf-merge', label: 'Merge PDF', icon: LayersIcon, desc: 'Combine multiple PDFs into one document', category: 'organize' },
     ]
   },
   {
     id: 'optimize',
-    title: 'Optimize Workspace',
+    title: 'Optimize',
     items: [
-      { id: 'pdf-compress', label: 'Compress PDF', icon: SettingsIcon, desc: 'Reduce file size efficiently with custom quality', category: 'optimize' },
-      { id: 'pdf-ocr', label: 'Make Searchable', icon: FileText, desc: 'Recognize scanned text and embed an invisible searchable text layer', category: 'optimize' },
+      { id: 'pdf-compress', label: 'Compress PDF', icon: SettingsIcon, desc: 'Reduce file size efficiently with custom quality & metadata stripping', category: 'optimize' },
     ]
   },
   {
     id: 'security',
-    title: 'Security Workspace',
+    title: 'Security',
     items: [
-      { id: 'pdf-protect', label: 'PDF Security', icon: LockIcon, desc: 'Protect, unlock, flatten, or remove private document metadata', category: 'security' },
+      { id: 'pdf-protect', label: 'PDF Security', icon: LockIcon, desc: 'Protect, unlock, flatten, or make searchable with OCR', category: 'security' },
     ]
   },
   {
     id: 'convert',
-    title: 'Convert Workspace',
+    title: 'Convert',
     items: [
       { id: 'pdf-to-image', label: 'Export PDF', icon: ImageIcon, desc: 'Export PDF pages as PNG, JPG, or structured Markdown', category: 'convert' },
-      { id: 'pdf-jpg-to-pdf', label: 'Images to PDF', icon: ImageIcon, desc: 'Convert image files into a clean PDF document', category: 'convert' },
     ]
   }
 ];
@@ -105,4 +102,25 @@ export const parsePageRanges = (rangeStr: string, maxPages: number): number[] =>
     }
   }
   return Array.from(pages).sort((a, b) => a - b);
+};
+
+export const formatPageRanges = (pages: number[]): string => {
+  const sorted = Array.from(new Set(pages)).sort((a, b) => a - b);
+  if (sorted.length === 0) return '';
+
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let previous = sorted[0];
+  for (let index = 1; index < sorted.length; index += 1) {
+    const page = sorted[index];
+    if (page === previous + 1) {
+      previous = page;
+      continue;
+    }
+    ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+    start = page;
+    previous = page;
+  }
+  ranges.push(start === previous ? `${start}` : `${start}-${previous}`);
+  return ranges.join(', ');
 };
