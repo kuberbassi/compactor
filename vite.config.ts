@@ -43,9 +43,9 @@ const seoEntryPages = () => ({
       html = replaceMetaContent(html, 'property="twitter:title"', title)
       html = replaceMetaContent(html, 'property="twitter:description"', description)
 
-      const routeDir = path.join(distDir, route.path.slice(1))
-      await mkdir(routeDir, { recursive: true })
-      await writeFile(path.join(routeDir, 'index.html'), html)
+      const routeFile = path.join(distDir, `${route.path.slice(1)}.html`)
+      await mkdir(path.dirname(routeFile), { recursive: true })
+      await writeFile(routeFile, html)
     }))
 
     const urls = ['/', ...TOOL_ROUTES.map(route => route.path)]

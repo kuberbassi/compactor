@@ -17,6 +17,27 @@ describe('tool routes and SEO metadata', () => {
     });
   });
 
+  it('includes the dedicated high-intent image and video entry routes', () => {
+    const idsByPath = new Map(TOOL_ROUTES.map(route => [route.path, route.id]));
+
+    const expectedRoutes = {
+      '/image/compress': 'image-optimizer',
+      '/image/resize': 'image-resize',
+      '/image/crop': 'image-crop',
+      '/image/convert': 'image-convert',
+      '/image/watermark': 'image-watermark',
+      '/image/to-pdf': 'pdf-jpg-to-pdf',
+      '/video/compress': 'video-compressor',
+      '/video/trim': 'video-trim',
+      '/video/convert': 'video-convert',
+      '/video/audio': 'video-to-audio',
+    };
+
+    Object.entries(expectedRoutes).forEach(([path, id]) => {
+      expect(idsByPath.get(path)).toBe(id);
+    });
+  });
+
   it('updates canonical, search, and social metadata together', () => {
     document.head.innerHTML = `
       <meta name="description" content="">

@@ -9,9 +9,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:compressors": "node scripts/check-compressors.cjs",
+    "check:seo": "node scripts/check-seo-build.mjs",
     "lint": "oxlint",
     "typecheck": "tsc -b",
-    "quality": "npm run lint && npm run test && npm run build",
+    "quality": "npm run lint && npm run test && npm run build && npm run check:seo",
     "preview": "vite preview"
   },
   "dependencies": {

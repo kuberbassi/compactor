@@ -31,6 +31,7 @@ import { VideoResultCard } from './components/VideoResultCard';
 
 interface VideoCompressorProps {
   mode: 'compress' | 'gif' | 'mute' | 'to-audio' | 'to-text' | 'whatsapp' | 'instagram' | 'tiktok' | 'x' | 'discord' | 'telegram' | 'facebook' | 'youtube' | 'convert';
+  initialTab?: VideoTabId;
   onGoHome: () => void;
   onSelectTool: (toolId: string) => void;
   onUploadSuccess: () => void;
@@ -51,7 +52,7 @@ const TARGET_PRESET_MAP: Record<string, { name: string; maxMB?: number; badge: s
   instagram: { name: 'Instagram Reels & Stories (≤95 MB)', maxMB: 92.0, badge: 'Optimized for Instagram Reels & Stories' },
 };
 
-export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome, onUploadSuccess }) => {
+export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, initialTab, onGoHome, onUploadSuccess }) => {
   const currentMode = mode === ('compressor' as any) ? 'compress' : mode;
   
   // File and processing status trackers
@@ -67,7 +68,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
   const exceedsBrowserProcessingLimit = Boolean(file && file.size > browserProcessingLimit);
 
   const [activeTab, setActiveTab] = useState<VideoTabId>(
-    currentMode === 'gif' ? 'format' : currentMode === 'to-audio' || currentMode === 'mute' ? 'audio' : 'compress'
+    initialTab ?? (currentMode === 'gif' ? 'format' : currentMode === 'to-audio' || currentMode === 'mute' ? 'audio' : 'compress')
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
 
@@ -148,7 +149,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
     setExtractAudio(startsInAudioMode);
     setRemoveAudio(mode === 'mute');
     setFormat(startsInGifMode ? 'gif' : 'mp4');
-    setActiveTab(startsInGifMode ? 'format' : startsInAudioMode || mode === 'mute' ? 'audio' : 'compress');
+    setActiveTab(initialTab ?? (startsInGifMode ? 'format' : startsInAudioMode || mode === 'mute' ? 'audio' : 'compress'));
   };
   
   // Completed compression results metadata
@@ -243,7 +244,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
   useEffect(() => {
     setRemoveAudio(mode === 'mute');
     setExtractAudio(mode === 'to-audio');
-    setActiveTab(mode === 'gif' ? 'format' : mode === 'to-audio' || mode === 'mute' ? 'audio' : 'compress');
+    setActiveTab(initialTab ?? (mode === 'gif' ? 'format' : mode === 'to-audio' || mode === 'mute' ? 'audio' : 'compress'));
     setFormat(mode === 'gif' ? 'gif' : 'mp4');
     setFile(null);
     setResult(null);
@@ -251,7 +252,7 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, onGoHome
     setProgress(0);
     setProcessing(false);
     setEnableTrim(false);
-  }, [mode]);
+  }, [initialTab, mode]);
 
   const handleFilesSelected = (files: File[]) => {
     if (files.length > 0) {

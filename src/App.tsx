@@ -114,6 +114,10 @@ function MainApp() {
     switch (activeToolId) {
       case 'video-compressor':
         return <VideoCompressor mode="compress" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'video-trim':
+        return <VideoCompressor mode="compress" initialTab="trim" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'video-convert':
+        return <VideoCompressor mode="compress" initialTab="format" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'video-to-gif':
         return <VideoCompressor mode="gif" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'video-to-audio':
@@ -122,6 +126,14 @@ function MainApp() {
         return <VideoCompressor mode="mute" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'image-optimizer':
         return <ImageTools onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'image-resize':
+        return <ImageTools initialTab="resize" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'image-crop':
+        return <ImageTools initialTab="crop" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'image-convert':
+        return <ImageTools initialTab="format" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'image-watermark':
+        return <ImageTools initialTab="watermark" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'pdf-jpg-to-pdf':
         return <ImageTools initialTab="image-to-pdf" onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'audio-optimizer':

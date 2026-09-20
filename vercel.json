@@ -1,5 +1,11 @@
 {
   "cleanUrls": true,
+  "redirects": [
+    { "source": "/compress-video", "destination": "/video/compress", "permanent": true },
+    { "source": "/video-to-audio", "destination": "/video/audio", "permanent": true },
+    { "source": "/image-editor", "destination": "/image/compress", "permanent": true },
+    { "source": "/images-to-pdf", "destination": "/image/to-pdf", "permanent": true }
+  ],
   "headers": [
     {
       "source": "/(.*)",
