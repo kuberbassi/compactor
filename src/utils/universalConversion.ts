@@ -1,7 +1,3 @@
-import { traceImageToSvg } from './svgTracer';
-import { imagesToPdf, markdownToPdf, textToPdf } from './pdf';
-import { getFFmpeg, transcodeFormatLossless } from './ffmpeg';
-import { loadImage } from './image';
 import {
   audioFileToWav,
   canvasToBmp,
@@ -11,20 +7,6 @@ import {
   jsonToCsv,
   textToHtml,
 } from './universalConverters';
-import {
-  docxToHtml,
-  docxToPdf,
-  docxToText,
-  pdfToDocx,
-  pdfToText,
-  textToDocx,
-} from './documentConverters';
-import {
-  xlsxToHtml,
-  xlsxToPdf,
-  pptxToPdf,
-} from './officeConverters';
-import type { PdfDocxMode } from './documentConverters';
 
 export interface UniversalConversionResult {
   blob: Blob;
@@ -48,7 +30,6 @@ const canvasBlob = (canvas: HTMLCanvasElement, type: string, quality?: number): 
 export const convertUniversalFile = async (
   file: File,
   targetFormat: string,
-  pdfDocxMode: PdfDocxMode,
   onProgress: ConversionProgress,
 ): Promise<UniversalConversionResult> => {
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
@@ -59,6 +40,7 @@ export const convertUniversalFile = async (
   if (['png', 'jpg', 'jpeg', 'webp', 'bmp', 'ico'].includes(target)
     && ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'svg', 'avif'].includes(ext)) {
     onProgress(30, 'Loading image into the conversion pipeline...');
+    const { loadImage } = await import('./image');
     const image = await loadImage(file);
     const canvas = document.createElement('canvas');
     canvas.width = image.naturalWidth;
@@ -84,24 +66,20 @@ export const convertUniversalFile = async (
 
   if (target === 'svg' && ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'].includes(ext)) {
     onProgress(40, 'Tracing image contours into SVG paths...');
+    const { traceImageToSvg } = await import('./svgTracer');
     const svg = await traceImageToSvg(file);
     return { blob: new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }), name: outputName(file, 'svg') };
   }
 
   if (target === 'pdf' && ['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext)) {
     onProgress(45, 'Compiling image into a PDF page...');
+    const { imagesToPdf } = await import('./pdf');
     return { blob: await imagesToPdf([file]), name: outputName(file, 'pdf') };
-  }
-
-  if (ext === 'pdf' && target === 'docx') {
-    const blob = await pdfToDocx(file, (percent, status) => {
-      onProgress(20 + Math.round(percent * 0.7), status);
-    }, pdfDocxMode);
-    return { blob, name: outputName(file, 'docx') };
   }
 
   if (ext === 'docx' && target === 'pdf') {
     onProgress(30, 'Parsing Word content and building a PDF...');
+    const { docxToPdf } = await import('./documentConverters');
     return {
       blob: await docxToPdf(file, (percent, status) => onProgress(percent, status)),
       name: outputName(file, 'pdf'),
@@ -110,6 +88,7 @@ export const convertUniversalFile = async (
 
   if (ext === 'docx' && (target === 'txt' || target === 'html')) {
     onProgress(35, `Parsing Word content into ${target.toUpperCase()}...`);
+    const { docxToHtml, docxToText } = await import('./documentConverters');
     const content = target === 'txt' ? await docxToText(file) : await docxToHtml(file);
     return {
       blob: new Blob([content], { type: target === 'txt' ? 'text/plain;charset=utf-8' : 'text/html;charset=utf-8' }),
@@ -119,10 +98,12 @@ export const convertUniversalFile = async (
 
   if (target === 'docx' && ['txt', 'md'].includes(ext)) {
     onProgress(40, 'Building an editable Word document...');
+    const { textToDocx } = await import('./documentConverters');
     return { blob: await textToDocx(await file.text(), file.name), name: outputName(file, 'docx') };
   }
 
   if (ext === 'pdf' && target === 'txt') {
+    const { pdfToText } = await import('./documentConverters');
     const text = await pdfToText(file, (percent, status) => {
       onProgress(20 + Math.round(percent * 0.7), status);
     });
@@ -131,6 +112,7 @@ export const convertUniversalFile = async (
 
   if (target === 'pdf' && ['txt', 'md', 'html', 'json', 'csv'].includes(ext)) {
     onProgress(40, 'Compiling document content into PDF...');
+    const { markdownToPdf, textToPdf } = await import('./pdf');
     const convert = ext === 'md' ? markdownToPdf : textToPdf;
     return { blob: await convert(await file.text(), file.name), name: outputName(file, 'pdf') };
   }
@@ -159,18 +141,21 @@ export const convertUniversalFile = async (
 
   if (['xlsx', 'xls'].includes(ext) && target === 'pdf') {
     onProgress(30, 'Converting spreadsheet sheets into high-fidelity PDF tables...');
+    const { xlsxToPdf } = await import('./officeConverters');
     const blob = await xlsxToPdf(file, (percent, status) => onProgress(percent, status));
     return { blob, name: outputName(file, 'pdf') };
   }
 
   if (['xlsx', 'xls'].includes(ext) && target === 'html') {
     onProgress(35, 'Converting spreadsheet into HTML tables...');
+    const { xlsxToHtml } = await import('./officeConverters');
     const html = await xlsxToHtml(file);
     return { blob: new Blob([html], { type: 'text/html;charset=utf-8' }), name: outputName(file, 'html') };
   }
 
   if (['pptx', 'ppt'].includes(ext) && target === 'pdf') {
     onProgress(30, 'Rendering presentation slides into PDF...');
+    const { pptxToPdf } = await import('./officeConverters');
     const blob = await pptxToPdf(file, (percent, status) => onProgress(percent, status));
     return { blob, name: outputName(file, 'pdf') };
   }
@@ -184,6 +169,7 @@ export const convertUniversalFile = async (
     'mp3', 'wav', 'aac', 'm4a', 'ogg', 'opus', 'weba', 'flac', 'wma', 'aiff', 'aif', 'alac', 'mka', 'ac3', 'dts', 'amr'
   ].includes(ext)) {
     onProgress(20, 'Initializing the FFmpeg media engine...');
+    const { getFFmpeg, transcodeFormatLossless } = await import('./ffmpeg');
     await getFFmpeg(() => {}, percent => onProgress(percent, 'Initializing the FFmpeg media engine...'));
     const result = await transcodeFormatLossless(
       file,

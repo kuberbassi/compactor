@@ -8,10 +8,10 @@ Before every pull request, run:
 
 ```powershell
 npm.cmd ci
-npm.cmd run quality
+npm.cmd run check:production
 ```
 
-`quality` runs lint, the complete Vitest suite, strict TypeScript compilation, and the Vite production build. The pull-request and `main` workflows run the same command with Node.js 24.
+`check:production` runs lint, the complete Vitest suite, strict TypeScript compilation, the Vite/SEO build checks, FFmpeg diagnostics, and a production-dependency audit. CI runs the reproducible `quality` gate plus the production audit with Node.js 24.
 
 For quick iteration, use the narrowest relevant command first, then finish with the complete gate:
 

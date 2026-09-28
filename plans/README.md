@@ -13,8 +13,13 @@ applied to `main` on top of baseline commit `de7b51b`.
 | 003 | Characterize critical editor workflows | P1 | M | 001, 002 | DONE - merged as `d5e5f37` |
 | 004 | Centralize the simple PDF result lifecycle | P1 | M | 003 | DONE - merged as `c5cb365`, `f644e7d` |
 | 005 | Make the processed-file metric honest | P2 | M | 002 | DONE - merged as `eee3c38` |
+| Mobile | Responsive tablets and purpose-built Compact Compactor | P1 | L | 001–005 | DONE - phases 1–6, desktop-browser acceptance, and documentation complete; physical-device validation documented separately |
 
 Status values: TODO, IN PROGRESS, DONE, BLOCKED, REJECTED.
+
+The mobile plan is intentionally phase-based. Update its row with the latest
+completed phase; do not mark it DONE until the full acceptance matrix and all
+Tier A tools pass.
 
 ## Dependency notes
 
@@ -46,8 +51,8 @@ Status values: TODO, IN PROGRESS, DONE, BLOCKED, REJECTED.
 
 - Split route-owned CSS out of the 6,500-line global stylesheet and establish
   one owner for shared workbench geometry. This needs visual baselines first.
-- Dynamically import conversion engines inside the selected conversion branch;
-  the current Universal Converter route chunk is approximately 1.29 MB.
+- Continue monitoring converter chunks; conversion engines now load inside the
+  selected conversion branch instead of entering the route's initial bundle.
 - Add focused browser coverage for real Canvas, Blob, worker, and download
   behavior after the component characterization foundation in plan 003.
 - Calibrate operation-specific browser memory limits for large audio, image,

@@ -30,11 +30,23 @@ const seoEntryPages = () => ({
       const canonical = `${SITE_URL}${route.path}`
       const title = seoTitleForRoute(route)
       const description = route.description
-      const entryMarkup = `<main class="seo-entry" aria-label="${escapeHtml(route.title)}"><p>Private browser tool</p><h1>${escapeHtml(route.title)}</h1><p>${escapeHtml(description)} Files stay on your device.</p></main>`
+      const entryMarkup = `<main class="seo-entry" aria-label="${escapeHtml(route.title)}"><p>Free private browser tool</p><h1>${escapeHtml(route.title)}</h1><p>${escapeHtml(description)} Files stay on your device instead of being sent to a Compactor processing server.</p><ul><li>No account required</li><li>Private browser processing</li><li>Download the result when ready</li></ul></main>`
+      const routeSchema = JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'WebApplication',
+        name: route.title,
+        url: canonical,
+        description,
+        applicationCategory: 'UtilitiesApplication',
+        operatingSystem: 'Any modern web browser',
+        isAccessibleForFree: true,
+        browserRequirements: 'Requires JavaScript and a modern browser',
+      }).replaceAll('<', '\\u003c')
       let html = template
         .replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(title)}</title>`)
         .replace(/<link\s+rel="canonical"\s+href="[^"]*"\s*\/>/i, `<link rel="canonical" href="${canonical}" />`)
         .replace('<div id="root"></div>', `<div id="root">${entryMarkup}</div>`)
+        .replace('</head>', `<script id="tool-structured-data" type="application/ld+json">${routeSchema}</script>\n  </head>`)
       html = replaceMetaContent(html, 'name="description"', description)
       html = replaceMetaContent(html, 'property="og:url"', canonical)
       html = replaceMetaContent(html, 'property="og:title"', title)

@@ -27,7 +27,7 @@
 - [PDF to Images](https://compactor.kuberbassi.com/#pdf-to-image): Export pages as high-resolution PNG or JPG.
 - [Images to PDF](https://compactor.kuberbassi.com/#pdf-jpg-to-pdf): Combine photos into a PDF scanner document.
 - [Markdown Workspace](https://compactor.kuberbassi.com/#pdf-word-to-pdf): Write with templates and live preview, then download Markdown or a preview-matched PDF.
-- [PDF to Markdown](https://compactor.kuberbassi.com/#pdf-to-word): Extract searchable text into Markdown.
+- [PDF to Markdown](https://compactor.kuberbassi.com/pdf-to-markdown): Extract searchable text into Markdown.
 
 ### Image Tools
 
@@ -43,7 +43,8 @@
 
 ### File Utilities
 
-- [Verified File Converter](https://compactor.kuberbassi.com/#universal-converter): Engine-backed conversion for supported PDF, DOCX, text, CSV, JSON, raster image, SVG, audio, and video pairs. PDF to DOCX supports visual layout preservation or editable text with private in-browser English OCR. Unsupported combinations are disabled instead of returning renamed or corrupt files.
+- [Verified File Converter](https://compactor.kuberbassi.com/#universal-converter): Engine-backed conversion for supported PDF text extraction, DOCX, text, CSV, JSON, raster image, SVG, audio, and video pairs. Unsupported combinations are disabled instead of returning renamed or corrupt files.
+- [Word to PDF Converter](https://compactor.kuberbassi.com/word-to-pdf): Convert DOCX Word documents to PDF in the browser.
 - [Metadata Editor](https://compactor.kuberbassi.com/#metadata-editor): Read, edit, or remove EXIF, ID3, and document metadata.
 
 ## Privacy & Security

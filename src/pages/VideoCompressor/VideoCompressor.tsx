@@ -29,8 +29,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { VideoSettingsPanel, type VideoTabId } from './components/VideoSettingsPanel';
 import { VideoResultCard } from './components/VideoResultCard';
 
+export type VideoMode = 'compress' | 'gif' | 'mute' | 'to-audio' | 'to-text' | 'whatsapp' | 'instagram' | 'tiktok' | 'x' | 'discord' | 'telegram' | 'facebook' | 'youtube' | 'convert';
+
 interface VideoCompressorProps {
-  mode: 'compress' | 'gif' | 'mute' | 'to-audio' | 'to-text' | 'whatsapp' | 'instagram' | 'tiktok' | 'x' | 'discord' | 'telegram' | 'facebook' | 'youtube' | 'convert';
+  mode: VideoMode;
   initialTab?: VideoTabId;
   onGoHome: () => void;
   onSelectTool: (toolId: string) => void;
@@ -53,7 +55,7 @@ const TARGET_PRESET_MAP: Record<string, { name: string; maxMB?: number; badge: s
 };
 
 export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, initialTab, onGoHome, onUploadSuccess }) => {
-  const currentMode = mode === ('compressor' as any) ? 'compress' : mode;
+  const currentMode = mode;
   
   // File and processing status trackers
   const [file, setFile] = useState<File | null>(null);
@@ -185,7 +187,8 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, initialT
   const [gifFps, setGifFps] = useState<number>(15);
 
   // Target Platform Presets (General, WhatsApp, Discord, TikTok, Instagram)
-  const [targetPreset, setTargetPreset] = useState<'general' | 'whatsapp' | 'discord' | 'tiktok' | 'instagram'>('general');
+  type TargetPreset = 'general' | 'whatsapp' | 'discord' | 'tiktok' | 'instagram';
+  const [targetPreset, setTargetPreset] = useState<TargetPreset>('general');
   const [showAdvanced, setShowAdvanced] = useState<boolean>(false);
 
   useEffect(() => {
@@ -205,8 +208,8 @@ export const VideoCompressor: React.FC<VideoCompressorProps> = ({ mode, initialT
   };
 
   useEffect(() => {
-    if (['whatsapp', 'discord', 'tiktok', 'instagram'].includes(currentMode)) {
-      setTargetPreset(currentMode as any);
+    if (currentMode === 'whatsapp' || currentMode === 'discord' || currentMode === 'tiktok' || currentMode === 'instagram') {
+      setTargetPreset(currentMode);
     }
   }, [currentMode]);
 

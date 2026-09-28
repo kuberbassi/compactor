@@ -87,7 +87,7 @@ export function WorkspaceToolNav<T extends string>({ items, activeId, onChange, 
             onClick={() => onChange(id)}
             aria-current={activeId === id ? 'page' : undefined}
             disabled={disabled}
-            title={disabled ? `${itemLabel} is unavailable for audio-only export` : undefined}
+            title={disabled ? `${itemLabel} is unavailable for audio-only export` : itemLabel}
           >
             <Icon aria-hidden="true" />
             <span>{itemLabel}</span>

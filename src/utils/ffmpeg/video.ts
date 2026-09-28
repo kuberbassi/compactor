@@ -16,6 +16,7 @@ export interface VideoCompressOptions {
   duration?: number;  // Optional preloaded duration to skip metadata dry-run
   targetMaxMB?: number; // Strict platform size limit e.g. 9.5 for Discord, 15.5 for WhatsApp
   removeMetadata?: boolean;
+  watermark?: Blob;
 }
 
 export interface VideoCompressResult {
@@ -113,9 +114,12 @@ export const compressVideo = async (
   const inputName = createVideoExportName('video_input', inputExt);
   const ext = options.format === 'gif' ? 'gif' : options.format;
   const outputName = createVideoExportName('video_output', ext);
+  const watermarkName = options.watermark ? createVideoExportName('video_watermark', 'png') : '';
+  const intermediateOutputNames: string[] = [];
 
   try {
     await ffmpeg.writeFile(inputName, await fetchFile(file));
+    if (options.watermark && watermarkName) await ffmpeg.writeFile(watermarkName, await fetchFile(options.watermark));
 
   // Determine Duration
   let duration = options.duration;
@@ -164,8 +168,9 @@ export const compressVideo = async (
   // If there is exactly one segment, optimize using accurate seek and zero-aligned PTS
   if (activeIntervals.length === 1) {
     const { start, end } = activeIntervals[0];
+    args.push('-i', inputName);
+    if (watermarkName) args.push('-loop', '1', '-i', watermarkName);
     args.push(
-      '-i', inputName,
       '-ss', start.toString(),
       '-t', Math.max(0.001, end - start).toString(),
       '-avoid_negative_ts', 'make_zero'
@@ -173,6 +178,7 @@ export const compressVideo = async (
   } else {
     // Multi-segment concat using filter_complex
     args.push('-i', inputName);
+    if (watermarkName) args.push('-loop', '1', '-i', watermarkName);
   }
 
   if (options.format === 'gif') {
@@ -242,14 +248,22 @@ export const compressVideo = async (
       const concatFilter = `${concatInputs.join('')}concat=n=${activeIntervals.length}:v=1:a=${hasAudio ? 1 : 0}[outv]${hasAudio ? '[outa]' : ''}`;
       filterComplexParts.push(concatFilter);
 
+      if (watermarkName) {
+        filterComplexParts.push('[1:v]format=rgba[wm]');
+        filterComplexParts.push('[outv][wm]overlay=W-w-16:H-h-16[watermarkedv]');
+      }
       args.push('-filter_complex', filterComplexParts.join('; '));
-      args.push('-map', '[outv]');
+      args.push('-map', watermarkName ? '[watermarkedv]' : '[outv]');
       if (hasAudio) {
         args.push('-map', '[outa]');
       }
     } else {
       // Single segment filters
-      if (options.scale && options.scale !== 'no-scale') {
+      if (watermarkName) {
+        const base = options.scale && options.scale !== 'no-scale' ? `scale=${options.scale},` : '';
+        args.push('-filter_complex', `[0:v]${base}setsar=1[base];[1:v]format=rgba[wm];[base][wm]overlay=W-w-16:H-h-16[outv]`, '-map', '[outv]');
+        if (!options.removeAudio) args.push('-map', '0:a?');
+      } else if (options.scale && options.scale !== 'no-scale') {
         args.push('-vf', `scale=${options.scale}`);
       }
     }
@@ -327,6 +341,7 @@ export const compressVideo = async (
       ? `audio/${options.format === 'mp3' ? 'mpeg' : options.format}` 
       : `video/${options.format}`;
   let blob = new Blob([data as any], { type: mimeType });
+  let currentOutputName = outputName;
 
   // Safeguard against file inflation: If full video (no trim) was processed and output size is >= original size
   const totalIntervalDuration = activeIntervals.reduce((acc, curr) => acc + (curr.end - curr.start), 0);
@@ -335,15 +350,9 @@ export const compressVideo = async (
     onLog(`Notice: Compressed result (${(blob.size / 1024 / 1024).toFixed(2)} MB) exceeds target reduction threshold. Triggering strict bitrate fallback pass...`);
 
     const strictBitrateKbps = Math.max(100, Math.round(originalVideoBitrateKbps * 0.50));
-    const fallbackArgs: string[] = ['-i', inputName];
-
-    if (activeIntervals.length === 1) {
-      const { start, end } = activeIntervals[0];
-      fallbackArgs.push('-ss', start.toString(), '-to', end.toString());
-    }
-    if (options.scale && options.scale !== 'no-scale') {
-      fallbackArgs.push('-vf', `scale=${options.scale}`);
-    }
+    const fallbackName = createVideoExportName('video_fallback', ext);
+    intermediateOutputNames.push(fallbackName);
+    const fallbackArgs: string[] = ['-i', currentOutputName];
     fallbackArgs.push(
       '-vcodec', 'libx264',
       '-b:v', `${strictBitrateKbps}k`,
@@ -360,14 +369,15 @@ export const compressVideo = async (
     } else {
       fallbackArgs.push('-acodec', 'aac', '-b:a', '96k');
     }
-    fallbackArgs.push('-y', outputName);
+    fallbackArgs.push('-y', fallbackName);
 
     onLog(`Executing Fallback FFmpeg: ffmpeg ${fallbackArgs.join(' ')}`);
     const fallbackExitCode = await ffmpeg.exec(fallbackArgs);
     if (fallbackExitCode !== 0) throw new Error(`Fallback video export failed with exit code ${fallbackExitCode}.`);
 
-    data = await readVideoExport(ffmpeg, outputName, 'Fallback video export');
+    data = await readVideoExport(ffmpeg, fallbackName, 'Fallback video export');
     blob = new Blob([data as any], { type: mimeType });
+    currentOutputName = fallbackName;
   }
 
   // Platform Target Size Enforcement (e.g. Discord ≤10MB, WhatsApp ≤16MB)
@@ -380,14 +390,9 @@ export const compressVideo = async (
     const targetVideoBps = Math.max(50000, Math.floor(((availableVideoBytes * 8) / totalIntervalDuration) * 0.93));
     const targetBitrateKbps = Math.floor(targetVideoBps / 1000);
 
-    const clampArgs: string[] = ['-i', inputName];
-    if (activeIntervals.length === 1) {
-      const { start, end } = activeIntervals[0];
-      clampArgs.push('-ss', start.toString(), '-to', end.toString());
-    }
-    if (options.scale && options.scale !== 'no-scale') {
-      clampArgs.push('-vf', `scale=${options.scale}`);
-    }
+    const clampName = createVideoExportName('video_clamped', ext);
+    intermediateOutputNames.push(clampName);
+    const clampArgs: string[] = ['-i', currentOutputName];
     clampArgs.push(
       '-vcodec', 'libx264',
       '-b:v', `${targetBitrateKbps}k`,
@@ -404,13 +409,13 @@ export const compressVideo = async (
     } else {
       clampArgs.push('-acodec', 'aac', '-b:a', '96k');
     }
-    clampArgs.push('-y', outputName);
+    clampArgs.push('-y', clampName);
 
     onLog(`Executing Size Clamping Pass (${targetBitrateKbps} Kbps): ffmpeg ${clampArgs.join(' ')}`);
     const clampExitCode = await ffmpeg.exec(clampArgs);
     if (clampExitCode !== 0) throw new Error(`Size-limited video export failed with exit code ${clampExitCode}.`);
 
-    data = await readVideoExport(ffmpeg, outputName, 'Size-limited video export');
+    data = await readVideoExport(ffmpeg, clampName, 'Size-limited video export');
     blob = new Blob([data as any], { type: mimeType });
   }
 
@@ -435,6 +440,8 @@ export const compressVideo = async (
   } finally {
     await safeDeleteVideoFile(ffmpeg, inputName);
     await safeDeleteVideoFile(ffmpeg, outputName);
+    if (watermarkName) await safeDeleteVideoFile(ffmpeg, watermarkName);
+    for (const intermediateName of intermediateOutputNames) await safeDeleteVideoFile(ffmpeg, intermediateName);
   }
 };
 

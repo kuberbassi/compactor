@@ -23,15 +23,15 @@
 
 ---
 
-## 🔒 100% Client-Side Privacy Architecture
+## 🔒 Private, Local File Processing
 
 **Compactor** is built on a privacy-first, zero-server-upload architecture. Every video compression, PDF edit, audio transcode, image optimization, and format conversion happens **directly inside your browser** using client-side WebAssembly and HTML5 processing engines.
 
 The public processed-file number is an anonymous, best-effort activity estimate. It counts privacy-preserving completion events, not verified users or conversions; the server cannot prove that browser-side work completed. Your device-local count remains available when the optional counter service is offline. No file names, sizes, contents, hashes, or other file-derived details are sent for this metric.
 
 - **Zero Server Uploads** — Files, videos, and documents never leave your local device.
-- **Offline & Sandbox Ready** — Executes locally inside browser sandboxes without reliance on backend APIs.
-- **High-Performance Multithreading** — Utilises WebAssembly `SharedArrayBuffer` with COOP/COEP headers for hardware-accelerated parallel encoding.
+- **Browser-Sandboxed Processing** — File contents are processed locally; optional analytics and the anonymous counter may use network requests.
+- **WASM Processing Engines** — FFmpeg, PDF, OCR, and image engines run in the browser without a file-processing server.
 
 ---
 
@@ -52,7 +52,7 @@ The public processed-file number is an anonymous, best-effort activity estimate.
 - **Crop Margins** — Interactive trim percentage control for clean printable layouts.
 - **Document Stamps & Sign Document** — Add vector approval stamps (`APPROVED`, `CONFIDENTIAL`, `FINAL DRAFT`) or a signature.
 - **Security** — AES-128/256 password encryption and password removal.
-- **PDF to Word conversion modes** — Preserve images, columns, tables, and page formatting visually, or create editable DOCX/TXT text with private OCR for scanned pages.
+- **PDF text extraction** — Create TXT output from embedded text or private OCR for scanned pages.
 
 ### 🖼️ Image Optimizer
 - Multi-format lossy and lossless compression (PNG, JPG, WebP, GIF, AVIF).
@@ -80,11 +80,18 @@ The public processed-file number is an anonymous, best-effort activity estimate.
 | **Icons** | Lucide React |
 | **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, Tesseract.js OCR, ImageTracerJS, HTML5 Canvas 2D |
 | **Testing** | Vitest + Testing Library + JSDOM |
-| **Deployment** | Vercel with COOP/COEP security headers & immutable asset caching |
+| **Deployment** | Vercel with security headers, clean tool URLs, and immutable asset caching |
 
 ### Module Architecture
 
 Recent PDF improvements include reliable high-resolution annotation export, permanent rasterized redaction, preview-matched Markdown PDF export, a responsive Markdown workspace, and one-click bulk downloads for generated PDFs and PDF page images.
+
+Compactor also has a purpose-built narrow-screen interface below 768px. It
+supports bulk image/PDF/audio/video compression, verified file conversion,
+Merge/Protect/Unlock PDF, PDF-to-images, and a simplified Images-to-PDF flow.
+Editor-heavy routes show useful compact alternatives instead of squeezing the
+desktop workspace. See [responsive and compact-device support](docs/mobile-support.md)
+for the exact tool list, breakpoint contract, and recorded browser matrix.
 
 ```
 src/
@@ -127,13 +134,10 @@ npm install
 # 3. Start development server
 npm run dev
 
-# 4. Run the complete strict quality gate
-npm run quality
+# 4. Run the complete production-preparation gate
+npm run check:production
 
-# 5. Verify FFmpeg compressors & diagnostics
-npm run check:compressors
-
-# 6. Build for production (already included in the quality gate)
+# 5. Build for production (already included in the gate)
 npm run build
 ```
 
@@ -141,7 +145,11 @@ npm run build
 
 ## 📲 Progressive Web App (PWA)
 
-Compactor is configured as a standalone Web App. It can be installed directly onto iOS, Android, or desktop devices with standalone app window support and quick shortcuts.
+Compactor is configured as a standalone Web App and its manifest provides app
+shortcuts. The responsive browser matrix is documented in
+[docs/mobile-support.md](docs/mobile-support.md). Physical Android/iOS install,
+file-picker, share-sheet, backgrounding, and memory behavior still require
+real-device validation and are not implied by desktop responsive emulation.
 
 ---
 

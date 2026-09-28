@@ -31,11 +31,19 @@ describe('tool routes and SEO metadata', () => {
       '/video/trim': 'video-trim',
       '/video/convert': 'video-convert',
       '/video/audio': 'video-to-audio',
+      '/word-to-pdf': 'convert-word-to-pdf',
     };
 
     Object.entries(expectedRoutes).forEach(([path, id]) => {
       expect(idsByPath.get(path)).toBe(id);
     });
+  });
+
+  it('keeps legal pages directly addressable', () => {
+    expect(pathForTool('privacy')).toBe('/privacy');
+    expect(pathForTool('terms')).toBe('/terms');
+    expect(toolIdFromLocation({ pathname: '/privacy', hash: '' })).toBe('privacy');
+    expect(toolIdFromLocation({ pathname: '/terms/', hash: '' })).toBe('terms');
   });
 
   it('updates canonical, search, and social metadata together', () => {
@@ -57,5 +65,11 @@ describe('tool routes and SEO metadata', () => {
     expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toContain('Reduce PDF file size');
     expect(document.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe(document.title);
     expect(document.querySelector('meta[property="twitter:url"]')?.getAttribute('content')).toBe('https://compactor.kuberbassi.com/compress-pdf');
+  });
+
+  it('uses exact high-intent titles for common conversion and compression searches', () => {
+    expect(TOOL_ROUTES.find(route => route.path === '/word-to-pdf')?.title).toBe('Word to PDF Converter');
+    expect(TOOL_ROUTES.find(route => route.path === '/pdf-to-word')).toBeUndefined();
+    expect(TOOL_ROUTES.find(route => route.path === '/image/compress')?.title).toBe('Image Compressor');
   });
 });

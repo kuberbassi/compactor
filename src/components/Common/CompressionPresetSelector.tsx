@@ -13,21 +13,21 @@ const PRESETS: Array<{ value: CompressionPreset; label: string; hint: string }> 
 ];
 
 export const CompressionPresetSelector = ({ value, onChange, compact = false }: CompressionPresetSelectorProps) => (
-  <div className={`space-y-1.5 ${compact ? 'compression-presets--compact' : ''}`}>
-    <div className="flex items-center justify-between text-[11px] font-semibold text-zinc-400">
+  <div className={`compression-preset-selector space-y-1.5 ${compact ? 'compression-presets--compact' : ''}`}>
+    <div className="compression-preset-selector__header flex items-center justify-between text-[11px] font-semibold text-zinc-400">
       <span>Compression strength</span>
       <span className="text-zinc-500 text-[10px]">
         {PRESETS.find(p => p.value === value)?.hint || 'Balanced'}
       </span>
     </div>
-    <div className="grid grid-cols-3 gap-1 p-1 bg-zinc-900/90 border border-zinc-800 rounded-xl">
+    <div className="compression-preset-selector__grid grid grid-cols-3 gap-1 p-1 bg-zinc-900/90 border border-zinc-800 rounded-xl">
       {PRESETS.map(preset => (
         <button
           key={preset.value}
           type="button"
           aria-pressed={value === preset.value}
           onClick={() => onChange(preset.value)}
-          className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center cursor-pointer select-none ${
+          className={`compression-preset-selector__item py-1.5 px-2 rounded-lg text-xs font-semibold transition-all text-center cursor-pointer select-none ${
             value === preset.value
               ? 'bg-zinc-100 text-zinc-950 shadow-sm font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'

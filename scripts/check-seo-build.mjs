@@ -36,6 +36,8 @@ await Promise.all(routes.map(async route => {
     `<link rel="canonical" href="${canonical}" />`,
     `<h1>${escapeHtml(route.title)}</h1>`,
     `content="${escapeHtml(route.description)}"`,
+    `<script id="tool-structured-data" type="application/ld+json">`,
+    `"url":"${canonical}"`,
   ]) {
     if (!page.includes(expected)) throw new Error(`${pagePath} is missing expected SEO content: ${expected}`);
   }

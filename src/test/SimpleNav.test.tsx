@@ -34,4 +34,19 @@ describe('SimpleNav Component', () => {
     render(<SimpleNav />);
     expect(document.querySelector('[data-nav-group-items="pdf"]')).not.toBeInTheDocument();
   });
+
+  it('shows only top-level page links in the compact menu', () => {
+    render(<SimpleNav />);
+    fireEvent.click(screen.getByRole('button', { name: /open menu/i }));
+
+    const menu = screen.getByRole('dialog', { name: /compactor navigation/i });
+    expect(menu).toHaveTextContent('Home');
+    expect(menu).toHaveTextContent('Video');
+    expect(menu).toHaveTextContent('PDF');
+    expect(menu).toHaveTextContent('Images');
+    expect(menu).toHaveTextContent('Audio');
+    expect(menu).toHaveTextContent('Convert');
+    expect(menu).not.toHaveTextContent('Find a tool');
+    expect(menu).not.toHaveTextContent('Compress PDF');
+  });
 });

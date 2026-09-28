@@ -9,7 +9,7 @@ vi.mock('../utils/universalConversion', () => ({
 
 describe('UniversalConverter bulk queue', () => {
   beforeEach(() => {
-    vi.mocked(convertUniversalFile).mockImplementation(async (file, target, _mode, onProgress) => {
+    vi.mocked(convertUniversalFile).mockImplementation(async (file, target, onProgress) => {
       onProgress(50, `Converting ${file.name}`);
       return {
         blob: new Blob([`converted:${file.name}`], { type: 'application/pdf' }),

@@ -37,32 +37,15 @@ describe('scanned PDF OCR fallback', () => {
     });
   });
 
-  it('OCRs an image-only page and creates an editable DOCX', async () => {
-    const { docxToText, pdfToDocx } = await import('../utils/documentConverters');
+  it('OCRs an image-only page into plain text', async () => {
+    const { pdfToText } = await import('../utils/documentConverters');
     const progress: string[] = [];
     const pdf = new File(['%PDF-1.7 scanned'], 'scan.pdf', { type: 'application/pdf' });
 
-    const output = await pdfToDocx(pdf, (_percent, status) => progress.push(status));
-    const outputFile = new File([output], 'scan.docx', { type: output.type });
-
-    await expect(docxToText(outputFile)).resolves.toContain('Recognized body text');
+    await expect(pdfToText(pdf, (_percent, status) => progress.push(status))).resolves.toContain('Recognized body text');
     expect(createWorker).toHaveBeenCalledTimes(1);
     expect(recognize).toHaveBeenCalledTimes(1);
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(progress.some(status => status.includes('OCR'))).toBe(true);
-  });
-
-  it('creates a Word document with a visual rendering when layout preservation is selected', async () => {
-    const { pdfToDocx } = await import('../utils/documentConverters');
-    const pdf = new File(['%PDF-1.7 visual'], 'visual.pdf', { type: 'application/pdf' });
-
-    const output = await pdfToDocx(pdf, undefined, 'preserve-layout');
-    const bytes = new Uint8Array(await output.arrayBuffer());
-
-    expect(output.type).toContain('wordprocessingml');
-    expect(bytes[0]).toBe(0x50);
-    expect(bytes[1]).toBe(0x4b);
-    expect(page.render).toHaveBeenCalled();
-    expect(recognize).not.toHaveBeenCalled();
   });
 });

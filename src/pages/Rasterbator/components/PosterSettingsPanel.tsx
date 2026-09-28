@@ -308,11 +308,13 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="poster-transform-actions grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={onRotateCCW}
-                className="h-10 rounded-xl bg-zinc-900/60 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98]"
+                className="poster-transform-action h-10 rounded-xl bg-zinc-900/60 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98]"
+                aria-label="Rotate left"
+                title="Rotate left"
               >
                 <RotateCcw className="w-4 h-4 text-zinc-400" />
                 <span>Rotate Left</span>
@@ -321,7 +323,9 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
               <button
                 type="button"
                 onClick={onRotateCW}
-                className="h-10 rounded-xl bg-zinc-900/60 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98]"
+                className="poster-transform-action h-10 rounded-xl bg-zinc-900/60 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98]"
+                aria-label="Rotate right"
+                title="Rotate right"
               >
                 <RotateCw className="w-4 h-4 text-zinc-400" />
                 <span>Rotate Right</span>
@@ -330,11 +334,13 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
               <button
                 type="button"
                 onClick={onToggleFlipH}
-                className={`h-10 rounded-xl border flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98] ${
+                className={`poster-transform-action h-10 rounded-xl border flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98] ${
                   flipH
                     ? '!bg-white !text-zinc-950 !border-white font-bold shadow-md'
                     : 'bg-zinc-900/60 border-white/10 text-zinc-300 hover:text-white hover:bg-zinc-800'
                 }`}
+                aria-label="Flip horizontally"
+                title="Flip horizontally"
               >
                 <FlipHorizontal className={`w-4 h-4 ${flipH ? '!text-zinc-950' : 'text-zinc-400'}`} />
                 <span>Flip Horiz</span>
@@ -343,11 +349,13 @@ export const PosterSettingsPanel: React.FC<PosterSettingsPanelProps> = ({
               <button
                 type="button"
                 onClick={onToggleFlipV}
-                className={`h-10 rounded-xl border flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98] ${
+                className={`poster-transform-action h-10 rounded-xl border flex items-center justify-center gap-2 text-xs font-semibold cursor-pointer transition-all active:scale-[0.98] ${
                   flipV
                     ? '!bg-white !text-zinc-950 !border-white font-bold shadow-md'
                     : 'bg-zinc-900/60 border-white/10 text-zinc-300 hover:text-white hover:bg-zinc-800'
                 }`}
+                aria-label="Flip vertically"
+                title="Flip vertically"
               >
                 <FlipVertical className={`w-4 h-4 ${flipV ? '!text-zinc-950' : 'text-zinc-400'}`} />
                 <span>Flip Vert</span>

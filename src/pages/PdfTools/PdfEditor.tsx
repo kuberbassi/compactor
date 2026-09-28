@@ -72,10 +72,18 @@ function SelectablePdfTextLayer({ textContent, viewport }: { textContent: TextCo
     if (!container) return;
     container.replaceChildren();
     const textLayer = new pdfjsLib.TextLayer({ textContentSource: textContent, container, viewport });
-    void textLayer.render().catch(error => {
+    let settled = false;
+    const renderPromise = textLayer.render().catch(error => {
       if (error?.name !== 'AbortException') console.error('Could not render selectable PDF text:', error);
+    }).finally(() => {
+      settled = true;
     });
-    return () => textLayer.cancel();
+    return () => {
+      // TextLayer.cancel() nulls its reader. React StrictMode can clean up this
+      // effect while PDF.js still has a queued pump, which then calls null.read.
+      if (settled) textLayer.cancel();
+      else void renderPromise.then(() => textLayer.cancel());
+    };
   }, [textContent, viewport]);
   return <div ref={layerRef} className="pdf-editor__text-layer textLayer" aria-label="Selectable PDF text" />;
 }
@@ -420,9 +428,11 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
       setPageViewports([]);
       try {
         const buffer = await file.arrayBuffer();
+        if (!isMounted) return;
         sourcePdfBytesRef.current = buffer.slice(0);
         loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer.slice(0)), verbosity: 0 });
         const pdf = await loadingTask.promise;
+        if (!isMounted) return;
         const total = pdf.numPages;
         setNumPages(total);
         const renderDensity = total > 40 ? 1.25 : total > 12 ? 1.5 : Math.min(window.devicePixelRatio || 1, 2);
@@ -433,6 +443,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
         const textViewports: PageViewport[] = [];
 
         for (let i = 1; i <= total; i++) {
+          if (!isMounted) break;
           const page = await pdf.getPage(i);
           const viewport = page.getViewport({ scale: 1.6 });
           const renderScale = 1.6 * renderDensity;
@@ -445,6 +456,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             await (page.render as any)({ canvasContext: ctx, viewport: renderViewport, canvas }).promise;
+            if (!isMounted) break;
             imgs.push(canvas.toDataURL('image/jpeg', 0.98));
             dims.push({ width: viewport.width, height: viewport.height });
             textContents.push(await page.getTextContent());
@@ -460,14 +472,13 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
           setLoading(false);
         }
       } catch (err) {
-        console.error('Error rendering PDF pages:', err);
+        if (isMounted) console.error('Error rendering PDF pages:', err);
         if (isMounted) setLoading(false);
       }
     };
     loadPdf();
     return () => {
       isMounted = false;
-      void loadingTask?.destroy();
     };
   }, [file]);
 
@@ -1226,7 +1237,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
   };
 
   return (
-    <div className="pdf-editor flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]">
+    <div className={`pdf-editor ${showToolDrawer ? 'pdf-editor--sidebar-open' : 'pdf-editor--sidebar-collapsed'} flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--surface-color)] text-[var(--text-primary)] shadow-xl overflow-hidden select-none min-h-[calc(100vh-140px)]`}>
       <section className="pdf-editor__mobile-handoff" aria-labelledby="pdf-desktop-title">
         <div className="pdf-editor__mobile-handoff-icon"><MonitorUp aria-hidden="true" /></div>
         <span>PDF workspace</span>
@@ -1805,6 +1816,7 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
                   onClick={() => setShowToolDrawer(true)}
                   className="w-9 h-9 rounded-lg hover:bg-white/10 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer mb-1"
                   title="Expand sidebar"
+                  aria-label="Expand tools sidebar"
                 >
                   <PanelLeft className="w-4 h-4" />
                 </button>

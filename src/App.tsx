@@ -1,7 +1,6 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { ThemeProvider } from './context/ThemeContext';
 import { Footer } from './components/Common/Footer';
-import { BrandMark } from './components/Common/BrandMark';
 import { EmbedWatermark } from './components/Common/EmbedWatermark';
 import { Dashboard } from './pages/Dashboard';
 import SimpleNav from './components/ui/SimpleNav';
@@ -11,7 +10,7 @@ import { pathForTool, toolIdFromLocation, updateToolMetadata } from './config/to
 
 import { getProcessedCount, recordProcessedFiles } from './utils/counterStorage';
 import type { ProcessedCountSnapshot } from './utils/counterStorage';
-import { ArrowUpRight, Laptop } from 'lucide-react';
+import { useLayoutMode } from './compact/hooks/useLayoutMode';
 
 const VideoCompressor = lazy(() => import('./pages/VideoCompressor/VideoCompressor').then(m => ({ default: m.VideoCompressor })));
 const ImageTools = lazy(() => import('./pages/ImageTools/ImageTools').then(m => ({ default: m.ImageTools })));
@@ -23,8 +22,14 @@ const MetadataEditor = lazy(() => import('./pages/MetadataEditor/MetadataEditor'
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const TermsConditions = lazy(() => import('./pages/TermsConditions').then(m => ({ default: m.TermsConditions })));
 const NotFound = lazy(() => import('./pages/NotFound').then(m => ({ default: m.NotFound })));
+const CompactApp = lazy(() => import('./compact/CompactApp').then(m => ({ default: m.CompactApp })));
 
 function MainApp() {
+  const layoutMode = useLayoutMode();
+  const seenCompactPresentation = useRef(layoutMode === 'compact');
+  const seenFullPresentation = useRef(layoutMode === 'full');
+  if (layoutMode === 'compact') seenCompactPresentation.current = true;
+  else seenFullPresentation.current = true;
   const [activeToolId, setActiveToolId] = useState<string | null>(() => toolIdFromLocation(window.location));
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [recentToolIds, setRecentToolIds] = useState<string[]>(() => {
@@ -143,6 +148,8 @@ function MainApp() {
         return <AudioTools mode={activeToolId} onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'universal-converter':
         return <UniversalConverter onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
+      case 'convert-word-to-pdf':
+        return <UniversalConverter initialTargetFormat="pdf" title="Word to PDF" description="Convert DOCX Word documents to PDF privately in your browser." onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'rasterbator':
         return <Rasterbator onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
       case 'metadata-editor':
@@ -155,30 +162,23 @@ function MainApp() {
         if (activeToolId && activeToolId.startsWith('pdf-')) {
           return <PdfTools toolId={activeToolId} onGoHome={goHome} onUploadSuccess={incrementUploadCount} />;
         }
-        if (activeToolId && activeToolId.startsWith('video-')) {
-          return <VideoCompressor mode={activeToolId.replace('video-', '') as any} onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
-        }
-        if (activeToolId && activeToolId.startsWith('audio-')) {
-          return <AudioTools mode={activeToolId} onGoHome={goHome} onSelectTool={selectTool} onUploadSuccess={incrementUploadCount} />;
-        }
         return activeToolId ? <NotFound onGoHome={goHome} /> : <Dashboard onSelectTool={selectTool} processedCount={processedCount} recentToolIds={recentToolIds} onOpenSearch={() => setCommandPaletteOpen(true)} />;
     }
   };
 
-  return (
-    <div className={`app-container relative ${activeToolId ? `app-tool app-tool--${activeToolId}` : 'app-home'}`}>
-      <main className="compact-screen-notice" aria-labelledby="compact-screen-title">
-        <div className="compact-screen-notice__glow" aria-hidden="true" />
-        <header><BrandMark /><strong>compactor</strong></header>
-        <section>
-          <div className="compact-screen-notice__icon"><Laptop /></div>
-          <h1 id="compact-screen-title">Use Compactor on a desktop.</h1>
-          <p className="compact-screen-notice__message">The tools are currently available on desktop-sized screens. Open this page on a laptop or desktop to edit, convert, and export your files.</p>
-          <p className="compact-screen-notice__development">Mobile and tablet support is in development.</p>
-          <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">Visit Kuber Bassi <ArrowUpRight /></a>
-        </section>
-        <footer>Compactor · Private browser file tools</footer>
-      </main>
+  const isLegalPage = activeToolId === 'privacy' || activeToolId === 'terms';
+  const compactPresentation = (
+    <Suspense fallback={<div className="compact-app-loading" role="status">Loading Compact Compactor…</div>}>
+      {isLegalPage ? <div className="compact-legal-page">{renderContent()}</div> : (
+        <CompactApp activeToolId={activeToolId} onGoHome={goHome} onSelectTool={selectTool} onProcessed={incrementUploadCount} />
+      )}
+    </Suspense>
+  );
+  const fullPresentation = (
+    <div
+      className={`app-container relative ${activeToolId ? `app-tool app-tool--${activeToolId}` : 'app-home'}`}
+      data-layout-mode="full"
+    >
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <div className="mesh-gradient-sphere-1" aria-hidden="true" />
       <div className="mesh-gradient-sphere-2" aria-hidden="true" />
@@ -213,6 +213,13 @@ function MainApp() {
       <EmbedWatermark />
       <CommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} onSelectTool={selectTool} />
     </div>
+  );
+
+  return (
+    <>
+      {seenCompactPresentation.current ? <div hidden={layoutMode !== 'compact'} aria-hidden={layoutMode !== 'compact'}>{compactPresentation}</div> : null}
+      {seenFullPresentation.current ? <div hidden={layoutMode !== 'full'} aria-hidden={layoutMode !== 'full'}>{fullPresentation}</div> : null}
+    </>
   );
 }
 

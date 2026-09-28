@@ -23,11 +23,8 @@ import {
   Search,
   Menu,
   X,
-  ArrowUpRight,
-  Home,
-  ShieldCheck
+  ArrowUpRight
 } from 'lucide-react';
-import { TOOLS } from '../../pages/Dashboard/data';
 
 export interface SimpleNavProps {
   onBrandClick?: () => void;
@@ -122,25 +119,22 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
   const [menuState, setMenuState] = useState<'closed' | 'opening' | 'open' | 'closing'>('closed');
   // Desktop: toggled group (click/touch-friendly for tablets)
   const [activeDesktopGroup, setActiveDesktopGroup] = useState<string | null>(null);
-  // Mobile accordion expanded group
-  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const navRef = useRef<HTMLDivElement>(null);
   const [sheetPos, setSheetPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
 
-  // Sync expanded group with active tool
-  useEffect(() => {
-    if (activeToolId) {
-      const match = NAV_GROUPS.find(g => g.items.some(i => i.href === activeToolId));
-      if (match) setExpandedGroup(match.label);
-    }
-  }, [activeToolId]);
+  const getSheetPosition = () => {
+    if (!navRef.current) return null;
+    const navBounds = navRef.current.getBoundingClientRect();
+    const viewportGutter = 12;
+    const width = Math.min(380, navBounds.width, window.innerWidth - (viewportGutter * 2));
+    const left = Math.max(viewportGutter, Math.min(navBounds.right - width, window.innerWidth - width - viewportGutter));
+    return { top: navBounds.bottom + 8, left, width };
+  };
 
   // Open menu: calculate position, mount sheet, then transition to open
   const openMenu = () => {
-    if (navRef.current) {
-      const r = navRef.current.getBoundingClientRect();
-      setSheetPos({ top: r.bottom + 8, left: r.left, width: r.width });
-    }
+    const position = getSheetPosition();
+    if (position) setSheetPos(position);
     setMenuOpen(true);
     setMenuState('opening');
     // Two rAFs ensure the DOM is painted in 'opening' state before transitioning
@@ -158,10 +152,11 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
 
   // Calculate sheet position whenever menuOpen changes
   useEffect(() => {
-    if (menuOpen && navRef.current) {
-      const r = navRef.current.getBoundingClientRect();
-      setSheetPos({ top: r.bottom + 8, left: r.left, width: r.width });
-    }
+    if (!menuOpen) return;
+    const position = getSheetPosition();
+    if (position) setSheetPos(position);
+  // getSheetPosition only reads the current viewport and nav element.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuOpen]);
 
   // Lock body scroll while sheet is open â€” prevents page scrolling behind the menu
@@ -193,10 +188,8 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
   useEffect(() => {
     if (!menuOpen) return;
     const update = () => {
-      if (navRef.current) {
-        const r = navRef.current.getBoundingClientRect();
-        setSheetPos({ top: r.bottom + 8, left: r.left, width: r.width });
-      }
+      const position = getSheetPosition();
+      if (position) setSheetPos(position);
     };
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
@@ -341,108 +334,70 @@ const SimpleNav: React.FC<SimpleNavProps> = ({
 
       {/* Mobile Sheet â€” portaled to body, with smooth open/close animation */}
       {menuOpen && typeof document !== 'undefined' && createPortal(
-        <div
-          id="simple-nav-sheet"
-          style={{
-            position: 'fixed',
-            top: sheetPos.top,
-            left: sheetPos.left,
-            width: sheetPos.width,
-            zIndex: 9998,
-            overscrollBehavior: 'contain',
-            WebkitOverflowScrolling: 'touch',
-            // State-driven transition classes applied via inline for reliable triggering
-            opacity: menuState === 'open' ? 1 : 0,
-            transform: menuState === 'open'
-              ? 'translateY(0) scale(1)'
-              : menuState === 'closing'
-              ? 'translateY(-6px) scale(0.97)'
-              : 'translateY(-10px) scale(0.96)',
-            transition: 'opacity 220ms cubic-bezier(0.16,1,0.3,1), transform 220ms cubic-bezier(0.16,1,0.3,1)',
-          }}
-          className="nav-mobile-sheet max-h-[78vh] overflow-y-auto overscroll-contain"
-        >
+        <>
+          <button
+            type="button"
+            className="nav-mobile-backdrop"
+            aria-label="Close menu"
+            onClick={closeMenu}
+          />
+          <div
+            id="simple-nav-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Compactor navigation"
+            style={{
+              position: 'fixed',
+              top: sheetPos.top,
+              left: sheetPos.left,
+              width: sheetPos.width,
+              zIndex: 9998,
+              overscrollBehavior: 'contain',
+              WebkitOverflowScrolling: 'touch',
+              opacity: menuState === 'open' ? 1 : 0,
+              transform: menuState === 'open'
+                ? 'translateY(0) scale(1)'
+                : menuState === 'closing'
+                ? 'translateY(-5px) scale(0.985)'
+                : 'translateY(-7px) scale(0.98)',
+              transformOrigin: 'top right',
+              transition: 'opacity 180ms ease, transform 180ms cubic-bezier(0.16,1,0.3,1)',
+            }}
+            className="nav-mobile-sheet max-h-[78vh] overflow-y-auto overscroll-contain"
+          >
           <div className="nav-mobile-sheet__header">
-            <div><strong>Explore Compactor</strong><span>{TOOLS.length} focused browser tools</span></div>
-            <span className="nav-mobile-sheet__privacy"><ShieldCheck /> Local file processing</span>
+            <div><strong>Menu</strong><span>Pages</span></div>
+            <button type="button" className="nav-mobile-sheet__close" onClick={closeMenu} aria-label="Close navigation"><X /></button>
           </div>
 
-          <div className="nav-mobile-sheet__quick-actions">
-            <button type="button" onClick={() => { closeMenu(); onBrandClick?.(); }}><Home /><span>Home</span></button>
-            <button type="button" onClick={() => { closeMenu(); onOpenSearch?.(); }}><Search /><span>Find a tool</span></button>
-          </div>
-
-          {/* Accordion Groups */}
-          <div className="p-2 flex flex-col gap-1 pb-3">
+          <nav className="nav-mobile-sheet__pages" aria-label="Menu pages">
+            <button type="button" className={!activeToolId ? 'is-active' : ''} onClick={() => { closeMenu(); onBrandClick?.(); }}>Home</button>
             {NAV_GROUPS.map((group) => {
-              const isExpanded = expandedGroup === group.label;
+              const isActive = Boolean(activeToolId && group.items.some((item) => item.href === activeToolId));
               return (
-                <div
+                <a
                   key={group.label}
-                  className="rounded-2xl border border-zinc-800/70 overflow-hidden bg-zinc-800/20"
+                  href={pathForTool(group.defaultHref)}
+                  className={isActive ? 'is-active' : ''}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    closeMenu();
+                    onLinkClick?.(group.defaultHref);
+                  }}
                 >
-                  <button
-                    onClick={() => setExpandedGroup(isExpanded ? null : group.label)}
-                    className="w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-mono font-bold text-zinc-200 uppercase tracking-wider hover:bg-zinc-800/60 transition-colors cursor-pointer"
-                    aria-expanded={isExpanded}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span>{group.label}</span>
-                      <span className="text-[10px] px-1.5 py-px rounded-md bg-zinc-800 border border-zinc-700 text-zinc-400 font-bold">
-                        {group.items.length}
-                      </span>
-                    </span>
-                    <ChevronDown
-                      className={`w-4 h-4 text-zinc-500 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                        isExpanded ? 'rotate-180 text-zinc-200' : ''
-                      }`}
-                    />
-                  </button>
-
-                  {/* CSS grid-rows trick: animates height without knowing exact px */}
-                  <div
-                    className={`grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-                      isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
-                    }`}
-                  >
-                    <div className="overflow-hidden">
-                      <div className="px-1.5 pb-1.5 border-t border-zinc-800/60 space-y-0.5 pt-1">
-                        {group.items.map((item) => {
-                          const ItemIcon = item.icon;
-                          const isItemActive = activeToolId === item.href;
-                          return (
-                            <a
-                              key={item.href}
-                              href={pathForTool(item.href)}
-                              onClick={(event) => {
-                                event.preventDefault();
-                                onLinkClick?.(item.href);
-                                closeMenu();
-                              }}
-                              className={`w-full text-left px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2.5 cursor-pointer ${
-                                isItemActive
-                                  ? 'bg-zinc-800 text-white font-bold border border-zinc-700'
-                                  : 'text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/70'
-                              }`}
-                            >
-                              <ItemIcon className="w-4 h-4 shrink-0 text-zinc-500" />
-                              <span className="truncate">{item.label}</span>
-                            </a>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  {group.label}
+                </a>
               );
             })}
-          </div>
+          </nav>
+          <p className="nav-mobile-sheet__privacy-note"><Lock /> Files stay on this device</p>
           <div className="nav-mobile-sheet__footer">
             <button type="button" onClick={() => { closeMenu(); onLinkClick?.('privacy'); }}>Privacy</button>
             <button type="button" onClick={() => { closeMenu(); onLinkClick?.('terms'); }}>Terms</button>
-            <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">About <ArrowUpRight /></a>
+            <a href="https://kuberbassi.com" target="_blank" rel="noopener noreferrer">Kuber Bassi <ArrowUpRight /></a>
           </div>
-        </div>,
+          </div>
+        </>,
         document.body
       )}
     </>

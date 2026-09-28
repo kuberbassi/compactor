@@ -19,6 +19,8 @@ export interface ImageProcessOptions {
   cropWidthPct?: number;
   cropHeightPct?: number;
   pixelateBox?: { leftPct: number; topPct: number; widthPct: number; heightPct: number; pixelSize?: number };
+  watermarkText?: string;
+  watermarkOpacity?: number;
 }
 
 export interface ImageProcessResult {
@@ -144,6 +146,22 @@ export const processImage = async (
 
   const rotation = options.rotation || 0;
   const isRotated90or270 = rotation === 90 || rotation === 270;
+  const drawWatermark = (targetContext: CanvasRenderingContext2D, targetWidth: number, targetHeight: number) => {
+    const text = options.watermarkText?.trim();
+    if (!text) return;
+    const fontSize = Math.max(14, Math.round(Math.min(targetWidth, targetHeight) * .055));
+    targetContext.save();
+    targetContext.globalAlpha = Math.min(.85, Math.max(.08, options.watermarkOpacity ?? .32));
+    targetContext.font = `700 ${fontSize}px sans-serif`;
+    targetContext.textAlign = 'right';
+    targetContext.textBaseline = 'bottom';
+    targetContext.lineWidth = Math.max(2, fontSize * .08);
+    targetContext.strokeStyle = 'rgba(0,0,0,.72)';
+    targetContext.fillStyle = '#fff';
+    targetContext.strokeText(text, targetWidth - fontSize * .55, targetHeight - fontSize * .45, targetWidth * .8);
+    targetContext.fillText(text, targetWidth - fontSize * .55, targetHeight - fontSize * .45, targetWidth * .8);
+    targetContext.restore();
+  };
 
   if (isRotated90or270) {
     canvas.width = height;
@@ -180,6 +198,7 @@ export const processImage = async (
   );
 
   ctx.restore();
+  drawWatermark(ctx, canvas.width, canvas.height);
 
   // 3. Pixelating Blur Censorship Brush Overlay
   if (options.pixelateBox && options.pixelateBox.widthPct > 0 && options.pixelateBox.heightPct > 0) {
@@ -251,6 +270,7 @@ export const processImage = async (
     );
 
     cCtx.restore();
+    drawWatermark(cCtx, cvs.width, cvs.height);
 
     if (options.pixelateBox && options.pixelateBox.widthPct > 0 && options.pixelateBox.heightPct > 0) {
       const pxSize = options.pixelateBox.pixelSize || 14;
@@ -284,13 +304,27 @@ export const processImage = async (
   let finalBlob: Blob | null = null;
 
   const isTargetSizeSet = !!(options.targetSizeKB && options.targetSizeKB > 0);
+  const hasRequestedTransform = Boolean(
+    (options.maxWidth && img.naturalWidth > options.maxWidth) ||
+    (options.maxHeight && img.naturalHeight > options.maxHeight) ||
+    options.rotation || options.flipH || options.flipV || options.grayscale ||
+    (options.cropAspect && options.cropAspect !== 'none') ||
+    (options.cropWidthPct !== undefined && options.cropWidthPct < 100) ||
+    (options.cropHeightPct !== undefined && options.cropHeightPct < 100) ||
+    (options.pixelateBox && options.pixelateBox.widthPct > 0) || options.watermarkText?.trim()
+  );
 
   if (isTargetSizeSet) {
     const targetBytes = options.targetSizeKB! * 1024;
+    if (file.size <= targetBytes && !hasRequestedTransform && outputFormat === file.type) {
+      finalBlob = file;
+      finalWidth = img.naturalWidth;
+      finalHeight = img.naturalHeight;
+    }
     const initialCanvasObj = createScaledCanvas(1.0);
     const initialBlob = await getBlobFromCanvas(initialCanvasObj.cvs, outputFormat, options.quality);
 
-    if (initialBlob && initialBlob.size <= targetBytes) {
+    if (!finalBlob && initialBlob && initialBlob.size <= targetBytes) {
       finalBlob = initialBlob;
       if (isLossy && initialBlob.size < targetBytes) {
         // Try increasing quality up to 1.0 to get optimal visual fidelity within target limit
@@ -307,7 +341,7 @@ export const processImage = async (
           }
         }
       }
-    } else {
+    } else if (!finalBlob) {
       // Step 1: If lossy, binary search quality first at 1.0 scale
       if (isLossy) {
         let minQ = 0.05;
@@ -394,7 +428,8 @@ export const processImage = async (
       (options.cropHeightPct !== undefined && options.cropHeightPct < 100) ||
       (options.cropAspect && options.cropAspect !== 'none') ||
       (options.grayscale) ||
-      (options.pixelateBox && options.pixelateBox.widthPct > 0);
+      (options.pixelateBox && options.pixelateBox.widthPct > 0) ||
+      Boolean(options.watermarkText?.trim());
 
     // If result is >= original file size, force compression by stepping down quality / scale
     if (finalBlob && finalBlob.size >= file.size) {
@@ -412,7 +447,7 @@ export const processImage = async (
       }
 
       if (!reducedBlob) {
-        const stepScales = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4];
+        const stepScales = [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.12];
         for (const s of stepScales) {
           const { cvs: stepCvs, scaledW: stepW, scaledH: stepH } = createScaledCanvas(s * initialScale);
           const stepBlob = await getBlobFromCanvas(stepCvs, outputFormat, isLossy ? options.quality * 0.8 : options.quality);
@@ -438,6 +473,9 @@ export const processImage = async (
 
   if (!finalBlob) {
     throw new Error('Canvas serialization failed');
+  }
+  if (isTargetSizeSet && finalBlob.size > options.targetSizeKB! * 1024) {
+    throw new Error(`This image cannot reach ${Math.round(options.targetSizeKB!)} KB without becoming unusably small. Choose a larger target or a lossy format such as JPG or WebP.`);
   }
 
   const originalNameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));

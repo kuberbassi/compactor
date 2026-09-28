@@ -41,7 +41,7 @@ Compactor is a privacy-first, client-side media processing suite built with Reac
 - Lazy-loaded modules
 - Browser memory processing
 - Hardware-accelerated browser APIs when available
-- SharedArrayBuffer support via COOP/COEP
+- Browser-local WebAssembly processing
 - Zero server-side rendering
 
 ---
@@ -283,7 +283,7 @@ Features
 
 ---
 
-## PDF to Markdown (#pdf-to-word)
+## PDF to Markdown (/pdf-to-markdown)
 
 Features
 
@@ -421,7 +421,7 @@ Supported source formats
 
 Document conversion paths
 
-- PDF to DOCX with either visual layout preservation for images and formatting or editable text using embedded text/OCR; PDF to TXT also supports OCR
+- PDF to TXT extraction with OCR support for scanned pages
 - DOCX to PDF, TXT, or HTML
 - TXT and Markdown to PDF, DOCX, or HTML
 
@@ -492,7 +492,7 @@ Compactor supports installation as a Progressive Web App.
 Features
 
 - Installable
-- Offline caching
+- Local file processing after required application assets load
 - Native-like experience
 - Fast repeat launches
 

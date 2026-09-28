@@ -38,7 +38,7 @@ export const TOOL_ROUTES: ToolRoute[] = [
   route('pdf-jpg-to-pdf', '/image/to-pdf', 'Images to PDF', 'Combine JPG, PNG, and WebP images into a PDF document.'),
   route('pdf-word-to-pdf', '/markdown-to-pdf', 'Markdown to PDF', 'Write Markdown with a live preview and export it as PDF.'),
   route('pdf-to-word', '/pdf-to-markdown', 'PDF to Markdown', 'Extract a PDF text layer into structured Markdown.'),
-  route('image-optimizer', '/image/compress', 'Compress Images', 'Reduce JPG, PNG, WebP, and other supported image file sizes privately in your browser.'),
+  route('image-optimizer', '/image/compress', 'Image Compressor', 'Compress JPG, PNG, WebP, and other supported images online with private browser processing.'),
   route('image-resize', '/image/resize', 'Resize Images', 'Resize images to precise dimensions privately in your browser.'),
   route('image-crop', '/image/crop', 'Crop Images', 'Crop images to the exact area or aspect ratio you need privately.'),
   route('image-convert', '/image/convert', 'Convert Images', 'Convert supported images to another format privately in your browser.'),
@@ -49,6 +49,7 @@ export const TOOL_ROUTES: ToolRoute[] = [
   route('audio-bpm-finder', '/audio-key-bpm-finder', 'Find Key & BPM', 'Detect musical key, Camelot notation, and tempo privately.'),
   route('audio-pitch-speed', '/change-audio-pitch-speed', 'Pitch and Speed Changer', 'Adjust audio pitch and playback speed.'),
   route('universal-converter', '/file-converter', 'File Converter', 'Convert supported documents, images, audio, video, and data files.'),
+  route('convert-word-to-pdf', '/word-to-pdf', 'Word to PDF Converter', 'Convert DOCX Word documents to PDF privately in your browser.'),
   route('metadata-editor', '/metadata-editor', 'Metadata Editor', 'Inspect, edit, or remove supported file metadata.'),
 ];
 

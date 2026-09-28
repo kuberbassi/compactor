@@ -38,7 +38,7 @@
       "name": "Compress Video",
       "short_name": "Video",
       "description": "Compress video files for Discord, WhatsApp, TikTok & Instagram",
-      "url": "/#video-compressor",
+      "url": "/video/compress",
       "icons": [
         {
           "src": "/favicon.svg",
@@ -50,7 +50,7 @@
       "name": "PDF Studio",
       "short_name": "PDF",
       "description": "Organize, merge, split, crop and sign PDF documents",
-      "url": "/#pdf-organize",
+      "url": "/organize-pdf",
       "icons": [
         {
           "src": "/favicon.svg",
@@ -62,21 +62,21 @@
       "name": "Edit PDF",
       "short_name": "Edit PDF",
       "description": "Add text, shapes and private redactions to PDF documents",
-      "url": "/#pdf-edit",
+      "url": "/edit-pdf",
       "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
     },
     {
       "name": "Markdown Workspace",
       "short_name": "Markdown",
       "description": "Write Markdown with live preview and preview-matched local PDF export",
-      "url": "/#pdf-word-to-pdf",
+      "url": "/markdown-to-pdf",
       "icons": [{ "src": "/favicon.svg", "sizes": "192x192" }]
     },
     {
       "name": "Image Optimizer",
       "short_name": "Image",
       "description": "Compress, crop and edit images",
-      "url": "/#image-optimizer",
+      "url": "/image/compress",
       "icons": [
         {
           "src": "/favicon.svg",
@@ -88,7 +88,7 @@
       "name": "Verified File Converter",
       "short_name": "Convert",
       "description": "Convert supported documents, images, audio, video and data using real local engines",
-      "url": "/#universal-converter",
+      "url": "/convert-files",
       "icons": [
         {
           "src": "/favicon.svg",

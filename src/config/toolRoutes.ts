@@ -6,14 +6,16 @@ export type { ToolRoute } from './toolRouteData';
 
 const routeById = new Map(TOOL_ROUTES.map(item => [item.id, item]));
 const routeByPath = new Map(TOOL_ROUTES.map(item => [item.path, item]));
+const staticPathById = new Map([['privacy', '/privacy'], ['terms', '/terms']]);
+const staticIdByPath = new Map(Array.from(staticPathById, ([id, path]) => [path, id]));
 
 export const routeForTool = (id: string): ToolRoute | undefined => routeById.get(id);
 
-export const pathForTool = (id: string): string => routeForTool(id)?.path || `/tools/${id}`;
+export const pathForTool = (id: string): string => routeForTool(id)?.path || staticPathById.get(id) || `/tools/${id}`;
 
 export const toolIdFromLocation = (location: Pick<Location, 'pathname' | 'hash'>): string | null => {
   const normalizedPath = location.pathname.length > 1 ? location.pathname.replace(/\/$/, '') : '/';
-  if (normalizedPath !== '/') return routeByPath.get(normalizedPath)?.id || null;
+  if (normalizedPath !== '/') return routeByPath.get(normalizedPath)?.id || staticIdByPath.get(normalizedPath) || null;
   return location.hash.slice(1) || null;
 };
 

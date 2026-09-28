@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowRight, Command, FileAudio, FileImage, FileText, FileVideo, RefreshCw, Search, ShieldCheck, Tags, X } from 'lucide-react';
-import { searchTools } from '../../utils/toolSearch';
+import { isDirectToolSearchMatch, searchTools } from '../../utils/toolSearch';
 import { TOOLS } from '../../pages/Dashboard/data';
 
 interface CommandPaletteProps {
@@ -14,7 +14,7 @@ function iconForTool(id: string) {
   if (id.startsWith('video-')) return FileVideo;
   if (id.startsWith('audio-')) return FileAudio;
   if (id.startsWith('image-') || id === 'rasterbator') return FileImage;
-  if (id === 'universal-converter') return RefreshCw;
+  if (id === 'universal-converter' || id.startsWith('convert-')) return RefreshCw;
   if (id === 'metadata-editor') return Tags;
   return FileText;
 }
@@ -28,6 +28,7 @@ export function CommandPalette({ open, onClose, onSelectTool }: CommandPalettePr
     if (!query.trim()) return TOOLS.slice(0, 8);
     return searchTools(TOOLS, query).slice(0, 12);
   }, [query]);
+  const smartMatch = Boolean(query.trim() && results[0] && !isDirectToolSearchMatch(results[0], query));
 
   useEffect(() => setActiveIndex(0), [query]);
 
@@ -79,7 +80,7 @@ export function CommandPalette({ open, onClose, onSelectTool }: CommandPalettePr
         </div>
 
         <div className="command-palette__body">
-          <p>{query ? `${results.length} matching tools` : 'Suggested tools'}</p>
+          <p>{query ? smartMatch ? `Closest matches for “${query.trim()}”` : `${results.length} matching tools` : 'Suggested tools'}</p>
           <div className="command-palette__results">
             {results.map((tool, index) => {
               const ToolIcon = iconForTool(tool.id);

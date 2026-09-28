@@ -21,7 +21,7 @@ export const getSupportedTargets = (extension: string): Set<string> => {
     if (['avif', 'svg'].includes(source)) targets.delete('svg');
     if (['png', 'jpg', 'jpeg', 'webp', 'bmp'].includes(source)) targets.add('pdf');
   } else if (source === 'pdf') {
-    ['docx', 'txt'].forEach(target => targets.add(target));
+    targets.add('txt');
   } else if (source === 'docx') {
     ['pdf', 'txt', 'html'].forEach(target => targets.add(target));
   } else if (source === 'xlsx') {
@@ -81,4 +81,24 @@ export const getCommonSupportedTargets = (files: Array<Pick<File, 'name'>>): Set
     });
   });
   return common;
+};
+
+export const getPreferredTarget = (files: Array<Pick<File, 'name'>>, targets: Set<string>): string => {
+  if (files.length === 1) {
+    const preferred: Record<string, string> = {
+      png: 'webp', jpg: 'png', jpeg: 'png', mp4: 'mp3', mov: 'mp3', webm: 'mp3', csv: 'json', json: 'csv',
+    };
+    const preferredFormat = preferred[getFileExtension(files[0])];
+    if (preferredFormat && targets.has(preferredFormat)) return preferredFormat;
+  }
+  return Array.from(targets)[0] || '';
+};
+
+export const getConversionLimitation = (extension: string): string => {
+  const source = extension.toLowerCase();
+  if (['pdf', 'docx', 'pptx', 'xlsx'].includes(source)) return 'Complex layouts, fonts, and embedded objects may not reproduce exactly.';
+  if (['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(source)) return 'Media conversion can use significant memory. Keep this tab open while processing.';
+  if (['mp3', 'wav', 'aac', 'flac', 'm4a', 'ogg'].includes(source)) return 'Audio conversion may change codec-specific metadata.';
+  if (['svg', 'gif', 'avif'].includes(source)) return 'Animation or vector detail may be flattened for raster outputs.';
+  return 'Conversion runs locally. Review the downloaded result before replacing the original.';
 };

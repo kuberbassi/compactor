@@ -5,7 +5,7 @@ import { CATEGORIES } from './Dashboard/types';
 import { TOOLS } from './Dashboard/data';
 import { ToolCard } from './Dashboard/ToolCard';
 import type { ProcessedCountSnapshot } from '../utils/counterStorage';
-import { searchTools } from '../utils/toolSearch';
+import { isDirectToolSearchMatch, searchTools } from '../utils/toolSearch';
 import type { ToolItem } from './Dashboard/types';
 
 const POPULAR_TOOL_IDS = ['pdf-compress', 'universal-converter', 'pdf-edit', 'image-optimizer', 'video-compressor', 'pdf-to-word'];
@@ -26,6 +26,7 @@ export function Dashboard({ onSelectTool, processedCount, recentToolIds = [], on
   }, [deferredQuery, filteredTools, selectedCat, showAllTools]);
   const recentTools = recentToolIds.map(id => ALL_TOOLS.find(tool => tool.id === id)).filter((tool): tool is ToolItem => Boolean(tool));
   const isLibraryOpen = showAllTools || Boolean(searchQuery.trim()) || selectedCat !== 'ALL';
+  const smartMatch = Boolean(searchQuery.trim() && visibleTools[0] && !isDirectToolSearchMatch(visibleTools[0], deferredQuery));
 
   return <div className="dashboard-v2">
     <section className="dashboard-v2__hero" aria-labelledby="home-title">
@@ -49,6 +50,7 @@ export function Dashboard({ onSelectTool, processedCount, recentToolIds = [], on
     <section id="tool-library" className="dashboard-v2__library" aria-labelledby="library-title">
       <div className="dashboard-v2__section-heading"><div><span>THE TOOLKIT</span><h2 id="library-title">{searchQuery ? `${visibleTools.length} results` : isLibraryOpen ? 'All tools' : 'Start with the essentials'}</h2><p>{isLibraryOpen ? 'Everything you need, organized by the job.' : 'The tools people reach for most.'}</p></div><button type="button" onClick={() => { setSelectedCat('ALL'); setShowAllTools(value => !value); }}>{showAllTools ? 'Show essentials' : `View all ${ALL_TOOLS.length}`} <ArrowRight /></button></div>
       {isLibraryOpen ? <div className="dashboard-v2__filters" role="group" aria-label="Filter tools by category">{CATEGORIES.map(cat => <button key={cat} type="button" aria-pressed={selectedCat === cat} onClick={() => setSelectedCat(cat)}>{cat === 'AUDIO & CONVERT' ? 'AUDIO' : cat}<span>{cat === 'ALL' ? ALL_TOOLS.length : ALL_TOOLS.filter(tool => tool.category === cat).length}</span></button>)}</div> : null}
+      {smartMatch ? <p className="dashboard-v2__smart-match" role="status">Closest match: <strong>{visibleTools[0].title}</strong></p> : null}
       <div className="dashboard-v2__grid">{visibleTools.map((tool, index) => <ToolCard key={tool.id} tool={tool} index={index} onSelectTool={onSelectTool} />)}</div>
       {visibleTools.length === 0 ? <div className="dashboard-v2__empty"><Search /><h3>No tool found</h3><p>Try a shorter task like “PDF”, “audio”, or “compress”.</p></div> : null}
     </section>

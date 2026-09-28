@@ -136,7 +136,7 @@ git diff --check
 
 ## Documentation standard
 
-- Keep `docs/product-upgrade-roadmap.md` current after meaningful changes.
+- Keep `plans/README.md` and the relevant guide in `docs/` current after meaningful changes.
 - Record: what changed, current constraints, non-ideal shortcuts, known issues, and the difference between automated validation and visual/output-fidelity evidence.
 - Use plain, human-readable language. The roadmap is a product ledger, not just a technical changelog.
 - Do not call a capability “perfect,” “native,” “lossless,” or “accurate” unless the implementation and validation meet that claim.
@@ -163,4 +163,3 @@ git diff --check
 - Rasterbator preview/PDF visual parity needs real rendered-output comparison, especially at tile seams.
 - CSS filter previews and canvas export filters are not automatically pixel-identical.
 - Automated lint, tests, and builds establish code health; they do not replace manual visual/export verification.
-

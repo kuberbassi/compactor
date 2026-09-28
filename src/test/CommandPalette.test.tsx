@@ -11,6 +11,17 @@ describe('CommandPalette', () => {
     expect(matchingButtons[0]).toBeInTheDocument();
   });
 
+  it('finds real document conversion routes without inventing unsupported tools', () => {
+    render(<CommandPalette open onClose={() => undefined} onSelectTool={() => undefined} />);
+    const search = screen.getByRole('searchbox', { name: 'Search tools and actions' });
+    fireEvent.change(search, { target: { value: 'pdf to word' } });
+    expect(screen.getByText(/No exact match/i)).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'word to pdf' } });
+    expect(screen.getByRole('button', { name: /Word to PDF Converter/i })).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: 'powerpoint to word' } });
+    expect(screen.getByText(/No exact match/i)).toBeInTheDocument();
+  });
+
   it('opens the first result with Enter', () => {
     const onSelectTool = vi.fn();
     const onClose = vi.fn();

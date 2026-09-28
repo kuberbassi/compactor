@@ -8,12 +8,12 @@ import { formatBytes } from '../../utils/image';
 import {
   getCommonSupportedTargets,
   getFileExtension,
+  getPreferredTarget,
   isSupportedSourceFormat,
   SUPPORTED_SOURCE_FORMATS,
 } from '../../utils/conversionCapabilities';
 import { appendUniqueFiles, downloadAll, downloadAsZip, fileIdentity, makeUniqueNames } from '../../utils/batch';
 import { convertUniversalFile } from '../../utils/universalConversion';
-import type { PdfDocxMode } from '../../utils/documentConverters';
 import {
   AlertCircle,
   Archive,
@@ -72,40 +72,30 @@ interface UniversalConverterProps {
   onGoHome: () => void;
   onSelectTool?: (toolId: string) => void;
   onUploadSuccess: () => void;
+  initialTargetFormat?: string;
+  title?: string;
+  description?: string;
 }
 
 const categoryForFormat = (format: string): string =>
   Object.entries(FORMAT_CATEGORIES).find(([, formats]) => formats.includes(format))?.[0] || 'document';
 
-const preferredTarget = (files: File[], targets: Set<string>): string => {
-  if (files.length === 1) {
-    const extension = getFileExtension(files[0]);
-    const preferred: Record<string, string> = {
-      pdf: 'docx',
-      png: 'webp',
-      jpg: 'png',
-      jpeg: 'png',
-      mp4: 'mp3',
-      mov: 'mp3',
-      webm: 'mp3',
-      csv: 'json',
-      json: 'csv',
-    };
-    if (preferred[extension] && targets.has(preferred[extension])) return preferred[extension];
-  }
-  return Array.from(targets)[0] || '';
-};
-
-export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome, onSelectTool = () => undefined, onUploadSuccess }) => {
+export const UniversalConverter: React.FC<UniversalConverterProps> = ({
+  onGoHome,
+  onSelectTool = () => undefined,
+  onUploadSuccess,
+  initialTargetFormat,
+  title = 'Convert Files',
+  description = 'Convert files privately in your browser with zero server uploads.',
+}) => {
   const [items, setItems] = useState<QueueItem[]>([]);
-  const [targetCategory, setTargetCategory] = useState('image');
-  const [targetFormat, setTargetFormat] = useState('png');
+  const [targetCategory, setTargetCategory] = useState(() => categoryForFormat(initialTargetFormat || 'png'));
+  const [targetFormat, setTargetFormat] = useState(initialTargetFormat || 'png');
   const [searchQuery, setSearchQuery] = useState('');
   const [processing, setProcessing] = useState(false);
   const [overallProgress, setOverallProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [pdfDocxMode, setPdfDocxMode] = useState<PdfDocxMode>('preserve-layout');
   const [hasRun, setHasRun] = useState(false);
   const stopRequestedRef = useRef(false);
   const resultUrlsRef = useRef(new Set<string>());
@@ -119,6 +109,12 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
     resultUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
     resultUrlsRef.current.clear();
   }, []);
+
+  useEffect(() => {
+    if (!initialTargetFormat || items.length > 0) return;
+    setTargetFormat(initialTargetFormat);
+    setTargetCategory(categoryForFormat(initialTargetFormat));
+  }, [initialTargetFormat, items.length]);
 
   const updateItem = (id: string, patch: Partial<QueueItem>) => {
     setItems(current => current.map(item => item.id === id ? { ...item, ...patch } : item));
@@ -157,7 +153,8 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       setItems(current => [...current, ...newItems]);
 
       const nextTargets = getCommonSupportedTargets(accepted);
-      const nextTarget = nextTargets.has(targetFormat) ? targetFormat : preferredTarget(accepted, nextTargets);
+      const preferredIntentTarget = initialTargetFormat && nextTargets.has(initialTargetFormat) ? initialTargetFormat : undefined;
+      const nextTarget = preferredIntentTarget || (nextTargets.has(targetFormat) ? targetFormat : getPreferredTarget(accepted, nextTargets));
       setTargetFormat(nextTarget);
       setTargetCategory(categoryForFormat(nextTarget));
       setHasRun(false);
@@ -179,7 +176,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       const next = current.filter(item => item.id !== id);
       const targets = getCommonSupportedTargets(next.map(item => item.file));
       if (next.length > 0 && !targets.has(targetFormat)) {
-        const nextTarget = preferredTarget(next.map(item => item.file), targets);
+        const nextTarget = getPreferredTarget(next.map(item => item.file), targets);
         setTargetFormat(nextTarget);
         setTargetCategory(categoryForFormat(nextTarget));
       }
@@ -236,7 +233,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
       setStatusText(`Converting ${index + 1} of ${selected.length}: ${item.file.name}`);
 
       try {
-        const converted = await convertUniversalFile(item.file, targetFormat, pdfDocxMode, (percent, status) => {
+        const converted = await convertUniversalFile(item.file, targetFormat, (percent, status) => {
           updateItem(item.id, { progress: percent, statusText: status });
           setOverallProgress(Math.round(((index + percent / 100) / selected.length) * 100));
         });
@@ -275,8 +272,8 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
   return (
     <div className={`tool-layout converter-tool-layout ${items.length > 0 || processing || hasRun ? 'has-active-session' : 'is-empty-session'}`}>
       <ToolHeader
-        title="Convert Files"
-        description="Convert files privately in your browser with zero server uploads."
+        title={title}
+        description={description}
         icon={RefreshCw}
         fileName={items.length === 1 ? items[0].file.name : items.length > 1 ? `${items.length} files in queue` : undefined}
         fileMeta={items.length ? formatBytes(items.reduce((sum, item) => sum + item.file.size, 0)) : undefined}
@@ -359,15 +356,15 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
             <div className="flex-1 overflow-y-auto p-3 space-y-2" aria-label="Files waiting for conversion">
               {items.map((item, index) => (
                 <div key={item.id} className="converter-queue-item bg-zinc-900/70 hover:bg-zinc-800/80 border border-white/10 hover:border-white/25 rounded-2xl p-3 flex items-center gap-3 transition-all shadow-sm">
-                  <span className="text-center text-[11px] font-bold text-zinc-500 w-4">{index + 1}</span>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-zinc-950 text-[10px] font-mono font-bold uppercase text-white shadow-inner">
+                  <span className="converter-queue-item__index text-center text-[11px] font-bold text-zinc-500 w-4">{index + 1}</span>
+                  <div className="converter-queue-item__format flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-zinc-950 text-[10px] font-mono font-bold uppercase text-white shadow-inner">
                     {item.extension}
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="converter-queue-item__copy min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-white" title={item.file.name}>{item.file.name}</p>
                     <p className="whitespace-nowrap text-[11px] text-zinc-400">{formatBytes(item.file.size)}</p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="converter-queue-item__actions flex items-center gap-1 shrink-0">
                     <button type="button" disabled={index === 0} onClick={() => moveItem(index, -1)} aria-label={`Move ${item.file.name} up`} className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-20 cursor-pointer">
                       <ArrowUp className="h-3.5 w-3.5" />
                     </button>
@@ -450,7 +447,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
 
               <div className="space-y-2.5 bg-[#18191e] border border-white/10 rounded-2xl p-4">
                 <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">Category</span>
-                <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/10 bg-zinc-950/60 p-1.5 sm:grid-cols-5">
+                <div className="converter-category-grid grid gap-1.5 rounded-xl border border-white/10 bg-zinc-950/60 p-1.5">
                   {Object.keys(FORMAT_CATEGORIES).map(category => {
                     const categoryFormats = FORMAT_CATEGORIES[category as keyof typeof FORMAT_CATEGORIES];
                     const hasSupported = categoryFormats.some(format => supportedTargets.has(format));
@@ -481,7 +478,7 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
 
               <div className="space-y-2.5 bg-[#18191e] border border-white/10 rounded-2xl p-4">
                 <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">Available formats</span>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 max-h-48 overflow-y-auto pr-1">
+                <div className="converter-format-grid grid gap-2 max-h-48 overflow-y-auto pr-1">
                   {filteredFormats.map(format => {
                     const enabled = supportedTargets.has(format);
                     const isSelected = targetFormat === format;
@@ -506,23 +503,6 @@ export const UniversalConverter: React.FC<UniversalConverterProps> = ({ onGoHome
                   })}
                 </div>
               </div>
-
-              {distinctExtensions.length === 1 && distinctExtensions[0] === 'pdf' && targetFormat === 'docx' && (
-                <div className="space-y-2 bg-[#18191e] border border-white/10 rounded-xl p-4">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">Word conversion style</span>
-                  <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2" role="radiogroup" aria-label="Word conversion style">
-                    {([
-                      ['preserve-layout', 'Preserve layout', 'Recommended. Keeps each PDF page visually faithful inside Word.'],
-                      ['editable', 'Editable text', 'Extracts or OCRs text; complex positioning and pictures may change.'],
-                    ] as const).map(([mode, label, description]) => (
-                      <button key={mode} type="button" role="radio" aria-checked={pdfDocxMode === mode} onClick={() => setPdfDocxMode(mode)} className={`min-h-20 rounded-xl border p-3.5 text-left transition-colors cursor-pointer ${pdfDocxMode === mode ? 'border-white bg-white/10 text-white' : 'border-white/10 bg-zinc-950/50 text-zinc-400 hover:border-white/20'}`}>
-                        <strong className="block text-xs font-bold text-white">{label}</strong>
-                        <span className="mt-1 block text-[11px] leading-relaxed text-zinc-400">{description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {targetFormat === 'pdf' && distinctExtensions.some(extension => ['pptx', 'xlsx', 'html'].includes(extension)) && (
                 <p className="rounded-xl border border-white/10 p-4 text-xs text-zinc-300">

@@ -2,6 +2,8 @@
   "name": "compactor",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "npm@11.9.0",
+  "engines": { "node": ">=24 <25", "npm": ">=11 <12" },
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,14 +11,25 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:compressors": "node scripts/check-compressors.cjs",
+    "check:tablet-video": "node scripts/check-tablet-video.mjs",
+    "check:mobile-nav": "node scripts/check-mobile-nav.mjs",
+    "check:compact-compressors": "node scripts/check-compact-compressors.mjs",
+    "check:compact-media": "node scripts/check-compact-media.mjs",
+    "check:compact-converter": "node scripts/check-compact-converter.mjs",
+    "check:compact-pdf": "node scripts/check-compact-pdf.mjs",
+    "check:responsive": "node scripts/check-responsive-acceptance.mjs",
+    "check:tablet-routes": "node scripts/check-tablet-routes.mjs",
+    "check:tablet-workspaces": "node scripts/check-tablet-workspaces.mjs",
     "check:seo": "node scripts/check-seo-build.mjs",
     "lint": "oxlint",
     "typecheck": "tsc -b",
     "quality": "npm run lint && npm run test && npm run build && npm run check:seo",
+    "check:production": "npm run quality && npm run check:compressors && npm audit --omit=dev --audit-level=high",
     "preview": "vite preview"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@ffmpeg/core": "^0.12.6",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@fontsource/inter": "^5.2.8",
@@ -61,9 +74,10 @@
     "@vitejs/plugin-react": "^6.0.3",
     "jsdom": "^29.1.1",
     "oxlint": "^1.71.0",
+    "playwright": "^1.63.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

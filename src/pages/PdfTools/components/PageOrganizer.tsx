@@ -144,7 +144,7 @@ export const PageOrganizer: React.FC<PageOrganizerProps> = ({
             </div>
             <span className="pdf-organizer__separator" />
             <button type="button" className="pdf-organizer__change" onClick={onReset}>Change file</button>
-            <button type="button" className="pdf-organizer__export" onClick={onRunOrganize} disabled={pagesList.length === 0}><Download aria-hidden="true" /><span>Export PDF</span></button>
+            <button type="button" className="pdf-organizer__export" onClick={onRunOrganize} disabled={pagesList.length === 0} title="Export PDF"><Download aria-hidden="true" /><span>Export PDF</span></button>
           </div>
         </div>
       </EditorCommandBar>

@@ -3,6 +3,8 @@ import {
   getCommonSupportedTargets,
   getFileExtension,
   getFileFormatLabel,
+  getPreferredTarget,
+  getConversionLimitation,
   getSupportedTargets,
   isSupportedSourceFormat,
   SUPPORTED_SOURCE_FORMATS,
@@ -17,7 +19,7 @@ describe('universal converter capability registry', () => {
   });
 
   it('only exposes implemented PDF and Word targets', () => {
-    expect([...getSupportedTargets('pdf')]).toEqual(['docx', 'txt']);
+    expect([...getSupportedTargets('pdf')]).toEqual(['txt']);
     expect([...getSupportedTargets('docx')]).toEqual(['pdf', 'txt', 'html']);
     expect(getSupportedTargets('pdf').has('doc')).toBe(false);
     expect([...getSupportedTargets('pptx')]).toEqual(['pdf']);
@@ -55,6 +57,14 @@ describe('universal converter capability registry', () => {
 
     expect(getCommonSupportedTargets([image, document]).size).toBe(0);
     expect(getCommonSupportedTargets([]).size).toBe(0);
+  });
+
+  it('shares preferred targets and human-readable limitations across presentations', () => {
+    const image = new File([], 'photo.png', { type: 'image/png' });
+    const targets = getCommonSupportedTargets([image]);
+    expect(getPreferredTarget([image], targets)).toBe('webp');
+    expect(getConversionLimitation('pdf')).toMatch(/layouts/i);
+    expect(getConversionLimitation('mp4')).toMatch(/memory/i);
   });
 
   it('creates a real DOCX package that can be parsed back', async () => {

@@ -1,6 +1,7 @@
 import type { ToolItem } from './types';
+import { TOOL_ROUTES } from '../../config/toolRouteData';
 
-export const TOOLS: ToolItem[] = [
+const TOOL_OVERRIDES: ToolItem[] = [
   // VIDEO
   {
     id: 'video-compressor',
@@ -152,8 +153,8 @@ export const TOOLS: ToolItem[] = [
   // IMAGE
   {
     id: 'image-optimizer',
-    title: 'Edit an image',
-    subtitle: 'Resize & compress images',
+    title: 'Image Compressor',
+    subtitle: 'Compress, resize & edit images',
     description: 'Compress photos, resize dimensions, or blur private details with split-screen preview.',
     category: 'IMAGE',
     tags: ['AVIF / WebP / PNG', 'Split Comparison', 'Pixelating Brush'],
@@ -225,3 +226,27 @@ export const TOOLS: ToolItem[] = [
     illustrationType: 'metadata'
   }
 ];
+
+const categoryForTool = (id: string): ToolItem['category'] => {
+  if (id.startsWith('video-')) return 'VIDEO';
+  if (id.startsWith('image-') || id === 'rasterbator' || id === 'pdf-jpg-to-pdf') return 'IMAGE';
+  if (id.startsWith('audio-') || id.startsWith('convert-') || id === 'universal-converter' || id === 'metadata-editor') return 'AUDIO & CONVERT';
+  return 'PDF';
+};
+
+const overridesById = new Map(TOOL_OVERRIDES.map(tool => [tool.id, tool]));
+
+/**
+ * The public route registry is the source of truth for the homepage library.
+ * Hand-authored entries retain richer copy while new routes automatically get
+ * a functional card instead of silently disappearing from "All tools".
+ */
+export const TOOLS: ToolItem[] = TOOL_ROUTES.map(route => overridesById.get(route.id) || ({
+  id: route.id,
+  title: route.title,
+  subtitle: route.description,
+  description: route.description,
+  category: categoryForTool(route.id),
+  tags: route.title.split(/\s+/).filter(word => word.length > 2),
+  illustrationType: route.id,
+}));
