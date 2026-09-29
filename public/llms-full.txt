@@ -17,7 +17,7 @@ Compactor is a privacy-first, client-side media processing suite built with Reac
 - No cloud processing
 - No user accounts required
 - Files never leave the browser
-- Works completely offline after initial caching (PWA)
+- In-browser local processing after initial application and engine asset caching
 
 ## Core Technologies
 
@@ -50,7 +50,7 @@ Compactor is a privacy-first, client-side media processing suite built with Reac
 
 ## Video Processing
 
-### Video Compressor (#video-compressor)
+### Video Compressor (/video/compress)
 
 Features
 
@@ -85,7 +85,7 @@ Advanced
 
 ---
 
-### Video to Audio (#video-to-audio)
+### Video to Audio (/video/audio)
 
 Features
 
@@ -96,7 +96,7 @@ Features
 
 ---
 
-### Video to GIF (#video-to-gif)
+### Video to GIF (/video-to-gif)
 
 Features
 
@@ -113,7 +113,7 @@ Supported FPS
 
 ---
 
-### Mute Video (#video-mute)
+### Mute Video (/mute-video)
 
 Features
 
@@ -125,7 +125,7 @@ Features
 
 # PDF Tools
 
-## Edit PDF (#pdf-edit)
+## Edit PDF (/edit-pdf)
 
 Features
 
@@ -136,7 +136,7 @@ Features
 
 ---
 
-## Redact PDF (#pdf-redact)
+## Redact PDF (/redact-pdf)
 
 Features
 
@@ -146,7 +146,7 @@ Features
 
 ---
 
-## Page Organizer (#pdf-organize)
+## Page Organizer (/organize-pdf)
 
 Features
 
@@ -158,7 +158,7 @@ Features
 
 ---
 
-## Merge PDF (#pdf-merge)
+## Merge PDF (/merge-pdf)
 
 Features
 
@@ -168,7 +168,7 @@ Features
 
 ---
 
-## Split PDF (#pdf-split)
+## Split PDF (/split-pdf)
 
 Features
 
@@ -178,7 +178,7 @@ Features
 
 ---
 
-## Crop Margins (#pdf-crop-tool)
+## Crop Margins (/crop-pdf)
 
 Features
 
@@ -188,7 +188,7 @@ Features
 
 ---
 
-## Compress PDF (#pdf-compress)
+## Compress PDF (/compress-pdf)
 
 Features
 
@@ -198,7 +198,7 @@ Features
 
 ---
 
-## Document Stamps (#pdf-stamps)
+## Document Stamps (/stamp-pdf)
 
 Features
 
@@ -209,7 +209,7 @@ Features
 
 ---
 
-## Protect PDF (#pdf-protect)
+## Protect PDF (/protect-pdf)
 
 Features
 
@@ -219,7 +219,7 @@ Features
 
 ---
 
-## Unlock PDF (#pdf-unlock)
+## Unlock PDF (/unlock-pdf)
 
 Features
 
@@ -229,7 +229,7 @@ Features
 
 ---
 
-## Page Numbers (#pdf-page-numbers)
+## Page Numbers (/number-pdf-pages)
 
 Features
 
@@ -240,7 +240,7 @@ Features
 
 ---
 
-## PDF to Images (#pdf-to-image)
+## PDF to Images (/pdf-to-images)
 
 Features
 
@@ -252,7 +252,7 @@ Features
 
 ---
 
-## Images to PDF (#pdf-jpg-to-pdf)
+## Images to PDF (/image/to-pdf)
 
 Features
 
@@ -269,7 +269,7 @@ Document filters
 
 ---
 
-## Markdown Workspace (#pdf-word-to-pdf)
+## Markdown Workspace (/markdown-to-pdf)
 
 Features
 
@@ -295,7 +295,7 @@ Features
 
 # Image Tools
 
-## Image Optimizer (#image-optimizer)
+## Image Optimizer (/image/compress)
 
 Supported formats
 
@@ -330,7 +330,7 @@ Aspect ratios
 
 ---
 
-## Poster Maker (#rasterbator)
+## Poster Maker (/poster-maker)
 
 Features
 
@@ -344,7 +344,7 @@ Features
 
 # Audio Tools
 
-## Audio Compressor (#audio-optimizer)
+## Audio Compressor (/compress-audio)
 
 Supported formats
 
@@ -360,7 +360,7 @@ Features
 
 ---
 
-## Audio Joiner (#audio-joiner)
+## Audio Joiner (/join-audio)
 
 Features
 
@@ -371,7 +371,7 @@ Features
 
 ---
 
-## Key & BPM Finder (#audio-bpm-finder)
+## Key & BPM Finder (/audio-key-bpm-finder)
 
 Features
 
@@ -382,7 +382,7 @@ Features
 
 ---
 
-## Pitch & Speed Changer (#audio-pitch-speed)
+## Pitch & Speed Changer (/change-audio-pitch-speed)
 
 Features
 
@@ -399,7 +399,7 @@ Ranges
 
 # Conversion Tools
 
-## Verified File Converter (#universal-converter)
+## Verified File Converter (/file-converter)
 
 Features
 
@@ -436,7 +436,7 @@ Reliability policy
 
 # Metadata Tools
 
-## Metadata Editor (#metadata-editor)
+## Metadata Editor (/metadata-editor)
 
 Supported metadata
 

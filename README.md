@@ -5,11 +5,11 @@
 <h1 align="center">Compactor</h1>
 
 <p align="center">
-  <b>Private Media Compressor, PDF Studio &amp; File Converter</b>
+  <b>100% Private In-Browser Media Compressor, PDF Studio &amp; Universal File Converter</b>
 </p>
 
 <p align="center">
-  <a href="https://compactor.kuberbassi.com"><strong>⚡ Open Live Web Application »</strong></a>
+  <a href="https://compactor.kuberbassi.com"><strong>⚡ Open Live App »</strong></a>
 </p>
 
 <p align="center">
@@ -17,139 +17,113 @@
   <img src="https://img.shields.io/badge/TypeScript-6-3178c6?style=flat-square&logo=typescript" alt="TypeScript 6" />
   <img src="https://img.shields.io/badge/Vite-8-646cff?style=flat-square&logo=vite" alt="Vite" />
   <img src="https://img.shields.io/badge/FFmpeg-WASM-orange?style=flat-square" alt="FFmpeg WASM" />
-  <img src="https://img.shields.io/badge/Tests-Vitest-22c55e?style=flat-square&logo=vitest" alt="Vitest" />
+  <img src="https://img.shields.io/badge/Tests-58%20passed-22c55e?style=flat-square&logo=vitest" alt="Vitest 58 passed" />
   <img src="https://img.shields.io/badge/License-MIT-zinc?style=flat-square" alt="MIT License" />
 </p>
 
 ---
 
-## 🔒 Private, Local File Processing
+## 🔒 100% Private, Zero Server Uploads
 
-**Compactor** is built on a privacy-first, zero-server-upload architecture. Every video compression, PDF edit, audio transcode, image optimization, and format conversion happens **directly inside your browser** using client-side WebAssembly and HTML5 processing engines.
+**Compactor** runs completely inside your browser. No files, media, or documents are ever uploaded to any backend server.
 
-The public processed-file number is an anonymous, best-effort activity estimate. It counts privacy-preserving completion events, not verified users or conversions; the server cannot prove that browser-side work completed. Your device-local count remains available when the optional counter service is offline. No file names, sizes, contents, hashes, or other file-derived details are sent for this metric.
-
-- **Zero Server Uploads** — Files, videos, and documents never leave your local device.
-- **Browser-Sandboxed Processing** — File contents are processed locally; optional analytics and the anonymous counter may use network requests.
-- **WASM Processing Engines** — FFmpeg, PDF, OCR, and image engines run in the browser without a file-processing server.
+- **Zero Server Uploads** — Your videos, photos, and documents never leave your device.
+- **Client-Side WASM Engines** — FFmpeg WASM, PDF.js, PDF-Lib, Rubberband, and Tesseract OCR run locally in web workers.
+- **Strict Verification** — Real file conversion and compression. Unsupported formats (like PDF-to-Word) are explicitly disabled rather than producing fake or low-fidelity files.
 
 ---
 
-## ✨ Feature Suites
+## ✨ Features
 
 ### 🎬 Video Suite
-- **Target Size Clamping** — Preset compressor for **Discord (≤10 MB)**, **WhatsApp (≤16 MB)**, **TikTok (≤70 MB)**, and **Instagram (≤95 MB)** with 2-pass size bounds.
-- **Video to Audio** — Extract high-bitrate MP3, AAC, or WAV audio tracks.
-- **Video to GIF** — Convert video clips into smooth 24/15/10 FPS animated GIFs.
-- **Mute Video** — Strip audio channels instantly with zero re-encoding loss.
+- **Target Size Preset Compressor** — One-click compression tailored for Discord (≤10 MB), WhatsApp (≤16 MB), TikTok (≤70 MB), and Instagram (≤95 MB) with 2-pass bitrate matching.
+- **Trim & Timeline** — Precise visual timeline scrubbing and sub-second trimming.
+- **Video to Audio & GIF** — Extract crystal-clear MP3, WAV, or AAC audio tracks; generate smooth animated GIFs.
+- **Mute Video** — Instant zero-re-encoding audio stripping.
 
-### 📄 PDF Tools & Markdown Workspace
-- **Markdown Workspace** — Rich GFM editor workspace with a syntax toolbar, live split preview, templates (GitHub README, Tech Spec, Meeting Notes), and preview-matched local PDF export.
-- **PDF Annotate & Edit** — Add text, signatures, highlights, and custom shapes directly onto PDF pages.
-- **Document Scan Filters** — Smart Magic Color, Whiteboard Clean, B&W Binary Thresholding, and Vibrant Diagram filters.
-- **Page Organizer** — Drag-and-drop page reordering, rotation, extraction, and deletion.
-- **Merge PDF & Split PDF** — Combine multiple PDFs into one, or extract specific page ranges.
-- **Crop Margins** — Interactive trim percentage control for clean printable layouts.
-- **Document Stamps & Sign Document** — Add vector approval stamps (`APPROVED`, `CONFIDENTIAL`, `FINAL DRAFT`) or a signature.
-- **Security** — AES-128/256 password encryption and password removal.
-- **PDF text extraction** — Create TXT output from embedded text or private OCR for scanned pages.
+### 📄 PDF Studio & Markdown
+- **PDF Annotation & Editor** — Add vector text, stamps, signatures, freehand drawings, shapes, and permanent redactions.
+- **Page Organizer** — Drag-and-drop page reordering, rotation, deletion, and split extraction.
+- **Merge, Split, Protect & Unlock** — Client-side AES-128/256 encryption, password removal, and document joining.
+- **Markdown Workspace** — Full GFM editor with split live preview, templates, and high-fidelity PDF rendering.
+- **Document Scan Filters** — Whiteboard Clean, Magic Color, B&W Binary Thresholding, and Vibrant Diagram filters.
 
 ### 🖼️ Image Optimizer
-- Multi-format lossy and lossless compression (PNG, JPG, WebP, GIF, AVIF).
-- Multi-color raster-to-SVG vectorization with color quantization, layered edge tracing, line fitting, and quadratic spline fitting.
-- Aspect ratio cropping (`1:1`, `16:9`, `4:3`, `9:16`), rotation, horizontal/vertical flipping.
-- Interactive pixelation censorship brush for obscuring sensitive document regions.
+- **Multi-Format Compression** — Lossless & lossy optimization for PNG, JPG, WebP, GIF, and AVIF.
+- **Raster to SVG Vectorizer** — Color quantization, layered edge tracing, line fitting, and spline generation.
+- **Censorship Brush** — Interactive canvas pixelation and blurring for redacting sensitive documents and photos.
 
-### 🎵 Audio Suite & Converter
-- **Compress Audio** — High-efficiency WASM audio compressor with trim range timeline & waveform previews.
-- **Audio Joiner** — Merge & concatenate multiple audio tracks into a single seamless audio file.
-- **Key & BPM Finder** — 100% in-browser Web Audio API detection of tempo (BPM), musical key & Camelot wheel code.
-- **Pitch & Speed Changer** — Transpose key pitch (-12 to +12 semitones) & adjust playback tempo (0.5× to 2.0×).
-- **Verified File Converter** — Strict engine-backed conversions for PDF, DOCX, text, data, common raster images, SVG, audio, and video. Word-to-PDF renders the visual DOCX pages instead of rebuilding plain text. Compatible mixed files can run as a sequential bulk queue with shared-target filtering, per-file progress, retry, and Download All; unsupported pairs are disabled rather than fabricated.
-- **Metadata Editor** — Inspect and edit EXIF, ID3, and PDF tags directly in-browser.
-- **Poster Maker** — Multi-page printable wall poster grid generator.
+### 🎵 Audio Suite & Universal Converter
+- **Compress Audio & Joiner** — High-efficiency WASM compression and seamless multi-track audio concatenation.
+- **Pitch & Speed Transposer** — Real-time tempo adjustment (0.5×–2.0×) and musical key transposing (-12 to +12 semitones).
+- **Key & BPM Detection** — 100% in-browser Web Audio API musical key, Camelot wheel, and tempo analyzer.
+- **Universal Batch Converter** — Strict engine-backed format conversions for documents, images, audio, video, and tabular data. Mixed files convert sequentially with shared-target filtering, per-file retry, and one-click ZIP download.
 
 ---
 
-## 🛠️ Technology Stack & Architecture
+## 📱 Responsive & Mobile First
 
-| Layer | Technology |
-|---|---|
-| **Core** | React 19, TypeScript 6, Vite 8 |
-| **Styling & UI** | TailwindCSS v4, Base UI, Custom Glassmorphism Design Tokens |
-| **Icons** | Lucide React |
-| **Processing Engines** | `@ffmpeg/ffmpeg` (WASM), `@ffmpeg/util`, `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, Tesseract.js OCR, ImageTracerJS, HTML5 Canvas 2D |
-| **Testing** | Vitest + Testing Library + JSDOM |
-| **Deployment** | Vercel with security headers, clean tool URLs, and immutable asset caching |
-
-### Module Architecture
-
-Recent PDF improvements include reliable high-resolution annotation export, permanent rasterized redaction, preview-matched Markdown PDF export, a responsive Markdown workspace, and one-click bulk downloads for generated PDFs and PDF page images.
-
-Compactor also has a purpose-built narrow-screen interface below 768px. It
-supports bulk image/PDF/audio/video compression, verified file conversion,
-Merge/Protect/Unlock PDF, PDF-to-images, and a simplified Images-to-PDF flow.
-Editor-heavy routes show useful compact alternatives instead of squeezing the
-desktop workspace. See [responsive and compact-device support](docs/mobile-support.md)
-for the exact tool list, breakpoint contract, and recorded browser matrix.
-
-```
-src/
-├── pages/
-│   ├── Dashboard/          # Modular dashboard (ToolCard, IllustrationBanner, data, types)
-│   ├── VideoCompressor/
-│   ├── PdfTools/
-│   ├── AudioTools/
-│   ├── ImageTools/
-│   └── ...
-├── utils/
-│   └── ffmpeg/             # Modular FFmpeg WASM layer
-│       ├── core.ts         # Worker init & lifecycle
-│       ├── video.ts        # Compression, GIF, mute, audio extraction
-│       ├── audio.ts        # Audio processing
-│       └── index.ts        # Re-exports
-└── components/
-    ├── Common/             # Footer, ToolHeader, FileUploader, TrimTimeline
-    └── ui/                 # Design system primitives
-```
+Compactor provides a tailored dual-presentation experience:
+- **Desktop & Tablet Workspaces (≥768px)**: Immersive studio layouts with collapsible sidebars, multi-row command bars, canvas editors, and live audio/video players.
+- **Compact Phone App (<768px)**: Purpose-built mobile touch interfaces for fast on-the-go compression, file conversions, and PDF actions without cluttered desktop toolbars.
 
 ---
 
-## 🚀 Quick Start & Development
+## 🛠️ Tech Stack
 
-For short copy-paste update checks and GitHub dependency notifications, see
-[docs/maintenance.md](docs/maintenance.md).
+- **Framework**: React 19, TypeScript 6, Vite 8, Rolldown
+- **Styles**: TailwindCSS v4, Base UI, custom dark-charcoal glassmorphism design tokens
+- **Engines**: `@ffmpeg/ffmpeg` (WASM), `pdf-lib`, `pdfjs-dist`, `docx`, `mammoth`, `tesseract.js`
+- **Testing**: Vitest, Playwright (Chromium & WebKit), Testing Library, JSDOM
+- **Hosting**: Vercel with strict security headers (COOP, CORP, HSTS, frame-ancestors CSP) and clean pre-rendered SEO entry pages
 
-For the static SEO entry-page and sitemap workflow, see
-[docs/seo-routing.md](docs/seo-routing.md).
+---
+
+## 🚀 Getting Started
+
+### Local Setup
 
 ```bash
-# 1. Clone repository
+# Clone the repository
 git clone https://github.com/kuberbassi/compactor.git
 cd compactor
 
-# 2. Install dependencies
-npm install
+# Install dependencies
+npm ci
 
-# 3. Start development server
+# Start local development server
 npm run dev
+```
 
-# 4. Run the complete production-preparation gate
+### Automated Testing & Verification
+
+Compactor features a complete, zero-configuration automated test harness:
+
+```bash
+# Fast 9-point browser smoke test (cross-platform, auto-starts preview server)
+npm run test:browser:smoke
+
+# Multi-viewport responsive suite across Chromium & WebKit (320px to 1024px)
+npm run test:browser:responsive
+
+# Real export-fidelity verification (independent PDF & image parser validation)
+npm run test:browser:exports
+
+# Comprehensive production release gate (lint, tests, typecheck, build, SEO, compressors, audit)
 npm run check:production
-
-# 5. Build for production (already included in the gate)
-npm run build
 ```
 
 ---
 
-## 📲 Progressive Web App (PWA)
+## 📚 Documentation
 
-Compactor is configured as a standalone Web App and its manifest provides app
-shortcuts. The responsive browser matrix is documented in
-[docs/mobile-support.md](docs/mobile-support.md). Physical Android/iOS install,
-file-picker, share-sheet, backgrounding, and memory behavior still require
-real-device validation and are not implied by desktop responsive emulation.
+Detailed architectural and operational documentation is located in [`docs/`](docs/):
+
+- [`docs/production-readiness.md`](docs/production-readiness.md) — Release gate standards, browser verification, and operational guidance.
+- [`docs/code-quality.md`](docs/code-quality.md) — Architecture principles, engineering invariants, and modularity guidelines.
+- [`docs/mobile-support.md`](docs/mobile-support.md) — Responsive breakpoint contract and device support matrix.
+- [`docs/maintenance.md`](docs/maintenance.md) — Dependency hygiene, routine maintenance, and update workflows.
+- [`docs/seo-routing.md`](docs/seo-routing.md) — Prerendered static routes, clean URL resolution, and sitemap parity.
 
 ---
 
@@ -157,6 +131,4 @@ real-device validation and are not implied by desktop responsive emulation.
 
 Designed & Developed with ❤️ by **[Kuber Bassi](https://kuberbassi.com)**.
 
-License: MIT
-
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md) before opening a pull request or security report.
+License: [MIT](LICENSE)

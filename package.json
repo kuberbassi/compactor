@@ -25,6 +25,8 @@
     "typecheck": "tsc -b",
     "quality": "npm run lint && npm run test && npm run build && npm run check:seo",
     "check:production": "npm run quality && npm run check:compressors && npm audit --omit=dev --audit-level=high",
+    "test:browser:smoke": "npm run check:responsive",
+    "test:browser:responsive": "node scripts/check-responsive-acceptance.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -16,54 +16,14 @@ import { WorkspaceZoomControls } from '../../components/Workspace/WorkspaceContr
 import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../components/Workspace/EditorChrome';
 import { ErrorBanner } from '../../components/Common/ErrorBanner';
 import { ExportNotice } from '../../components/Common/ExportNotice';
-import { getAutoSignatureFontSize, getAutoStampFontSize, getClosestPageIndex, getTargetPageIndexes, getWatermarkPatternPositions, togglePageEffect } from '../../utils/pdfEditor';
+import { getAutoSignatureFontSize, getAutoStampFontSize, getClosestPageIndex, getTargetPageIndexes, getWatermarkPatternPositions, togglePageEffect, readPdfEditorPreferences, getCanvasCoords, drawWrappedText, PDF_EDITOR_PREFERENCES_KEY, type PdfEditorPreferences } from '../../utils/pdfEditor';
 import type { TextContent } from 'pdfjs-dist/types/src/display/api';
 import type { PageViewport } from 'pdfjs-dist/types/src/display/page_viewport';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 const PDF_EDITOR_COLORS = ['#ffffff', '#111827', '#ef4444', '#facc15', '#22c55e', '#3b82f6'];
-const PDF_EDITOR_PREFERENCES_KEY = 'compactor.pdf-editor.preferences.v1';
 
-type PdfEditorPreferences = {
-  zoom: number;
-  elementScope: 'current' | 'all';
-  strokeColor: string;
-  fillColor: string;
-  strokeWidth: number;
-  opacity: number;
-  rotation: number;
-  fontSize: number;
-  textColor: string;
-  fontFamily: string;
-  textAlign: 'left' | 'center' | 'right';
-  isBold: boolean;
-  isItalic: boolean;
-  redactText: string;
-  redactStyle: 'blackout' | 'whiteout' | 'custom-text';
-  watermarkText: string;
-  watermarkOpacity: number;
-  watermarkRotation: number;
-  watermarkDensity: number;
-  watermarkFontSize: number;
-  watermarkColor: string;
-  patternWatermarkText: string;
-  patternWatermarkOpacity: number;
-  patternWatermarkRotation: number;
-  patternWatermarkFontSize: number;
-  patternWatermarkColor: string;
-};
-
-const readPdfEditorPreferences = (): Partial<PdfEditorPreferences> => {
-  if (typeof window === 'undefined') return {};
-  try {
-    const stored = window.localStorage.getItem(PDF_EDITOR_PREFERENCES_KEY);
-    const parsed = stored ? JSON.parse(stored) : null;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
 
 function SelectablePdfTextLayer({ textContent, viewport }: { textContent: TextContent; viewport: PageViewport }) {
   const layerRef = React.useRef<HTMLDivElement>(null);
@@ -569,11 +529,11 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
   }, [annotations, selectedId, editingTextId]);
 
   // Canvas Mouse Coordinates Helper (in percentage 0..100)
-  const getCanvasCoords = (e: React.MouseEvent<HTMLDivElement> | MouseEvent, targetRect: DOMRect) => {
-    const x = Math.max(0, Math.min(100, ((e.clientX - targetRect.left) / targetRect.width) * 100));
-    const y = Math.max(0, Math.min(100, ((e.clientY - targetRect.top) / targetRect.height) * 100));
-    return { x, y };
-  };
+
+
+
+
+
 
   // Global Drag Motion Listener (Handles Move, Resize, Rotate)
   useEffect(() => {
@@ -870,52 +830,52 @@ export const PdfEditor: React.FC<PdfEditorProps> = ({ file, mode = 'edit', onGoH
   };
 
   // Helper to render multi-line and word-wrapped text on HTML5 canvas accurately matching CSS layout
-  const drawWrappedText = (
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    x: number,
-    y: number,
-    maxWidth: number,
-    lineHeight: number,
-    align: 'left' | 'center' | 'right'
-  ) => {
-    const paragraphs = text.split('\n');
-    let currentY = y;
 
-    for (const para of paragraphs) {
-      if (!para.trim()) {
-        currentY += lineHeight;
-        continue;
-      }
-      const words = para.split(' ');
-      let currentLine = '';
 
-      for (let n = 0; n < words.length; n++) {
-        const testLine = currentLine + (currentLine ? ' ' : '') + words[n];
-        const metrics = ctx.measureText(testLine);
-        const testWidth = metrics.width;
 
-        if (testWidth > maxWidth && n > 0) {
-          let drawX = x;
-          if (align === 'center') drawX = x + maxWidth / 2;
-          else if (align === 'right') drawX = x + maxWidth;
 
-          ctx.fillText(currentLine, drawX, currentY);
-          currentLine = words[n];
-          currentY += lineHeight;
-        } else {
-          currentLine = testLine;
-        }
-      }
 
-      let drawX = x;
-      if (align === 'center') drawX = x + maxWidth / 2;
-      else if (align === 'right') drawX = x + maxWidth;
 
-      ctx.fillText(currentLine, drawX, currentY);
-      currentY += lineHeight;
-    }
-  };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   // Save changes & download edited/redacted PDF
   const handleSaveChanges = async () => {

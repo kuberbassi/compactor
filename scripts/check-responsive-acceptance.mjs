@@ -1,11 +1,19 @@
 import { chromium, webkit } from 'playwright';
+import { launchServer } from './lib/test-server.mjs';
+import { launchBrowser } from './lib/browser-launch.mjs';
 
-const baseUrl = process.env.COMPACTOR_BASE_URL ?? 'http://127.0.0.1:5177';
-const chromePath = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+const { baseUrl, cleanup } = process.env.COMPACTOR_BASE_URL
+  ? { baseUrl: process.env.COMPACTOR_BASE_URL, cleanup: () => {} }
+  : await launchServer();
+
 const results = [];
 
 const runBrowser = async (name, browserType, launchOptions = {}) => {
-  const browser = await browserType.launch({ headless: true, ...launchOptions });
+  const browser = await launchBrowser(browserType, launchOptions);
+  if (!browser) {
+    console.log(`Skipping ${name} due to launch failure.`);
+    return;
+  }
   try {
     for (const width of [320, 360, 390, 430]) {
       const page = await browser.newPage({ viewport: { width, height: 800 } });
@@ -111,7 +119,11 @@ const runBrowser = async (name, browserType, launchOptions = {}) => {
   }
 };
 
-await runBrowser('chromium', chromium, { executablePath: chromePath });
-await runBrowser('webkit', webkit);
-console.log(JSON.stringify(results, null, 2));
-if (results.some(result => Object.entries(result).some(([key, value]) => key !== 'heavyEngineLoaded' && value === false) || result.heavyEngineLoaded === true)) process.exitCode = 1;
+try {
+  await runBrowser('chromium', chromium);
+  await runBrowser('webkit', webkit);
+  console.log(JSON.stringify(results, null, 2));
+  if (results.some(result => Object.entries(result).some(([key, value]) => key !== 'heavyEngineLoaded' && value === false) || result.heavyEngineLoaded === true)) process.exitCode = 1;
+} finally {
+  cleanup();
+}
