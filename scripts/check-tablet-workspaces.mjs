@@ -180,7 +180,7 @@ try {
     const imagePage = await context.newPage();
     imagePage.on('pageerror', error => browserErrors.push(`image-${width}: ${error.message}`));
     await imagePage.goto(`${baseUrl}/image/compress`);
-    await imagePage.locator('input[type=file]').setInputFiles('public/og-image.png');
+    await imagePage.locator('input[type=file]').setInputFiles('public/compactor-embed.png');
     await imagePage.locator('.image-tool-layout.has-active-session').waitFor({ timeout: 30000 });
     await measure(imagePage, `image-${width}`, ['.image-workbench', '.image-workbench__sidebar', '.image-editor-stage']);
     const imageGeometry = await imagePage.evaluate(() => {
@@ -225,7 +225,7 @@ try {
     const posterPage = await context.newPage();
     posterPage.on('pageerror', error => browserErrors.push(`poster-${width}: ${error.message}`));
     await posterPage.goto(`${baseUrl}/poster-maker`);
-    await posterPage.locator('input[type=file]').setInputFiles('public/og-image.png');
+    await posterPage.locator('input[type=file]').setInputFiles('public/compactor-embed.png');
     await posterPage.locator('.rasterbator-tool-layout.has-active-session').waitFor({ timeout: 30000 });
     const posterTileCountGeometry = await posterPage.evaluate(() => {
       const steppers = [...document.querySelectorAll('.poster-stepper')];
