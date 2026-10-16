@@ -81,6 +81,17 @@ export const TAG_LABELS: Record<string, string> = {
   longitude: 'GPS Longitude',
   colorSpace: 'Color Space',
   orientation: 'Orientation',
+  JFIFVersion: 'JFIF Format Version',
+  ResolutionUnit: 'Resolution Unit',
+  XResolution: 'Horizontal Resolution',
+  YResolution: 'Vertical Resolution',
+  ThumbnailWidth: 'Embedded Thumbnail Width',
+  ThumbnailHeight: 'Embedded Thumbnail Height',
+  ExifImageWidth: 'EXIF Image Width',
+  ExifImageHeight: 'EXIF Image Height',
+  DateTimeOriginal: 'Original Capture Date',
+  CreateDate: 'Creation Date',
+  ModifyDate: 'Modified Date',
 };
 
 /**
@@ -98,9 +109,10 @@ export const getTagLabel = (key: string): string => {
   if (TAG_LABELS[normalizedKey]) return TAG_LABELS[normalizedKey];
   if (TAG_LABELS[key]) return TAG_LABELS[key];
 
-  // Beautify camelCase or snake_case
+  // Beautify camelCase, PascalCase with acronyms (e.g. JFIFVersion -> JFIF Version), or snake_case
   return key
-    .replace(/([A-Z])/g, ' $1')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
     .replace(/[_-]/g, ' ')
     .replace(/^\w/, (c) => c.toUpperCase())
     .trim();

@@ -440,9 +440,9 @@ export function MetadataEditor({
 
       {/* Editor Panel */}
       {file && !reading && !processing && !result && (
-        <div className="image-workbench flex-1 flex h-full overflow-hidden bg-[#111216]">
+        <div className="image-workbench flex-1 flex flex-col lg:flex-row h-full overflow-y-auto lg:overflow-hidden bg-[#111216]">
           {/* Left Sidebar Rail */}
-          <aside className="image-workbench__sidebar w-[19.5rem] bg-[#18191e] border-r border-white/10 flex flex-col shrink-0 h-full overflow-hidden">
+          <aside className="image-workbench__sidebar w-full lg:w-[19.5rem] bg-[#18191e] border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col shrink-0 lg:h-full overflow-visible lg:overflow-hidden">
             <div className="h-11 border-b border-white/10 px-4 flex items-center justify-between shrink-0 bg-transparent">
               <span className="text-xs font-bold text-white uppercase tracking-wider">
                 File & Capabilities
@@ -452,7 +452,7 @@ export function MetadataEditor({
               </span>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center space-y-4">
+            <div className="flex-1 lg:overflow-y-auto p-4 flex flex-col items-center space-y-4">
               {/* Cover Art Box (visible when audio format supports cover art) */}
               {isAudioFile ? (
                 <div className="flex flex-col items-center space-y-3 w-full">
@@ -535,9 +535,9 @@ export function MetadataEditor({
 
               {/* Capability Summary Badge */}
               <div className="w-full bg-zinc-950/50 border border-white/10 rounded-2xl p-3.5 space-y-2 text-xs">
-                <div className="flex justify-between text-zinc-400 text-[11px]">
-                  <span>File Name</span>
-                  <span className="text-white font-medium truncate max-w-[130px]">
+                <div className="flex justify-between gap-2 text-zinc-400 text-[11px]">
+                  <span className="shrink-0">File Name</span>
+                  <span className="text-white font-medium truncate max-w-[160px]">
                     {file.name}
                   </span>
                 </div>
@@ -606,7 +606,7 @@ export function MetadataEditor({
           </aside>
 
           {/* Right Main Stage */}
-          <main className="image-workbench__main flex-1 bg-[#111216] flex flex-col h-full overflow-y-auto p-6">
+          <main className="image-workbench__main flex-1 bg-[#111216] flex flex-col lg:h-full lg:overflow-y-auto p-4 sm:p-6">
             <div className="max-w-2xl w-full mx-auto space-y-5">
               {errorMessage && (
                 <ErrorBanner
@@ -624,8 +624,8 @@ export function MetadataEditor({
               )}
 
               {/* View Switcher Tabs: Common Fields vs All Discovered Identifiers */}
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <div className="flex gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => setActiveTab('edit')}
@@ -665,7 +665,7 @@ export function MetadataEditor({
 
               {/* Active Tab: Common Editable Fields */}
               {activeTab === 'edit' && (
-                <div className="bg-[#18191e] border border-white/10 rounded-2xl p-6 space-y-5 shadow-xl">
+                <div className="bg-[#18191e] border border-white/10 rounded-2xl p-4 sm:p-6 space-y-5 shadow-xl">
                   <div className="border-b border-white/10 pb-3 flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -913,7 +913,7 @@ export function MetadataEditor({
 
               {/* Active Tab: Searchable Identifier Inventory */}
               {activeTab === 'inventory' && (
-                <div className="bg-[#18191e] border border-white/10 rounded-2xl p-6 space-y-4 shadow-xl">
+                <div className="bg-[#18191e] border border-white/10 rounded-2xl p-4 sm:p-6 space-y-4 shadow-xl">
                   <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between border-b border-white/10 pb-3.5">
                     <div>
                       <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -921,7 +921,7 @@ export function MetadataEditor({
                         Discovered Tag Inventory
                       </h3>
                       <p className="text-xs text-zinc-400 mt-0.5">
-                        Inspect every stable identifier, raw container key, and stream attribute.
+                        Raw file headers, EXIF/ID3 keys, and technical container properties discovered in this file.
                       </p>
                     </div>
 
@@ -942,35 +942,57 @@ export function MetadataEditor({
                         : 'No tags match your search query.'}
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-[28rem] overflow-y-auto pr-1">
-                      {filteredEntries.map((entry) => (
-                        <div
-                          key={entry.id}
-                          className="p-3 bg-zinc-950/50 border border-white/5 rounded-xl flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs hover:border-white/20 transition-colors"
-                        >
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-white">{entry.label}</span>
-                              <span className="font-mono text-[10px] text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">
-                                {entry.rawKey}
-                              </span>
-                              <span className="text-[9px] uppercase tracking-wider text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded border border-white/5">
-                                {entry.source}
-                              </span>
-                              {entry.isEditable ? (
-                                <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
-                                  Editable
-                                </span>
-                              ) : (
-                                <span className="text-[9px] text-zinc-500 bg-zinc-800/40 px-1.5 py-0.5 rounded">
-                                  Read-only
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-zinc-300 font-mono text-[11px] whitespace-pre-wrap break-words bg-zinc-950/60 p-2 rounded-lg border border-white/5">
-                              {entry.value}
-                            </div>
+                    <div className="space-y-4 max-h-[28rem] overflow-y-auto pr-1">
+                      {Array.from(
+                        filteredEntries.reduce((acc, entry) => {
+                          const grp = entry.group || 'GENERAL METADATA';
+                          if (!acc.has(grp)) acc.set(grp, []);
+                          acc.get(grp)!.push(entry);
+                          return acc;
+                        }, new Map<string, MetadataTagEntry[]>())
+                      ).map(([groupTitle, groupItems]) => (
+                        <div key={groupTitle} className="space-y-2">
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                              {groupTitle}
+                            </span>
+                            <span className="text-[10px] font-mono text-zinc-500">
+                              {groupItems.length} {groupItems.length === 1 ? 'tag' : 'tags'}
+                            </span>
                           </div>
+                          {groupItems.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className="p-3 bg-zinc-950/50 border border-white/5 rounded-xl flex flex-col sm:flex-row sm:items-start justify-between gap-2 text-xs hover:border-white/20 transition-colors"
+                            >
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-white">{entry.label}</span>
+                                  <span className="font-mono text-[10px] text-zinc-400 bg-white/5 px-1.5 py-0.5 rounded">
+                                    {entry.rawKey}
+                                  </span>
+                                  <span className="text-[9px] uppercase tracking-wider text-zinc-500 bg-zinc-900 px-1.5 py-0.5 rounded border border-white/5">
+                                    {entry.source}
+                                  </span>
+                                  {entry.isEditable ? (
+                                    <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                      Editable
+                                    </span>
+                                  ) : (
+                                    <span
+                                      title={entry.readOnlyReason}
+                                      className="text-[9px] text-zinc-500 bg-zinc-800/40 px-1.5 py-0.5 rounded"
+                                    >
+                                      Read-only
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-zinc-300 font-mono text-[11px] whitespace-pre-wrap break-words bg-zinc-950/60 p-2 rounded-lg border border-white/5">
+                                  {entry.value}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       ))}
                     </div>

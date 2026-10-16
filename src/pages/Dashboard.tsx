@@ -33,7 +33,7 @@ export function Dashboard({ onSelectTool, processedCount, recentToolIds = [], on
       <div className="dashboard-v2__ambient" aria-hidden="true"><span /><span /><span /></div>
       <div className="dashboard-v2__hero-copy">
         <h1 id="home-title">Edit, convert,<br /><span>and keep control.</span></h1>
-        <p>Work with PDFs, images, video, and audio directly in your browser—without uploading personal files to a processing server.</p>
+        <p>Work with PDFs, images, video, and audio directly in your browser without uploading personal files to a processing server.</p>
         <div className="dashboard-v2__hero-actions"><button type="button" className="dashboard-v2__primary" onClick={() => document.getElementById('tool-library')?.scrollIntoView({ behavior: 'smooth' })}>Explore tools <ArrowRight /></button><button type="button" className="dashboard-v2__secondary" onClick={onOpenSearch}><Search /> Find anything <kbd>Ctrl K</kbd></button></div>
         <div className="dashboard-v2__proof" aria-label="Product benefits"><span><Check /> No uploads</span><span><Check /> No account</span><span><Check /> Works locally</span></div>
       </div>

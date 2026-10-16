@@ -53,4 +53,4 @@ export const TOOL_ROUTES: ToolRoute[] = [
   route('metadata-editor', '/metadata-editor', 'Metadata Editor', 'Inspect, edit, or remove supported file metadata.'),
 ];
 
-export const seoTitleForRoute = (routeInfo: ToolRoute): string => `${routeInfo.title} Online — Free & Private | Compactor`;
+export const seoTitleForRoute = (routeInfo: ToolRoute): string => `${routeInfo.title} Online - Free & Private | Compactor`;

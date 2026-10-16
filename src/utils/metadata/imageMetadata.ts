@@ -52,8 +52,24 @@ export const readImageMetadata = async (
     for (const [key, val] of Object.entries(dict)) {
       if (val === undefined || val === null) continue;
 
+      // Skip empty 0x0 JFIF thumbnail dimension placeholders when no embedded thumbnail exists
+      if (source === 'chunk' && (key === 'ThumbnailWidth' || key === 'ThumbnailHeight') && Number(val) === 0) {
+        continue;
+      }
+
       let stringVal = '';
-      if (typeof val === 'object') {
+      if (source === 'chunk' && key === 'JFIFVersion' && typeof val === 'number') {
+        const major = (val >> 8) & 0xff;
+        const minor = val & 0xff;
+        stringVal = `${major}.${String(minor).padStart(2, '0')} (raw: ${val})`;
+      } else if (source === 'chunk' && key === 'ResolutionUnit' && typeof val === 'number') {
+        stringVal =
+          val === 1
+            ? '1 (Pixels per Inch / DPI)'
+            : val === 2
+            ? '2 (Pixels per cm)'
+            : '0 (Aspect Ratio / Uncalibrated)';
+      } else if (typeof val === 'object') {
         if (val instanceof Date) {
           stringVal = val.toISOString();
         } else if (Array.isArray(val)) {
@@ -131,14 +147,14 @@ export const readImageMetadata = async (
     }
   };
 
-  // If exifr returned segment dictionaries
+  // If exifr returned segment dictionaries, order EXIF/GPS/IPTC/XMP before low-level JFIF header
   if (parsed.ifd0 || parsed.exif || parsed.gps || parsed.iptc || parsed.xmp || parsed.jfif) {
-    if (parsed.jfif) processDict(parsed.jfif, 'chunk', 'JFIF HEADER');
     if (parsed.ifd0) processDict(parsed.ifd0, 'exif', 'EXIF CAMERA & IMAGE');
     if (parsed.exif) processDict(parsed.exif, 'exif', 'EXIF SHOOTING DETAILS');
     if (parsed.gps) processDict(parsed.gps, 'exif', 'GPS LOCATION DATA');
     if (parsed.iptc) processDict(parsed.iptc, 'iptc', 'IPTC METADATA');
     if (parsed.xmp) processDict(parsed.xmp, 'xmp', 'XMP METADATA');
+    if (parsed.jfif) processDict(parsed.jfif, 'chunk', 'JFIF HEADER');
   } else {
     // Flat dictionary
     processDict(parsed, 'exif', 'IMAGE METADATA');

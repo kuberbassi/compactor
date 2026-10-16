@@ -12,9 +12,13 @@ vi.mock('../components/Common/CustomAudioPlayer', () => ({
   },
 }));
 
-vi.mock('../utils/audioAnalysis', () => ({
-  analyzeAudioBPMAndKey: vi.fn(async () => ({ bpm: 78, key: 'E♭ Major', mode: 'Major', camelot: '5B', confidence: 14, sampleRate: 44100 })),
-}));
+vi.mock('../utils/audioAnalysis', async () => {
+  const actual = await vi.importActual<typeof import('../utils/audioAnalysis')>('../utils/audioAnalysis');
+  return {
+    ...actual,
+    analyzeAudioBPMAndKey: vi.fn(async () => ({ bpm: 78, key: 'E♭ Major', mode: 'Major', camelot: '5B', confidence: 14, sampleRate: 44100 })),
+  };
+});
 
 const tool = (id: string) => compactToolForId(id)!;
 
@@ -25,14 +29,24 @@ describe('compact audio parity', () => {
     Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
   });
 
-  it('uses the shared live player with current pitch and speed settings', async () => {
+  it('uses the shared live player with current pitch, speed, and live Key/BPM settings', async () => {
     const { container } = render(<CompactAudioTool tool={tool('audio-pitch-speed')} onGoHome={() => undefined} onProcessed={() => undefined} />);
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [new File(['audio'], 'track.mp3', { type: 'audio/mpeg' })] } });
     expect(await screen.findByTestId('live-audio-player')).toBeInTheDocument();
     const sliders = screen.getAllByRole('slider');
     fireEvent.change(sliders[0], { target: { value: '3' } });
     fireEvent.change(sliders[1], { target: { value: '1.25' } });
-    await waitFor(() => expect(playerProps).toHaveBeenLastCalledWith(expect.objectContaining({ pitchSemitones: 3, speedRatio: 1.25 })));
+    await waitFor(() =>
+      expect(playerProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          pitchSemitones: 3,
+          speedRatio: 1.25,
+          liveKey: 'F♯ Major',
+          liveCamelot: '2B',
+          liveBpm: 98,
+        })
+      )
+    );
   });
 
   it('matches the desktop key result fields and omits confidence', async () => {

@@ -60,7 +60,7 @@ describe('tool routes and SEO metadata', () => {
 
     updateToolMetadata('pdf-compress');
 
-    expect(document.title).toBe('Compress PDF Online — Free & Private | Compactor');
+    expect(document.title).toBe('Compress PDF Online - Free & Private | Compactor');
     expect(document.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe('https://compactor.kuberbassi.com/compress-pdf');
     expect(document.querySelector('meta[name="description"]')?.getAttribute('content')).toContain('Reduce PDF file size');
     expect(document.querySelector('meta[property="og:title"]')?.getAttribute('content')).toBe(document.title);

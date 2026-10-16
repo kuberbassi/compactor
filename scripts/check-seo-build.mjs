@@ -29,7 +29,7 @@ await Promise.all(routes.map(async route => {
   await access(pagePath);
   const page = await readFile(pagePath, 'utf8');
   const canonical = `${siteUrl}${route.routePath}`;
-  const title = `${route.title} Online — Free & Private | Compactor`;
+  const title = `${route.title} Online - Free & Private | Compactor`;
 
   for (const expected of [
     `<title>${escapeHtml(title)}</title>`,

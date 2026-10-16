@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeAudioBPMAndKey, CAMELOT_MAP, detectKeyFrom44kBuffer } from '../utils/audioAnalysis';
+import { analyzeAudioBPMAndKey, CAMELOT_MAP, detectKeyFrom44kBuffer, estimateBpmFromAudioBuffer } from '../utils/audioAnalysis';
 import { joinAudioFiles } from '../utils/audioJoiner';
 import { processPitchAndSpeed } from '../utils/audioPitchSpeed';
 import { getActiveIntervals } from '../utils/ffmpeg/video';
 
 describe('Audio Tools Utility Functions', () => {
-  const synthesizeChordProgression = (chords: number[][]): AudioBuffer => {
+  const synthesizeChordProgression = (chords: number[][], tuningFreq = 440): AudioBuffer => {
     const sampleRate = 44100;
     const secondsPerChord = 1.5;
     const data = new Float32Array(Math.round(chords.length * secondsPerChord * sampleRate));
@@ -18,7 +18,7 @@ describe('Audio Tools Utility Functions', () => {
         const localTime = (sample - start) / sampleRate;
         const envelope = Math.min(1, localTime / 0.02, (secondsPerChord - localTime) / 0.04);
         data[sample] = chord.reduce((sum, midi, noteIndex) => {
-          const frequency = 440 * 2 ** ((midi - 69) / 12);
+          const frequency = tuningFreq * 2 ** ((midi - 69) / 12);
           const level = noteIndex === 0 ? 0.30 : 0.20;
           return sum + Math.sin(2 * Math.PI * frequency * time) * level;
         }, 0) * Math.max(0, envelope);
@@ -30,6 +30,31 @@ describe('Audio Tools Utility Functions', () => {
       numberOfChannels: 1,
       length: data.length,
       duration: data.length / sampleRate,
+      getChannelData: () => data,
+    } as unknown as AudioBuffer;
+  };
+
+  const synthesizeKickPulse = (bpm: number, durationSec = 10): AudioBuffer => {
+    const sampleRate = 44100;
+    const data = new Float32Array(Math.round(durationSec * sampleRate));
+    const beatPeriod = 60 / bpm;
+
+    for (let beatTime = 0; beatTime < durationSec - 0.15; beatTime += beatPeriod) {
+      const startSample = Math.round(beatTime * sampleRate);
+      const hitSamples = Math.round(0.12 * sampleRate);
+      for (let i = 0; i < hitSamples && startSample + i < data.length; i++) {
+        const t = i / sampleRate;
+        const env = Math.exp(-t * 28);
+        const freq = 65 + 75 * Math.exp(-t * 40);
+        data[startSample + i] += Math.sin(2 * Math.PI * freq * t) * env * 0.8;
+      }
+    }
+
+    return {
+      sampleRate,
+      numberOfChannels: 1,
+      length: data.length,
+      duration: durationSec,
       getChannelData: () => data,
     } as unknown as AudioBuffer;
   };
@@ -99,6 +124,27 @@ describe('Audio Tools Utility Functions', () => {
     ]);
 
     expect(detectKeyFrom44kBuffer(minor).keyName).toBe('F♯ Minor');
+  });
+
+  it('accurately detects key even when audio is detuned to A=432Hz', () => {
+    const detunedCMajor = synthesizeChordProgression([
+      [36, 60, 64, 67], // C major
+      [41, 65, 69, 72], // F major
+      [43, 67, 71, 74], // G major
+      [36, 60, 64, 67], // C major
+    ], 432);
+
+    expect(detectKeyFrom44kBuffer(detunedCMajor).keyName).toBe('C Major');
+  });
+
+  it('detects BPM above 120 BPM without halving fast dance/pop tempos', async () => {
+    const fast128 = synthesizeKickPulse(128, 10);
+    const detectedFast = await estimateBpmFromAudioBuffer(fast128);
+    expect(Math.abs(detectedFast - 128)).toBeLessThanOrEqual(2);
+
+    const slow88 = synthesizeKickPulse(88, 10);
+    const detectedSlow = await estimateBpmFromAudioBuffer(slow88);
+    expect(Math.abs(detectedSlow - 88)).toBeLessThanOrEqual(2);
   });
 
   it('verifies AudioCompressOptions typing and options contract', async () => {

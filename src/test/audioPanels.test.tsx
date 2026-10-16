@@ -4,12 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { AudioBpmPanel } from '../pages/AudioTools/components/AudioBpmPanel';
 import { AudioPitchSpeedPanel } from '../pages/AudioTools/components/AudioPitchSpeedPanel';
 import { TrimTimeline } from '../components/Common/TrimTimeline';
+import { transposeKeyAndBpm } from '../utils/audioAnalysis';
 
 const sourceFile = new File(['audio'], 'source.opus', { type: 'audio/opus' });
 
 function PitchHarness({ onRun = vi.fn(), onMode = vi.fn() }) {
   const [pitch, setPitch] = useState(0);
   const [speed, setSpeed] = useState(1);
+  const live = transposeKeyAndBpm('C Major', 120, pitch, speed);
   return (
     <AudioPitchSpeedPanel
       file={sourceFile}
@@ -18,8 +20,10 @@ function PitchHarness({ onRun = vi.fn(), onMode = vi.fn() }) {
       speedRatio={speed}
       setSpeedRatio={setSpeed}
       analyzingBpm={false}
-      transposedKey={{ root: 'C', mode: 'Major' }}
-      currentBpm={120}
+      transposedKey={{ root: live.root, mode: live.mode, camelot: live.camelot, baseCamelot: live.baseCamelot }}
+      currentBpm={live.currentBpm}
+      baseKey="C Major"
+      baseBpm={120}
       previewUrl={null}
       onReset={vi.fn()}
       onRunProcess={onRun}
@@ -48,18 +52,31 @@ describe('Audio editor panels', () => {
     expect(segments?.[0]).not.toHaveProperty('fadeOut');
   });
 
-  it('updates and resets pitch and speed controls', () => {
+  it('updates and resets pitch and speed controls with accurate live Key, Camelot, and BPM preview', () => {
     render(<PitchHarness />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Raise pitch' }));
-    expect(screen.getAllByText('+1 st').length).toBeGreaterThan(0);
+    // Initial state: C Major (8B) at 120 BPM
+    expect(screen.getAllByText('C Major').length).toBeGreaterThan(0);
+    expect(screen.getByText('Camelot 8B')).toBeInTheDocument();
+    expect(screen.getAllByText('120 BPM').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByRole('button', { name: '2×' }));
-    expect(screen.getAllByText('2.00×').length).toBeGreaterThan(0);
+    // Raise pitch by +2 semitones -> D Major (10B)
+    fireEvent.click(screen.getByRole('button', { name: 'Raise pitch' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Raise pitch' }));
+    expect(screen.getAllByText('+2 st').length).toBeGreaterThan(0);
+    expect(screen.getByText('C Major → D Major')).toBeInTheDocument();
+    expect(screen.getByText('Camelot 8B → 10B')).toBeInTheDocument();
+
+    // Speed 1.25x -> 150 BPM (not double-multiplied)
+    fireEvent.click(screen.getByRole('button', { name: '1.25×' }));
+    expect(screen.getAllByText('1.25×').length).toBeGreaterThan(0);
+    expect(screen.getByText('120 → 150 BPM')).toBeInTheDocument();
+    expect(screen.getAllByText('150 BPM').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Reset adjustments' }));
     expect(screen.getAllByText('0 st').length).toBeGreaterThan(0);
     expect(screen.getAllByText('1.00×').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('120 BPM').length).toBeGreaterThan(0);
   });
 
   it('runs processing and switches modes from the shared navigation', () => {
@@ -96,3 +113,4 @@ describe('Audio editor panels', () => {
     expect(screen.queryByText('Size')).not.toBeInTheDocument();
   });
 });
+

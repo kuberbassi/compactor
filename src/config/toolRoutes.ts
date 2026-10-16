@@ -21,7 +21,7 @@ export const toolIdFromLocation = (location: Pick<Location, 'pathname' | 'hash'>
 
 export const updateToolMetadata = (id: string | null) => {
   const route = id ? routeForTool(id) : undefined;
-  const title = route ? seoTitleForRoute(route) : 'Compactor — Private Media Compressor & File Converter';
+  const title = route ? seoTitleForRoute(route) : 'Compactor - Private Media Compressor & File Converter';
   const description = route?.description || 'Private browser-based tools to compress, convert, edit, and organize files.';
   const canonical = route ? `https://compactor.kuberbassi.com${route.path}` : 'https://compactor.kuberbassi.com/';
 

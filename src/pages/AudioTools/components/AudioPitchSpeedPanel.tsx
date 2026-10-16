@@ -2,6 +2,7 @@ import React from 'react';
 import { Minus, Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { CustomAudioPlayer } from '../../../components/Common/CustomAudioPlayer';
+import { CAMELOT_MAP } from '../../../utils/audioAnalysis';
 import { formatBytes } from '../../../utils/image';
 import { AudioEditorFrame } from './AudioEditorFrame';
 
@@ -12,8 +13,10 @@ export interface AudioPitchSpeedPanelProps {
   speedRatio: number;
   setSpeedRatio: (ratio: number | ((prev: number) => number)) => void;
   analyzingBpm: boolean;
-  transposedKey: { root: string; mode: string };
+  transposedKey: { root: string; mode: string; camelot?: string; baseCamelot?: string | null };
   currentBpm: number | null;
+  baseKey?: string | null;
+  baseBpm?: number | null;
   previewUrl: string | null;
   onReset: () => void;
   onRunProcess: () => void;
@@ -23,10 +26,36 @@ export interface AudioPitchSpeedPanelProps {
 
 export const AudioPitchSpeedPanel: React.FC<AudioPitchSpeedPanelProps> = ({
   file, pitchSemitones, setPitchSemitones, speedRatio, setSpeedRatio, analyzingBpm,
-  transposedKey, currentBpm, previewUrl, onReset, onRunProcess, activeTool, onSelectTool,
+  transposedKey, currentBpm, baseKey = null, baseBpm = null, previewUrl, onReset, onRunProcess, activeTool, onSelectTool,
 }) => {
   const pitchLabel = `${pitchSemitones > 0 ? '+' : ''}${pitchSemitones} st`;
   const speedLabel = `${speedRatio.toFixed(2)}×`;
+  const formattedMode = transposedKey.mode.charAt(0).toUpperCase() + transposedKey.mode.slice(1).toLowerCase();
+  const liveKeyFull = `${transposedKey.root} ${formattedMode}`;
+  const liveCamelot = transposedKey.camelot || CAMELOT_MAP[liveKeyFull] || null;
+  const baseCamelot = transposedKey.baseCamelot || (baseKey ? CAMELOT_MAP[baseKey] || null : null);
+
+  const keyTransitionDetail = analyzingBpm
+    ? 'Analyzing key…'
+    : baseKey && pitchSemitones !== 0
+    ? `${baseKey} → ${liveKeyFull}`
+    : `${transposedKey.root} ${transposedKey.mode}`;
+
+  const bpmTransitionDetail = currentBpm
+    ? baseBpm && Math.abs(speedRatio - 1) >= 0.01
+      ? `${baseBpm} → ${currentBpm} BPM`
+      : `${currentBpm} BPM`
+    : analyzingBpm
+    ? 'Analyzing BPM…'
+    : 'Tempo preview';
+
+  const camelotTransitionDetail = analyzingBpm
+    ? 'Detecting tonality…'
+    : baseCamelot && liveCamelot && pitchSemitones !== 0
+    ? `Camelot ${baseCamelot} → ${liveCamelot}`
+    : liveCamelot
+    ? `Camelot ${liveCamelot}`
+    : 'Harmonic notation';
 
   return (
     <AudioEditorFrame
@@ -70,11 +99,27 @@ export const AudioPitchSpeedPanel: React.FC<AudioPitchSpeedPanelProps> = ({
           <SlidersHorizontal aria-hidden="true" />
         </div>
         <div className="audio-transform-summary">
-          <article><span>Pitch</span><strong>{pitchLabel}</strong><small>{transposedKey.root} {transposedKey.mode}</small></article>
-          <article><span>Speed</span><strong>{speedLabel}</strong><small>{currentBpm ? `${Math.round(currentBpm * speedRatio)} BPM` : analyzingBpm ? 'Analyzing BPM…' : 'Tempo preview'}</small></article>
+          <article><span>Pitch</span><strong>{pitchLabel}</strong><small>{keyTransitionDetail}</small></article>
+          <article><span>Speed</span><strong>{speedLabel}</strong><small>{bpmTransitionDetail}</small></article>
+          <article><span>Live key</span><strong>{analyzingBpm ? 'Analyzing…' : liveKeyFull}</strong><small>{camelotTransitionDetail}</small></article>
+          <article><span>Live tempo</span><strong>{currentBpm ? `${currentBpm} BPM` : analyzingBpm ? 'Analyzing…' : '—'}</strong><small>{baseBpm ? `Source ${baseBpm} BPM` : 'Real-time BPM'}</small></article>
         </div>
-        {previewUrl ? <CustomAudioPlayer className="audio-preview-player" src={previewUrl} file={file} title={file.name} subtitle={`${pitchLabel} · ${speedLabel} speed · ${formatBytes(file.size)}`} pitchSemitones={pitchSemitones} speedRatio={speedRatio} /> : null}
+        {previewUrl ? (
+          <CustomAudioPlayer
+            className="audio-preview-player"
+            src={previewUrl}
+            file={file}
+            title={file.name}
+            subtitle={`${pitchLabel} · ${speedLabel} speed · ${formatBytes(file.size)}`}
+            pitchSemitones={pitchSemitones}
+            speedRatio={speedRatio}
+            liveKey={analyzingBpm ? null : liveKeyFull}
+            liveCamelot={analyzingBpm ? null : liveCamelot}
+            liveBpm={currentBpm}
+          />
+        ) : null}
       </section>
     </AudioEditorFrame>
   );
 };
+

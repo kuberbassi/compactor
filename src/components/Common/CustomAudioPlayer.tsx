@@ -11,6 +11,9 @@ interface CustomAudioPlayerProps {
   subtitle?: string;
   pitchSemitones?: number;
   speedRatio?: number;
+  liveKey?: string | null;
+  liveCamelot?: string | null;
+  liveBpm?: number | null;
   className?: string;
   onTimeUpdate?: (time: number) => void;
   onDurationChange?: (duration: number) => void;
@@ -25,6 +28,9 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   subtitle,
   pitchSemitones = 0,
   speedRatio = 1.0,
+  liveKey = null,
+  liveCamelot = null,
+  liveBpm = null,
   className = '',
   onTimeUpdate,
   onDurationChange,
@@ -251,7 +257,8 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   }, [src]);
 
   const togglePlay = async () => {
-    if (isPitchOrSpeedActive) {
+    const hasActiveSoundTouch = Boolean(pitchShifterRef.current && audioCtxRef.current);
+    if (isPitchOrSpeedActive || hasActiveSoundTouch) {
       if (isPlaying) {
         if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
           await audioCtxRef.current.suspend();
@@ -265,7 +272,7 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
         const restartFromBeginning = duration > 0 && currentTime >= duration - 0.05;
         const startTime = restartFromBeginning ? 0 : currentTime;
         if (restartFromBeginning) setCurrentTime(0);
-        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        if (audioCtxRef.current && audioCtxRef.current.state === 'suspended' && !restartFromBeginning) {
           await audioCtxRef.current.resume();
           setIsPlaying(true);
           playbackEndedRef.current = false;
@@ -296,7 +303,8 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
   };
 
   const handleTimeUpdate = () => {
-    if (!isPitchOrSpeedActive && audioRef.current) {
+    const hasActiveSoundTouch = Boolean(pitchShifterRef.current && audioCtxRef.current);
+    if (!isPitchOrSpeedActive && !hasActiveSoundTouch && audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
     }
   };
@@ -381,6 +389,22 @@ export const CustomAudioPlayer: React.FC<CustomAudioPlayerProps> = ({
 
           {/* Badges */}
           <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+            {liveKey && (
+              <span
+                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-800/80 text-amber-300 whitespace-nowrap"
+                title="Live musical key and Camelot notation"
+              >
+                {liveKey}{liveCamelot ? ` · ${liveCamelot}` : ''}
+              </span>
+            )}
+            {liveBpm !== null && liveBpm > 0 && (
+              <span
+                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-sky-950/80 border border-sky-800/80 text-sky-300 whitespace-nowrap"
+                title="Live tempo at current speed"
+              >
+                {liveBpm} BPM
+              </span>
+            )}
             {hasPitchBadge && (
               <span
                 className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800/80 text-indigo-300 whitespace-nowrap"

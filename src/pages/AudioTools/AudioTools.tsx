@@ -327,7 +327,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
     if (activeTool === 'audio-pitch-speed') {
       if (!file) return;
       if (pitchSemitones === 0 && speedRatio === 1.0) {
-        setErrorMessage('No changes applied — adjust pitch or speed before exporting.');
+        setErrorMessage('No changes applied - adjust pitch or speed before exporting.');
         return;
       }
       setProcessing(true);
@@ -335,7 +335,7 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
       const pitchLabel = pitchSemitones !== 0 ? `${pitchSemitones > 0 ? '+' : ''}${pitchSemitones}st` : null;
       const speedLabel = speedRatio !== 1.0 ? `${speedRatio.toFixed(2)}x` : null;
       const changeDesc = [pitchLabel, speedLabel].filter(Boolean).join(' ');
-      setStatusText(`Applying ${changeDesc} via Rubber Band WASM — processing offline...`);
+      setStatusText(`Applying ${changeDesc} via Rubber Band WASM - processing offline...`);
       try {
         const processed = await processPitchAndSpeed(
           file,
@@ -500,6 +500,8 @@ export const AudioTools: React.FC<AudioToolsProps> = ({ mode = 'audio-optimizer'
           analyzingBpm={analyzingBpm}
           transposedKey={transposedKey}
           currentBpm={currentBpm}
+          baseKey={analysisResult?.key ?? null}
+          baseBpm={analysisResult?.bpm ?? null}
           previewUrl={previewUrl}
           onReset={reset}
           onRunProcess={startAudioProcessing}

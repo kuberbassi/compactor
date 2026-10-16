@@ -437,10 +437,10 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
           <label className="text-xs font-semibold text-zinc-400">Angle</label>
           <Select value={rotation.toString()} onValueChange={v => updateSetting('rotation', parseInt(v || '0', 10))}>
             <SelectTrigger className="w-full h-9">
-              <span>{rotation === 0 ? '0° — None' : rotation === 90 ? '90° Clockwise' : rotation === 180 ? '180° Half Turn' : '270° Counter-CW'}</span>
+              <span>{rotation === 0 ? '0° - None' : rotation === 90 ? '90° Clockwise' : rotation === 180 ? '180° Half Turn' : '270° Counter-CW'}</span>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="0">0° — None</SelectItem>
+              <SelectItem value="0">0° - None</SelectItem>
               <SelectItem value="90">90° Clockwise</SelectItem>
               <SelectItem value="180">180° Half Turn</SelectItem>
               <SelectItem value="270">270° Counter-CW</SelectItem>
@@ -516,7 +516,7 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
               <div className="space-y-3 pt-3 mt-2 border-t border-white/10">
                 <div>
                   <label className="text-xs font-semibold text-zinc-300 block mb-1">
-                    Dot Raster Size — {activeSettings?.halftoneDotSize ?? 10}px
+                    Dot Raster Size - {activeSettings?.halftoneDotSize ?? 10}px
                   </label>
                   <Slider
                     min={4}
@@ -589,7 +589,7 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
           </div>
           <div>
             <label className="text-xs font-semibold text-zinc-400 block mb-1">
-              Opacity — {Math.round((activeSettings?.watermarkOpacity ?? 0.4) * 100)}%
+              Opacity - {Math.round((activeSettings?.watermarkOpacity ?? 0.4) * 100)}%
             </label>
             <Slider
               min={5} max={100}
@@ -603,7 +603,7 @@ export const ImageSidebarControls: React.FC<ImageSidebarControlsProps> = ({
           </div>
           <div>
             <label className="text-xs font-semibold text-zinc-400 block mb-1">
-              Font Size — {activeSettings?.watermarkFontSize ?? 48}px
+              Font Size - {activeSettings?.watermarkFontSize ?? 48}px
             </label>
             <Slider
               min={12} max={200}
