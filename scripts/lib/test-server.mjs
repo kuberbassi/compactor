@@ -64,6 +64,7 @@ export async function launchServer() {
   const serverProc = spawn(cmd, ['vite', 'preview', '--port', port.toString(), '--strictPort', '--host', '127.0.0.1'], {
     stdio: 'ignore',
     detached: process.platform !== 'win32',
+    shell: process.platform === 'win32',
   });
 
   const cleanup = () => {

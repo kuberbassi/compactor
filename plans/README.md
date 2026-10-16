@@ -14,6 +14,7 @@ applied to `main` on top of baseline commit `de7b51b`.
 | 004 | Centralize the simple PDF result lifecycle | P1 | M | 003 | DONE - merged as `c5cb365`, `f644e7d` |
 | 005 | Make the processed-file metric honest | P2 | M | 002 | DONE - merged as `eee3c38` |
 | Mobile | Responsive tablets and purpose-built Compact Compactor | P1 | L | 001–005 | DONE - phases 1–6, desktop-browser acceptance, and documentation complete; physical-device validation documented separately |
+| 006 | Upgrade metadata editor identifiers and format support | P1 | M | - | DONE |
 
 Status values: TODO, IN PROGRESS, DONE, BLOCKED, REJECTED.
 

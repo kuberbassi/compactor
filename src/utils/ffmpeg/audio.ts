@@ -47,13 +47,28 @@ const requireSuccessfulExec = (exitCode: number, action: string) => {
 };
 
 export const parseMediaTagsFromFFmpegLog = (log: string): MetadataTags => {
+  // Extract container metadata section before duration or stream headers
   const inputSection = log.match(/Input #0[\s\S]*?(?=Duration:|Stream #0:)/i)?.[0] || log;
   const metadataSection = inputSection.match(/Metadata:\s*([\s\S]*)/i)?.[1] || '';
 
   const parseTag = (keys: string[]): string | undefined => {
     for (const key of keys) {
-      const match = metadataSection.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+)$`, 'im'));
-      if (match) return match[1].trim();
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const match = metadataSection.match(new RegExp(`^\\s*${escapedKey}\\s*:\\s*(.+)$`, 'im'));
+      if (match) {
+        // Collect multiline lines if any
+        const remaining = metadataSection.slice((match.index ?? 0) + match[0].length);
+        const continuation = remaining.match(/^(?:\r?\n\s{10,24}:\s*(.*))+/);
+        if (continuation) {
+          const extra = continuation[0]
+            .split(/\r?\n/)
+            .map(l => l.replace(/^\s+:\s*/, '').trim())
+            .filter(Boolean)
+            .join('\n');
+          return `${match[1].trim()}\n${extra}`;
+        }
+        return match[1].trim();
+      }
     }
     return undefined;
   };
