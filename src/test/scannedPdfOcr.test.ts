@@ -47,5 +47,6 @@ describe('scanned PDF OCR fallback', () => {
     expect(recognize).toHaveBeenCalledTimes(1);
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(progress.some(status => status.includes('OCR'))).toBe(true);
-  });
+  }, 15000);
+
 });

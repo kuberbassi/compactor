@@ -145,7 +145,25 @@ describe('Audio Tools Utility Functions', () => {
     const slow88 = synthesizeKickPulse(88, 10);
     const detectedSlow = await estimateBpmFromAudioBuffer(slow88);
     expect(Math.abs(detectedSlow - 88)).toBeLessThanOrEqual(2);
+
+    const rock144 = synthesizeKickPulse(144, 10);
+    const detected144 = await estimateBpmFromAudioBuffer(rock144);
+    expect(Math.abs(detected144 - 144)).toBeLessThanOrEqual(2);
   });
+
+  it('accurately detects E Major (Camelot 12B)', () => {
+    const eMajor = synthesizeChordProgression([
+      [40, 64, 68, 71], // E major (bass E, G#, B)
+      [45, 64, 69, 73], // A major
+      [47, 66, 71, 75], // B major
+      [40, 64, 68, 71], // E major
+    ]);
+    const res = detectKeyFrom44kBuffer(eMajor);
+    expect(res.keyName).toBe('E Major');
+    expect(res.mode).toBe('Major');
+    expect(CAMELOT_MAP[res.keyName]).toBe('12B');
+  });
+
 
   it('verifies AudioCompressOptions typing and options contract', async () => {
     const { parseMediaTagsFromFFmpegLog, buildAudioFilters } = await import('../utils/ffmpeg/audio');

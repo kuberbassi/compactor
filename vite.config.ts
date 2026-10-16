@@ -97,6 +97,9 @@ export default defineConfig({
           if (id.includes('node_modules/@ffmpeg')) {
             return 'vendor-ffmpeg';
           }
+          if (id.includes('node_modules/essentia.js')) {
+            return 'vendor-essentia';
+          }
           if (id.includes('node_modules/lucide-react') || id.includes('node_modules/react-icons')) {
             return 'vendor-icons';
           }
