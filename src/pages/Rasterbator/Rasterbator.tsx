@@ -566,7 +566,7 @@ export const Rasterbator: React.FC<RasterbatorProps> = ({ onGoHome, onSelectTool
 
       {/* Results State */}
       {resultUrl && !processing && (
-        <div className="flex-1 flex items-center justify-center p-6">
+        <div className="pdf-export-result-wrap">
           <PosterResultCard
             resultUrl={resultUrl}
             resultName={resultName}

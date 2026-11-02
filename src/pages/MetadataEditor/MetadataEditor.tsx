@@ -1056,8 +1056,8 @@ export function MetadataEditor({
 
       {/* Result Screen */}
       {result && !reading && !processing && (
-        <div className="max-w-xl mx-auto py-10 px-4">
-          <Card className="border border-white/10 bg-[#18191e] shadow-2xl text-center p-8 space-y-6 rounded-2xl">
+        <div className="pdf-export-result-wrap">
+          <Card className="pdf-export-result w-full max-w-xl mx-auto border border-white/10 bg-[#18191e] shadow-2xl text-center p-8 space-y-6 rounded-2xl">
             <div className="w-14 h-14 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-inner border border-emerald-500/20">
               <CheckCircle className="w-7 h-7" />
             </div>

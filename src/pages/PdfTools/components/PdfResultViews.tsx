@@ -35,7 +35,8 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
     <>
       {/* BULK COMPRESSION RESULTS */}
       {compressionResults.length > 0 && (
-        <Card className="pdf-export-result pdf-export-result--batch max-w-3xl mx-auto p-6 space-y-5">
+        <div className="pdf-export-result-wrap">
+          <Card className="pdf-export-result pdf-export-result--batch w-full max-w-3xl mx-auto p-6 space-y-5">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] pb-3">
             <div>
               <CardTitle className="text-lg font-black text-[var(--text-primary)]">PDF optimization complete</CardTitle>
@@ -135,11 +136,13 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
             </div>
           )}
         </Card>
+        </div>
       )}
 
       {/* EXTRACTED IMAGES GRID RESULT */}
       {extractedImages.length > 0 && (
-        <Card className="pdf-export-result pdf-export-result--gallery max-w-4xl mx-auto p-6 space-y-5">
+        <div className="pdf-export-result-wrap">
+          <Card className="pdf-export-result pdf-export-result--gallery w-full max-w-4xl mx-auto p-6 space-y-5">
           <div className="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
             <div>
               <span className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider block">Extracted PDF Page Images ({extractedImages.length} Pages)</span>
@@ -189,12 +192,13 @@ export const PdfResultViews: React.FC<PdfResultViewsProps> = ({
             )}
           </div>
         </Card>
+        </div>
       )}
 
       {/* SINGLE FILE EXPORT RESULT */}
       {resultUrl && extractedImages.length === 0 && (
-        <div className="pdf-export-result-wrap max-w-xl mx-auto">
-          <Card className="pdf-export-result pdf-export-result--single text-center p-6 space-y-5">
+        <div className="pdf-export-result-wrap">
+          <Card className="pdf-export-result pdf-export-result--single w-full max-w-xl mx-auto text-center p-6 space-y-5">
             <div className="pdf-export-result__success-icon">
               <CheckCircle className="w-7 h-7" />
             </div>

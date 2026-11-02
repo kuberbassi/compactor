@@ -926,7 +926,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
             </button>
           ) : undefined}
         >
-        <div className={`image-workbench ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+        <div className={`image-workbench ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${results.length > 0 && !processing ? 'is-results' : ''}`}>
 
           {/* ═══ LEFT SIDEBAR ═══════════════════════════════════════════════════ */}
           <aside className={`image-workbench__sidebar ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
@@ -1057,7 +1057,7 @@ export const ImageTools: React.FC<ImageToolsProps> = ({ initialTab = 'compress',
 
                   {/* Sidebar Footer with primary action */}
                   <div className="p-3.5 border-t border-white/10 bg-zinc-900/50 backdrop-blur-sm shrink-0 space-y-2.5">
-                    {files.length > 1 && activeTab !== 'image-to-pdf' && (
+                    {files.length > 1 && (
                       <label className="flex items-center justify-between text-xs text-zinc-400 px-1 cursor-pointer select-none">
                         <span>Apply to all ({files.length})</span>
                         <input
