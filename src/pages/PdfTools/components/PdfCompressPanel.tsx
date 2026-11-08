@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowUp,
@@ -39,8 +39,8 @@ export const PdfCompressPanel: React.FC<PdfCompressPanelProps> = ({
   setCompressionPreset,
   removeCompressionMetadata,
   setRemoveCompressionMetadata,
-  draggedQueueIndex: _draggedQueueIndex,
-  setDraggedQueueIndex: _setDraggedQueueIndex,
+  draggedQueueIndex,
+  setDraggedQueueIndex,
   onMoveQueueItem,
   onRemoveQueueItem,
   onFilesSelected,
@@ -49,6 +49,19 @@ export const PdfCompressPanel: React.FC<PdfCompressPanelProps> = ({
   toolSelector,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [localDraggedIndex, setLocalDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const draggedIndexRef = useRef<number | null>(null);
+
+  const activeDraggedIndex = draggedQueueIndex !== undefined && draggedQueueIndex !== null
+    ? draggedQueueIndex
+    : localDraggedIndex;
+
+  const updateDraggedIndex = (idx: number | null) => {
+    draggedIndexRef.current = idx;
+    setLocalDraggedIndex(idx);
+    setDraggedQueueIndex(idx);
+  };
 
   const totalBytes = multipleFiles.reduce((acc, f) => acc + f.file.size, 0);
   const totalPages = multipleFiles.reduce((acc, f) => acc + (f.pageCount || 1), 0);
@@ -123,50 +136,93 @@ export const PdfCompressPanel: React.FC<PdfCompressPanelProps> = ({
 
           {!isSidebarCollapsed ? (
             <div className="pdf-join-controls flex-1 overflow-y-auto min-h-0 space-y-4">
-              <div className="pdf-join-controls__list">
-                {multipleFiles.map((item, index) => (
-                  <article
-                    key={`${item.file.name}:${item.file.size}:${index}`}
-                  >
-                    <span className="pdf-queue-index">
-                      {index + 1}
-                    </span>
-                    <div>
-                      <strong title={item.file.name}>
-                        {item.file.name}
-                      </strong>
-                      <small className="truncate whitespace-nowrap">
-                        {item.pageCount ? `${item.pageCount} ${item.pageCount === 1 ? 'page' : 'pages'} · ` : ''}
-                        {formatBytes(item.file.size)}
-                      </small>
-                    </div>
-                    <nav aria-label={`Reorder ${item.file.name}`}>
-                      <button
-                        type="button"
-                        disabled={index === 0}
-                        onClick={() => onMoveQueueItem(index, index - 1)}
-                        title="Move up"
-                      >
-                        <ArrowUp aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        disabled={index === multipleFiles.length - 1}
-                        onClick={() => onMoveQueueItem(index, index + 1)}
-                        title="Move down"
-                      >
-                        <ArrowDown aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveQueueItem(index)}
-                        title="Remove document"
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </button>
-                    </nav>
-                  </article>
-                ))}
+              <div className="pdf-join-controls__list" role="list">
+                {multipleFiles.map((item, index) => {
+                  const isDragging = activeDraggedIndex === index;
+                  const isDragOver = dragOverIndex === index && activeDraggedIndex !== index;
+
+                  return (
+                    <article
+                      key={`${item.file.name}:${item.file.size}:${index}`}
+                      role="listitem"
+                      draggable
+                      className={`pdf-queue-item ${isDragging ? 'is-dragging' : ''} ${isDragOver ? 'is-drag-over' : ''}`}
+                      title="Drag to reorder document"
+                      onDragStart={(event) => {
+                        updateDraggedIndex(index);
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', String(index));
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        if (dragOverIndex !== index) {
+                          setDragOverIndex(index);
+                        }
+                      }}
+                      onDragLeave={(event) => {
+                        if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                        if (dragOverIndex === index) {
+                          setDragOverIndex(null);
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const from = draggedIndexRef.current ?? Number(event.dataTransfer.getData('text/plain'));
+                        if (typeof from === 'number' && Number.isInteger(from) && from !== index) {
+                          onMoveQueueItem(from, index);
+                        }
+                        updateDraggedIndex(null);
+                        setDragOverIndex(null);
+                      }}
+                      onDragEnd={() => {
+                        updateDraggedIndex(null);
+                        setDragOverIndex(null);
+                      }}
+                    >
+                      <span className="pdf-queue-index" title="Drag to reorder">
+                        {index + 1}
+                      </span>
+                      <div className="select-none pointer-events-none">
+                        <strong title={item.file.name}>
+                          {item.file.name}
+                        </strong>
+                        <small className="truncate whitespace-nowrap">
+                          {item.pageCount ? `${item.pageCount} ${item.pageCount === 1 ? 'page' : 'pages'} · ` : ''}
+                          {formatBytes(item.file.size)}
+                        </small>
+                      </div>
+                      <nav aria-label={`Reorder ${item.file.name}`} onMouseDown={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => onMoveQueueItem(index, index - 1)}
+                          title="Move up"
+                          draggable={false}
+                        >
+                          <ArrowUp aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === multipleFiles.length - 1}
+                          onClick={() => onMoveQueueItem(index, index + 1)}
+                          title="Move down"
+                          draggable={false}
+                        >
+                          <ArrowDown aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveQueueItem(index)}
+                          title="Remove document"
+                          draggable={false}
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </button>
+                      </nav>
+                    </article>
+                  );
+                })}
               </div>
 
               <div>

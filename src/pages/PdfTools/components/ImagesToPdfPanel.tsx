@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, FileImage, Images, PanelLeft, PanelLeftClose, Palette, Plus, RotateCw, Trash2, ZoomIn } from 'lucide-react';
 import { FileUploader } from '../../../components/Common/FileUploader';
 import { EditorCommandBar, EditorSidebar, EditorSidebarHeader } from '../../../components/Workspace/EditorChrome';
@@ -60,8 +60,15 @@ const ImageQueueThumbnail: React.FC<{ file: File; filter: ImagesToPdfPanelProps[
     return () => { active = false; URL.revokeObjectURL(sourceUrl); };
   }, [file, filter, rotation]);
   return (
-    <button type="button" onClick={onOpen} className="pdf-image-card__preview" aria-label={`Preview ${file.name}`}>
-      {url && <img src={url} alt="" />}
+    <button
+      type="button"
+      onClick={onOpen}
+      onMouseDown={(e) => e.stopPropagation()}
+      className="pdf-image-card__preview cursor-pointer"
+      aria-label={`Preview ${file.name}`}
+      draggable={false}
+    >
+      {url && <img src={url} alt="" draggable={false} className="pointer-events-none select-none" />}
       <span><ZoomIn aria-hidden="true" /> Preview</span>
     </button>
   );
@@ -73,6 +80,10 @@ export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
   onRemoveItem, onPeekImage, onAddFiles, onClearAll, onRunConvert, rotations, onRotateItem, toolSelector,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+  const [dragOverItemIndex, setDragOverItemIndex] = useState<number | null>(null);
+  const draggedItemIndexRef = useRef<number | null>(null);
+
   const totalBytes = multipleFiles.reduce((sum, item) => sum + item.file.size, 0);
   const firstFile = multipleFiles[0]?.file;
   const addInputFiles = (input: HTMLInputElement) => {
@@ -172,19 +183,75 @@ export const ImagesToPdfPanel: React.FC<ImagesToPdfPanelProps> = ({
               </div>
             )}
             {multipleFiles.length > 0 ? (
-              <div className="pdf-image-grid workbench-scroll-region">
-                {multipleFiles.map((info, index) => (
-                  <article className="pdf-image-card" key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${index}`}>
-                    <div className="pdf-image-card__header"><b>{index + 1}</b><button type="button" onClick={() => onRemoveItem(index)} title="Remove image"><Trash2 aria-hidden="true" /></button></div>
-                    <ImageQueueThumbnail file={info.file} filter={imgFilter} rotation={rotations[index] || 0} onOpen={() => onPeekImage(index)} />
-                    <strong title={info.file.name}>{info.file.name}</strong>
-                    <nav aria-label={`Arrange ${info.file.name}`}>
-                      <button type="button" disabled={index === 0} onClick={() => onMoveItem(index, index - 1)} title="Move earlier"><ArrowUp aria-hidden="true" /></button>
-                      <button type="button" disabled={index === multipleFiles.length - 1} onClick={() => onMoveItem(index, index + 1)} title="Move later"><ArrowDown aria-hidden="true" /></button>
-                      <button type="button" onClick={() => onRotateItem(index)} title="Rotate image clockwise" aria-label={`Rotate ${info.file.name} clockwise`}><RotateCw aria-hidden="true" /></button>
-                    </nav>
-                  </article>
-                ))}
+              <div className="pdf-image-grid workbench-scroll-region" role="list">
+                {multipleFiles.map((info, index) => {
+                  const isDragging = draggedItemIndex === index;
+                  const isDragOver = dragOverItemIndex === index && draggedItemIndex !== index;
+
+                  return (
+                    <article
+                      className={`pdf-image-card ${isDragging ? 'is-dragging' : ''} ${isDragOver ? 'is-drag-over' : ''}`}
+                      key={`${info.file.name}:${info.file.size}:${info.file.lastModified}:${index}`}
+                      role="listitem"
+                      draggable
+                      title="Drag to reorder page"
+                      onDragStart={(event) => {
+                        setDraggedItemIndex(index);
+                        draggedItemIndexRef.current = index;
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', String(index));
+                      }}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        if (dragOverItemIndex !== index) {
+                          setDragOverItemIndex(index);
+                        }
+                      }}
+                      onDragLeave={(event) => {
+                        if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                        if (dragOverItemIndex === index) {
+                          setDragOverItemIndex(null);
+                        }
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const from = draggedItemIndexRef.current ?? Number(event.dataTransfer.getData('text/plain'));
+                        if (typeof from === 'number' && Number.isInteger(from) && from !== index) {
+                          onMoveItem(from, index);
+                        }
+                        setDraggedItemIndex(null);
+                        setDragOverItemIndex(null);
+                        draggedItemIndexRef.current = null;
+                      }}
+                      onDragEnd={() => {
+                        setDraggedItemIndex(null);
+                        setDragOverItemIndex(null);
+                        draggedItemIndexRef.current = null;
+                      }}
+                    >
+                      <div className="pdf-image-card__header">
+                        <b>{index + 1}</b>
+                        <button
+                          type="button"
+                          onClick={() => onRemoveItem(index)}
+                          title="Remove image"
+                          onMouseDown={e => e.stopPropagation()}
+                          draggable={false}
+                        >
+                          <Trash2 aria-hidden="true" />
+                        </button>
+                      </div>
+                      <ImageQueueThumbnail file={info.file} filter={imgFilter} rotation={rotations[index] || 0} onOpen={() => onPeekImage(index)} />
+                      <strong title={info.file.name} className="pointer-events-none select-none">{info.file.name}</strong>
+                      <nav aria-label={`Arrange ${info.file.name}`} onMouseDown={e => e.stopPropagation()}>
+                        <button type="button" disabled={index === 0} onClick={() => onMoveItem(index, index - 1)} title="Move earlier" draggable={false}><ArrowUp aria-hidden="true" /></button>
+                        <button type="button" disabled={index === multipleFiles.length - 1} onClick={() => onMoveItem(index, index + 1)} title="Move later" draggable={false}><ArrowDown aria-hidden="true" /></button>
+                        <button type="button" onClick={() => onRotateItem(index)} title="Rotate image clockwise" aria-label={`Rotate ${info.file.name} clockwise`} draggable={false}><RotateCw aria-hidden="true" /></button>
+                      </nav>
+                    </article>
+                  );
+                })}
               </div>
             ) : (
               <div className="pdf-image-workspace-empty pdf-join-preview">
